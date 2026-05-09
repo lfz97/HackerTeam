@@ -1,11 +1,11 @@
 package tui
 
 import (
-	"HyperBot/bootstrap"
-	"HyperBot/handler"
-	"HyperBot/tui/global_object"
-	"HyperBot/tui/tip"
-	"HyperBot/utils/pretty"
+	"HackerTeam/bootstrap"
+	"HackerTeam/handler"
+	"HackerTeam/tui/global_object"
+	"HackerTeam/tui/tip"
+	"HackerTeam/utils/pretty"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -54,7 +54,7 @@ func CreateConfigPage(pages *tview.Pages) tview.Primitive {
 
 	go func() {
 		//初始化AgentRunner
-		runner := bootstrap.Init("HyperBot")
+		runner := bootstrap.Init("HackerTeam")
 		//如果Init都成功了，创建Agent页面
 		AgentPage := createAgentPage(runner)
 		global_object.App_p.QueueUpdateDraw(func() {

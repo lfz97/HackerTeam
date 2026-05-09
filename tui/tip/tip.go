@@ -1,7 +1,7 @@
 package tip
 
 import (
-	"HyperBot/utils/pretty"
+	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
 	"github.com/rivo/tview"

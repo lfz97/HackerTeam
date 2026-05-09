@@ -1,14 +1,13 @@
 package bootstrap
 
 import (
-	"HyperBot/agent"
-	"HyperBot/config"
-	"HyperBot/handler"
-	"HyperBot/session"
-	"HyperBot/toolsets"
-	"HyperBot/toolsets/localexec"
-	"HyperBot/tui/global_object"
-	"HyperBot/utils/pretty"
+	"HackerTeam/config"
+	"HackerTeam/handler"
+	"HackerTeam/session"
+	"HackerTeam/toolsets"
+	"HackerTeam/toolsets/localexec"
+	"HackerTeam/tui/global_object"
+	"HackerTeam/utils/pretty"
 	"embed"
 	"fmt"
 	"github.com/gdamore/tcell/v2"
@@ -23,9 +22,11 @@ import (
 	"strings"
 	"time"
 	"trpc.group/trpc-go/trpc-agent-go/log"
-	"trpc.group/trpc-go/trpc-agent-go/model"
+
+	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
+	"trpc.group/trpc-go/trpc-agent-go/team"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-mcp-go"
 )
@@ -36,7 +37,7 @@ var (
 	Agentname              string
 	CWD                    string
 	ConfigFolderPath       string
-	HyperBotConfigPath     string
+	HackerTeamConfigPath   string
 	SkillFolderPath        string
 	AgentRunner            handler.AgentRunner
 	InMemorySessionService *inmemory.SessionService
@@ -45,17 +46,19 @@ var (
 	//go:embed prompt/*
 	PromptFiles embed.FS
 
-	systemprompt string
+	envPrompt string
+	Tools     []tool.Tool
+	Toolsets  []tool.ToolSet
 )
 
 // 定义配置文件夹中的各种配置文件名称
 const (
-	HyperBotConfigFolder string = ".hyperbot"
-	HyperBotConfig       string = "hyperbot.yaml"
-	SkillsFolder         string = "skills"
-	HyperBotLogFile      string = "hyperbot.log"
-	OperationRecord      string = "OperationRecord.md"
-	outputDir            string = "output"
+	HackerTeamConfigFolder string = ".HackerTeam"
+	HackerTeamConfig       string = "HackerTeam.yaml"
+	SkillsFolder           string = "skills"
+	HackerTeamLogFile      string = "HackerTeam.log"
+	OperationRecord        string = "OperationRecord.md"
+	outputDir              string = "output"
 )
 
 func Init(an string) handler.AgentRunner {
@@ -77,7 +80,7 @@ func Init(an string) handler.AgentRunner {
 	redirectFrameworkLog()
 
 	//设置系统提示词
-	configSystemPrompt()
+	configENVPrompt()
 
 	//加载配置文件
 	LoadConfig()
@@ -91,55 +94,55 @@ func Init(an string) handler.AgentRunner {
 }
 
 // 配置系统提示词，替换其中的占位符
-func configSystemPrompt() {
-	systemprompt_b, _ := PromptFiles.ReadFile("prompt/systemprompt.md")
-	systemprompt = string(systemprompt_b)
+func configENVPrompt() {
+	envPrompt_b, _ := PromptFiles.ReadFile("prompt/env.md")
+	envPrompt = string(envPrompt_b)
 	//Agent名称
-	systemprompt = strings.ReplaceAll(systemprompt, "{{NAME}}", Agentname)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{NAME}}", Agentname)
 
 	//当前日期
-	systemprompt = strings.ReplaceAll(systemprompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
+	envPrompt = strings.ReplaceAll(envPrompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
 
 	//当前时区
 	zone, _ := time.Now().Zone()
-	systemprompt = strings.ReplaceAll(systemprompt, "{{TIMEZONE}}", fmt.Sprintf("%s (%s)", time.Now().Location().String(), zone))
+	envPrompt = strings.ReplaceAll(envPrompt, "{{TIMEZONE}}", fmt.Sprintf("%s (%s)", time.Now().Location().String(), zone))
 
 	//操作系统
-	systemprompt = strings.ReplaceAll(systemprompt, "{{OSTYPE}}", runtime.GOOS)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{OSTYPE}}", runtime.GOOS)
 
 	//CPU架构
-	systemprompt = strings.ReplaceAll(systemprompt, "{{AARCH}}", runtime.GOARCH)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{AARCH}}", runtime.GOARCH)
 
 	//主目录
 	homeDir, _ := os.UserHomeDir()
-	systemprompt = strings.ReplaceAll(systemprompt, "{{HOME}}", homeDir)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{HOME}}", homeDir)
 
 	//临时目录
-	systemprompt = strings.ReplaceAll(systemprompt, "{{TMPDIR}}", os.TempDir())
+	envPrompt = strings.ReplaceAll(envPrompt, "{{TMPDIR}}", os.TempDir())
 
 	//当前用户
 	u, _ := user.Current()
-	systemprompt = strings.ReplaceAll(systemprompt, "{{CURRENTUSER}}", u.Username)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{CURRENTUSER}}", u.Username)
 
 	//主机名
 	hostName, _ := os.Hostname()
-	systemprompt = strings.ReplaceAll(systemprompt, "{{HOSTNAME}}", hostName)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{HOSTNAME}}", hostName)
 
 	//运行目录
-	systemprompt = strings.ReplaceAll(systemprompt, "{{CWD}}", CWD)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{CWD}}", CWD)
 
 	//配置目录
-	systemprompt = strings.ReplaceAll(systemprompt, "{{CONFIGPATH}}", ConfigFolderPath)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{CONFIGPATH}}", ConfigFolderPath)
 
 	//配置文件
-	systemprompt = strings.ReplaceAll(systemprompt, "{{HyperBotConfig}}", HyperBotConfig)
-	systemprompt = strings.ReplaceAll(systemprompt, "{{SkillsFolder}}", SkillsFolder)
-	systemprompt = strings.ReplaceAll(systemprompt, "{{HyperBotLogFile}}", HyperBotLogFile)
-	systemprompt = strings.ReplaceAll(systemprompt, "{{OperationRecord}}", OperationRecord)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamConfig}}", HackerTeamConfig)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{SkillsFolder}}", SkillsFolder)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamLogFile}}", HackerTeamLogFile)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{OperationRecord}}", OperationRecord)
 
 	//输出目录
 	outputDir := filepath.Join(CWD, outputDir)
-	systemprompt = strings.ReplaceAll(systemprompt, "{{OUTPUTDIR}}", outputDir)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{OUTPUTDIR}}", outputDir)
 }
 
 // 获取当前可执行文件所在的目录完整路径
@@ -155,7 +158,7 @@ func getcwd() {
 
 // 检查配置文件夹是否存在
 func checkConfigFolder() {
-	ConfigFolderPath = filepath.Join(CWD, HyperBotConfigFolder)
+	ConfigFolderPath = filepath.Join(CWD, HackerTeamConfigFolder)
 	_, err := os.Stat(ConfigFolderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -176,13 +179,13 @@ func checkConfigFolder() {
 
 // 检查配置文件是否存在，不存在则创建一个默认的配置文件
 func checkConfig() {
-	HyperBotConfigPath = filepath.Join(ConfigFolderPath, HyperBotConfig)
+	HackerTeamConfigPath = filepath.Join(ConfigFolderPath, HackerTeamConfig)
 	// TODO: 读取并解析 configPath 中的 YAML 配置
-	_, err := os.Stat(HyperBotConfigPath)
+	_, err := os.Stat(HackerTeamConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// 文件不存在，创建一个默认的 config.yaml
-			fd, err := os.OpenFile(HyperBotConfigPath, os.O_RDWR|os.O_CREATE, 0644)
+			fd, err := os.OpenFile(HackerTeamConfigPath, os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认配置文件错误：%v", err))
 			}
@@ -224,7 +227,7 @@ func checkSkillsFolder() {
 
 func loadConfig() (*config.Config, error) {
 	YamlConfig := config.Config{}
-	yamlFile, err := os.ReadFile(HyperBotConfigPath)
+	yamlFile, err := os.ReadFile(HackerTeamConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件错误：%v", err)
 	}
@@ -235,9 +238,7 @@ func loadConfig() (*config.Config, error) {
 	return &YamlConfig, nil
 }
 
-func parseConfig() ([]tool.Tool, []tool.ToolSet, config.Model, config.User) {
-	Tools := []tool.Tool{}
-	Toolsets := []tool.ToolSet{}
+func parseConfig() {
 
 	if len((*Config_p).Mcp) != 0 {
 		//读取配置文件中的 MCP 配置，创建 MCP ToolSet 并添加到 Toolsets 中
@@ -261,54 +262,28 @@ func parseConfig() ([]tool.Tool, []tool.ToolSet, config.Model, config.User) {
 	}
 
 	Toolsets = append(Toolsets, localexec.LocalExec()) //localexec 必须启用
-	return Tools, Toolsets, (*Config_p).Model, (*Config_p).User
+
 }
 
 func initMemorySessionService() {
 	InMemorySessionService = session.NewMemorySessionService((*Config_p).Model)
 }
 
-func initAgent(Tools []tool.Tool, Toolsets []tool.ToolSet, Model config.Model) runner.Runner {
-	var Runner runner.Runner
+func initTeam() runner.Runner {
+	CaptainAgent := initCaptain()
+	exploitAgent := initexploit()
+	postexploitAgent := initpostexploit()
+	reconAgent := initRecon()
+	vulnanalyzeAgent := initvulnanalyst()
 
-	if Model.APIType == "openai" {
-		Agent_p := agent.OpenaiAgent(
-			Agentname,
-			systemprompt,
-			model.GenerationConfig{
-				Stream: Model.Stream,
-			},
-			Tools,
-			Toolsets,
-			Model.Model,
-			Model.BaseURL,
-			Model.APIKey,
-			SkillFolderPath,
-		)
-		Runner = runner.NewRunner(Agentname, Agent_p,
-			runner.WithSessionService(InMemorySessionService), // 使用内存会话服务，其中包含自动摘要功能
-		)
-	} else if Model.APIType == "anthropic" {
-		Agent_p := agent.AnthropicAgent(
-			Agentname,
-			systemprompt,
-			model.GenerationConfig{
-				Stream: Model.Stream,
-			},
-			Tools,
-			Toolsets,
-			Model.Model,
-			Model.BaseURL,
-			Model.APIKey,
-			SkillFolderPath,
-		)
-		Runner = runner.NewRunner(Agentname, Agent_p,
-			runner.WithSessionService(InMemorySessionService), // 使用内存会话服务，其中包含自动摘要功能
-		)
-	} else {
-		pretty.ErrorWithExit("不支持的API类型，请检查配置文件中的 Model.APIType 字段")
-	}
-
+	team.New(
+		CaptainAgent,
+		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, vulnanalyzeAgent},
+		team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
+	)
+	Runner := runner.NewRunner(Agentname, CaptainAgent,
+		runner.WithSessionService(InMemorySessionService), // 使用内存会话服务，其中包含自动摘要功能
+	)
 	return Runner
 }
 
@@ -323,12 +298,12 @@ func LoadConfig() {
 
 func NewRunner() handler.AgentRunner {
 	//解析配置文件
-	Tools, Toolsets, Model, User := parseConfig()
-	runner := initAgent(Tools, Toolsets, Model)
+	parseConfig()
+	runner := initTeam()
 	ar := handler.AgentRunner{
 		Runner: runner,
-		Stream: Model.Stream,
-		UserId: User.UserID,
+		Stream: (*Config_p).Model.Stream,
+		UserId: (*Config_p).User.UserID,
 	}
 	global_object.Print2LogView(pretty.TReady(Agentname))
 	return ar
@@ -366,9 +341,9 @@ func ShowSuccessAndExit(sussessmsg string) {
 	<-done
 }
 
-// redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 hyperbot.log 文件-created by copilot
+// redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 HackerTeam.log 文件-created by copilot
 func redirectFrameworkLog() {
-	logPath := filepath.Join(ConfigFolderPath, HyperBotLogFile)
+	logPath := filepath.Join(ConfigFolderPath, HackerTeamLogFile)
 	var err error
 	frameworkLogFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {

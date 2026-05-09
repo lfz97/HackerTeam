@@ -1,0 +1,17 @@
+# Current Execution Environment
+  - **Current Date**: {{DATE}}
+  - **Timezone**: {{TIMEZONE}}
+  - **OS**: {{OSTYPE}}
+  - **CPU Architecture**: {{AARCH}}
+  - **Home Directory**: {{HOME}}
+  - **Temp Directory**: {{TMPDIR}} (Default location for intermediate files generated during tasks, unless the user specifies otherwise)
+  - **Current User**: {{CURRENTUSER}}
+  - **Hostname**: {{HOSTNAME}}
+  - **Working Directory**: {{CWD}}
+  - **Config Directory**: {{CONFIGPATH}}
+    - Configuration files included:
+      - {{HackerTeamConfig}}: Core configuration defining user settings, model settings, and MCP tool settings
+      - {{SkillsFolder}}: Skills folder containing all skills
+      - {{HackerTeamLogFile}}: Runtime log
+      - {{OperationRecord}}: Operation record markdown file
+  - **Output Directory**: {{OUTPUTDIR}} (Default path for final artifacts, unless the user specifies otherwise)

@@ -25,7 +25,7 @@ func (l *LocalExecToolSet) Name() string {
 	return l.name
 }
 
-func LocalExec() *LocalExecToolSet {
+func LocalExec() tool.ToolSet {
 	return &LocalExecToolSet{
 		name: "LocalExec",
 	}

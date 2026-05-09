@@ -1,9 +1,9 @@
 package bootstrap
 
 import (
-	"HyperBot/handler"
-	"HyperBot/tui/global_object"
-	"HyperBot/utils/pretty"
+	"HackerTeam/handler"
+	"HackerTeam/tui/global_object"
+	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
 	"github.com/google/uuid"

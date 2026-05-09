@@ -1,7 +1,7 @@
 package session
 
 import (
-	"HyperBot/config"
+	"HackerTeam/config"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"

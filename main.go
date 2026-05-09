@@ -1,8 +1,8 @@
 package main
 
 import (
-	"HyperBot/tui"
-	"HyperBot/tui/global_object"
+	"HackerTeam/tui"
+	"HackerTeam/tui/global_object"
 )
 
 func main() {

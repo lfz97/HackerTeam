@@ -1,9 +1,9 @@
 package session
 
 import (
-	"HyperBot/config"
-	"HyperBot/tui/global_object"
-	"HyperBot/utils/pretty"
+	"HackerTeam/config"
+	"HackerTeam/tui/global_object"
+	"HackerTeam/utils/pretty"
 	"embed"
 	"fmt"
 	"regexp"

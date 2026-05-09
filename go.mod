@@ -1,4 +1,4 @@
-module HyperBot
+module HackerTeam
 
 go 1.26.1
 

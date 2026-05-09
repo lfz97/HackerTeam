@@ -18,19 +18,19 @@ all: $(TARGETS)
 
 # 单独平台构建
 linux-arm64:
-	GOOS=linux GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/linux-arm64/HyperBot
+	GOOS=linux GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/linux-arm64/HackerTeam
 
 linux-x64:
-	GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/linux-x64/HyperBot
+	GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/linux-x64/HackerTeam
 
 macos-arm64:
-	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/macos-arm64/HyperBot
+	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/macos-arm64/HackerTeam
 
 macos-x64:
-	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/macos-x64/HyperBot
+	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/macos-x64/HackerTeam
 
 windows-x64:
-	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/windows-x64/HyperBot.exe
+	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/windows-x64/HackerTeam.exe
 
 # 清理构建产物
 clean:

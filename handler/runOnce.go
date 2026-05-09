@@ -1,9 +1,9 @@
 package handler
 
 import (
-	"HyperBot/tui/global_object"
-	"HyperBot/tui/tip"
-	"HyperBot/utils/pretty"
+	"HackerTeam/tui/global_object"
+	"HackerTeam/tui/tip"
+	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
 	"trpc.group/trpc-go/trpc-agent-go/agent"

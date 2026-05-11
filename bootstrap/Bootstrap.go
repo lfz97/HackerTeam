@@ -50,7 +50,7 @@ func AgentStart() {
 			}
 			LoadConfig()               //重新加载配置文件，确保工具的最新状态被加载
 			AgentRunner.Runner.Close() //关闭旧的Runner，释放资源
-			AgentRunner = NewRunner()  //创建新的Runner，使用最新的工具配置
+			AgentRunner = NewRunner()  //创建新的agent和Runner，使用最新的工具配置
 
 		} else { //其他情况，继续使用当前的sessionID, userID, requestID，更新MsgContext为当前对话的结束状态，供下一轮对话使用
 			MsgContext = *EndTurn_p

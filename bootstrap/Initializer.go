@@ -296,6 +296,7 @@ func LoadConfig() {
 	Config_p = config_p
 }
 
+// 解析加载完成的配置文件，内部创建Team agent，并生成一个runner
 func NewRunner() handler.AgentRunner {
 	//解析配置文件
 	parseConfig()

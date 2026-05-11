@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
+	"github.com/otiai10/copy"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v2"
@@ -21,9 +22,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	"trpc.group/trpc-go/trpc-agent-go/log"
-
 	"trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/team"
@@ -38,7 +38,6 @@ var (
 	CWD                    string
 	ConfigFolderPath       string
 	HackerTeamConfigPath   string
-	SkillFolderPath        string
 	AgentRunner            handler.AgentRunner
 	InMemorySessionService *inmemory.SessionService
 	frameworkLogFile       *os.File // 保存日志文件句柄，防止被 GC 回收
@@ -46,19 +45,35 @@ var (
 	//go:embed prompt/*
 	PromptFiles embed.FS
 
-	envPrompt string
-	Tools     []tool.Tool
-	Toolsets  []tool.ToolSet
+	//go:embed skillsTempletes/*
+	ToolSkills embed.FS
+	envPrompt  string
+	Tools      []tool.Tool
+	Toolsets   []tool.ToolSet
 )
 
 // 定义配置文件夹中的各种配置文件名称
 const (
-	HackerTeamConfigFolder string = ".HackerTeam"
-	HackerTeamConfig       string = "HackerTeam.yaml"
-	SkillsFolder           string = "skills"
-	HackerTeamLogFile      string = "HackerTeam.log"
-	OperationRecord        string = "OperationRecord.md"
+	hackerTeamConfigFolder string = ".HackerTeam"
+	hackerTeamConfig       string = "HackerTeam.yaml"
+	hackerTeamLogFile      string = "HackerTeam.log"
+	operationRecord        string = "OperationRecord.md"
 	outputDir              string = "output"
+)
+
+// 定义技能目录相关配置
+var (
+	ReconSkillsFolderPath       string
+	ExploitSkillsFolderPath     string
+	PostExploitSkillsFolderPath string
+	VulnAnalyzeSkillsFolderPath string
+)
+
+const (
+	reconSkillsFolder       string = "ReconSkills"
+	exploitSkillsFolder     string = "ExploitSkills"
+	postExploitSkillsFolder string = "PostExploitSkills"
+	vulnAnalyzeSkillsFolder string = "VulnAnalyzeSkills"
 )
 
 func Init(an string) handler.AgentRunner {
@@ -135,10 +150,9 @@ func configENVPrompt() {
 	envPrompt = strings.ReplaceAll(envPrompt, "{{CONFIGPATH}}", ConfigFolderPath)
 
 	//配置文件
-	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamConfig}}", HackerTeamConfig)
-	envPrompt = strings.ReplaceAll(envPrompt, "{{SkillsFolder}}", SkillsFolder)
-	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamLogFile}}", HackerTeamLogFile)
-	envPrompt = strings.ReplaceAll(envPrompt, "{{OperationRecord}}", OperationRecord)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamConfig}}", hackerTeamConfig)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamLogFile}}", hackerTeamLogFile)
+	envPrompt = strings.ReplaceAll(envPrompt, "{{OperationRecord}}", operationRecord)
 
 	//输出目录
 	outputDir := filepath.Join(CWD, outputDir)
@@ -158,7 +172,7 @@ func getcwd() {
 
 // 检查配置文件夹是否存在
 func checkConfigFolder() {
-	ConfigFolderPath = filepath.Join(CWD, HackerTeamConfigFolder)
+	ConfigFolderPath = filepath.Join(CWD, hackerTeamConfigFolder)
 	_, err := os.Stat(ConfigFolderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -179,7 +193,7 @@ func checkConfigFolder() {
 
 // 检查配置文件是否存在，不存在则创建一个默认的配置文件
 func checkConfig() {
-	HackerTeamConfigPath = filepath.Join(ConfigFolderPath, HackerTeamConfig)
+	HackerTeamConfigPath = filepath.Join(ConfigFolderPath, hackerTeamConfig)
 	// TODO: 读取并解析 configPath 中的 YAML 配置
 	_, err := os.Stat(HackerTeamConfigPath)
 	if err != nil {
@@ -207,21 +221,87 @@ func checkConfig() {
 }
 
 func checkSkillsFolder() {
-	SkillFolderPath = filepath.Join(ConfigFolderPath, "skills")
-	_, err := os.Stat(SkillFolderPath)
+
+	ReconSkillsFolderPath = filepath.Join(ConfigFolderPath, reconSkillsFolder)
+	ExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, exploitSkillsFolder)
+	PostExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, postExploitSkillsFolder)
+	VulnAnalyzeSkillsFolderPath = filepath.Join(ConfigFolderPath, vulnAnalyzeSkillsFolder)
+
+	_, err := os.Stat(ReconSkillsFolderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			//skills 文件夹不存在，创建一个默认的 skills 文件夹
-			err := os.MkdirAll(SkillFolderPath, os.ModePerm)
+			err := os.MkdirAll(ReconSkillsFolderPath, os.ModePerm)
 			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("创建默认skills文件夹错误：%v", err))
+				ShowErrorAndExit(pretty.TErrorF("创建默认ReconSkills文件夹错误：%v", err))
 			}
-			ShowSuccess("检查到skills文件夹不存在，已创建默认skills文件夹")
+			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(ReconSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ReconSkills文件夹错误：%v", err))
+			}
+			ShowSuccess("检查到ReconSkills文件夹不存在，已创建默认ReconSkills文件夹")
 		} else {
-			ShowErrorAndExit(pretty.TErrorF("检查skills文件夹错误：%v", err))
+			ShowErrorAndExit(pretty.TErrorF("检查ReconSkills文件夹错误：%v", err))
 		}
 	} else {
-		ShowSuccess("检查skills文件夹通过")
+		ShowSuccess("检查ReconSkills文件夹通过")
+	}
+
+	_, err = os.Stat(ExploitSkillsFolderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err := os.MkdirAll(ExploitSkillsFolderPath, os.ModePerm)
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("创建默认ExploitSkills文件夹错误：%v", err))
+			}
+			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(ExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ExploitSkills文件夹错误：%v", err))
+			}
+			ShowSuccess("检查到ExploitSkills文件夹不存在，已创建默认ExploitSkills文件夹")
+		} else {
+			ShowErrorAndExit(pretty.TErrorF("检查ExploitSkills文件夹错误：%v", err))
+		}
+	} else {
+		ShowSuccess("检查ExploitSkills文件夹通过")
+	}
+
+	_, err = os.Stat(PostExploitSkillsFolderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err := os.MkdirAll(PostExploitSkillsFolderPath, os.ModePerm)
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("创建默认PostExploitSkills文件夹错误：%v", err))
+			}
+			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(PostExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("复制技能模板到PostExploitSkills文件夹错误：%v", err))
+			}
+			ShowSuccess("检查到PostExploitSkills文件夹不存在，已创建默认PostExploitSkills文件夹")
+		} else {
+			ShowErrorAndExit(pretty.TErrorF("检查PostExploitSkills文件夹错误：%v", err))
+		}
+	} else {
+		ShowSuccess("检查PostExploitSkills文件夹通过")
+	}
+
+	_, err = os.Stat(VulnAnalyzeSkillsFolderPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err := os.MkdirAll(VulnAnalyzeSkillsFolderPath, os.ModePerm)
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("创建默认VulnAnalyzeSkills文件夹错误：%v", err))
+			}
+			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(VulnAnalyzeSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			if err != nil {
+				ShowErrorAndExit(pretty.TErrorF("复制技能模板到VulnAnalyzeSkills文件夹错误：%v", err))
+			}
+			ShowSuccess("检查到VulnAnalyzeSkills文件夹不存在，已创建默认VulnAnalyzeSkills文件夹")
+		} else {
+			ShowErrorAndExit(pretty.TErrorF("检查VulnAnalyzeSkills文件夹错误：%v", err))
+		}
+	} else {
+		ShowSuccess("检查VulnAnalyzeSkills文件夹通过")
 	}
 }
 
@@ -344,7 +424,7 @@ func ShowSuccessAndExit(sussessmsg string) {
 
 // redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 HackerTeam.log 文件-created by copilot
 func redirectFrameworkLog() {
-	logPath := filepath.Join(ConfigFolderPath, HackerTeamLogFile)
+	logPath := filepath.Join(ConfigFolderPath, hackerTeamLogFile)
 	var err error
 	frameworkLogFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {

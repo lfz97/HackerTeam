@@ -7,11 +7,11 @@ import (
 
 	"HackerTeam/utils/pretty"
 
-	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
-
 	"fmt"
 	"strings"
+	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
+	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
@@ -48,6 +48,8 @@ func initRecon() *llmagent.LLMAgent {
 	reconPrompt := string(reconPromptBytes)
 	reconPrompt = strings.ReplaceAll(reconPrompt, "{{ENV}}", envPrompt)
 
+	repo, _ := skill.NewFSRepository(ReconSkillsFolderPath)
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -56,6 +58,13 @@ func initRecon() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),                           //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(reconPrompt),                    //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())), //侦察员挂载LocalExec工具集，包含本地命令执行工具
+		llmagent.WithRefreshToolSetsOnRun(true),
+		llmagent.WithSkillsLoadedContentInToolResults(true),
+		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
+		llmagent.WithSkills(repo),
+		llmagent.WithSkillToolProfile(
+			llmagent.SkillToolProfileKnowledgeOnly,
+		),
 	}
 	agent_p := setAgent("Recon", opts)
 	return agent_p
@@ -69,6 +78,8 @@ func initexploit() *llmagent.LLMAgent {
 	exploitPrompt := string(exploitPromptBytes)
 	exploitPrompt = strings.ReplaceAll(exploitPrompt, "{{ENV}}", envPrompt)
 
+	repo, _ := skill.NewFSRepository(ExploitSkillsFolderPath)
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -77,6 +88,13 @@ func initexploit() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(exploitPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithRefreshToolSetsOnRun(true),
+		llmagent.WithSkillsLoadedContentInToolResults(true),
+		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
+		llmagent.WithSkills(repo),
+		llmagent.WithSkillToolProfile(
+			llmagent.SkillToolProfileKnowledgeOnly,
+		),
 	}
 	agent_p := setAgent("Exploit", opts)
 	return agent_p
@@ -91,6 +109,8 @@ func initpostexploit() *llmagent.LLMAgent {
 	postexploitPrompt := string(postexploitPromptBytes)
 	postexploitPrompt = strings.ReplaceAll(postexploitPrompt, "{{ENV}}", envPrompt)
 
+	repo, _ := skill.NewFSRepository(PostExploitSkillsFolderPath)
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -99,6 +119,13 @@ func initpostexploit() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(postexploitPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithRefreshToolSetsOnRun(true),
+		llmagent.WithSkillsLoadedContentInToolResults(true),
+		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
+		llmagent.WithSkills(repo),
+		llmagent.WithSkillToolProfile(
+			llmagent.SkillToolProfileKnowledgeOnly,
+		),
 	}
 	agent_p := setAgent("PostExploit", opts)
 	return agent_p
@@ -112,6 +139,8 @@ func initvulnanalyst() *llmagent.LLMAgent {
 	vulnanalystPrompt := string(vulnanalystPromptBytes)
 	vulnanalystPrompt = strings.ReplaceAll(vulnanalystPrompt, "{{ENV}}", envPrompt)
 
+	repo, _ := skill.NewFSRepository(VulnAnalyzeSkillsFolderPath)
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -120,6 +149,13 @@ func initvulnanalyst() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(vulnanalystPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithRefreshToolSetsOnRun(true),
+		llmagent.WithSkillsLoadedContentInToolResults(true),
+		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
+		llmagent.WithSkills(repo),
+		llmagent.WithSkillToolProfile(
+			llmagent.SkillToolProfileKnowledgeOnly,
+		),
 	}
 	agent_p := setAgent("VulnAnalyst", opts)
 	return agent_p

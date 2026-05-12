@@ -45,7 +45,7 @@ var (
 	//go:embed prompt/*
 	PromptFiles embed.FS
 
-	//go:embed skillsTempletes/*
+	//go:embed skillsTemplates/*
 	ToolSkills embed.FS
 	envPrompt  string
 	Tools      []tool.Tool
@@ -235,7 +235,7 @@ func checkSkillsFolder() {
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认ReconSkills文件夹错误：%v", err))
 			}
-			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(ReconSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(ReconSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ReconSkills文件夹错误：%v", err))
 			}
@@ -254,7 +254,7 @@ func checkSkillsFolder() {
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认ExploitSkills文件夹错误：%v", err))
 			}
-			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(ExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(ExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ExploitSkills文件夹错误：%v", err))
 			}
@@ -273,7 +273,7 @@ func checkSkillsFolder() {
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认PostExploitSkills文件夹错误：%v", err))
 			}
-			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(PostExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(PostExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("复制技能模板到PostExploitSkills文件夹错误：%v", err))
 			}
@@ -292,7 +292,7 @@ func checkSkillsFolder() {
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认VulnAnalyzeSkills文件夹错误：%v", err))
 			}
-			err = copy.Copy("skillsTempletes/pentest-tools", filepath.Join(VulnAnalyzeSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(VulnAnalyzeSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("复制技能模板到VulnAnalyzeSkills文件夹错误：%v", err))
 			}

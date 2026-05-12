@@ -34,6 +34,7 @@ func initCaptain() *llmagent.LLMAgent {
 		llmagent.WithTools(append(systemtools, operationtools...)),
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(captainPrompt), //系统提示词
+		llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
 	agent_p := setAgent("Captain", opts)
 	return agent_p

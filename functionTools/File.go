@@ -37,15 +37,15 @@ func WriteFile(ctx context.Context, req struct {
 }
 
 func ReadFile(ctx context.Context, req struct {
-	Path   string `json:"path" jsonschema:"description:要读取的文件路径。"`
-	Window int    `json:"window" jsonschema:"description:读取文件的窗口大小，单位为字节。默认为1024字节。"`
+	Path  string `json:"path" jsonschema:"description:要读取的文件路径。"`
+	Bytes int    `json:"bytes" jsonschema:"description:读取文件的窗口大小，单位为字节。默认为1024字节。"`
 }) (map[string]string, error) {
 
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
 	}
-	if req.Window == 0 {
-		req.Window = 1024
+	if req.Bytes == 0 {
+		req.Bytes = 1024
 	}
 	fd, err := os.OpenFile(req.Path, os.O_RDONLY, 0644)
 	if err != nil {
@@ -53,7 +53,7 @@ func ReadFile(ctx context.Context, req struct {
 	}
 	defer fd.Close()
 
-	buf := make([]byte, req.Window) //根据请求的窗口大小创建缓冲区
+	buf := make([]byte, req.Bytes) //根据请求的窗口大小创建缓冲区
 	n, err := fd.Read(buf)
 	if err != nil && err != io.EOF {
 		return nil, err

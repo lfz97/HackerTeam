@@ -29,7 +29,6 @@ var (
 const (
 	CheckTokenThresholdPercent float64 = 0.7
 	maxSummaryWords            int     = 2000
-	EventThreshold             int     = 20
 )
 
 func initSummarizerPrompts() {
@@ -75,8 +74,6 @@ func NewSummarizer(m config.Model) summary.SessionSummarizer {
 	// ── 创建 summarizer阈值 ───────────────
 	sum := summary.NewSummarizer(
 		summarizerModel,
-		summary.WithToolCallFormatter(toolcallFormatter),     //自定义工具调用在摘要输入中的格式
-		summary.WithToolResultFormatter(toolResultFormatter), //自定义工具结果在摘要输入中的格式
 		summary.WithChecksAny( // 任一条件满足即触发
 			summary.CheckTokenThreshold(int(CheckTokenThresholdPercent*float64(m.ContextWindow))), // 新增 n 个 token 后触发
 			summary.CheckTimeThreshold(10*time.Minute),                                            //n 分钟无活动

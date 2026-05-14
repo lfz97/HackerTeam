@@ -1,3 +1,5 @@
+github.com/Rememorio/trpc-agent-go v0.0.0-20260514031153-ec42f304d527 h1:vZc6donH4NV5FO40o3wF3OPbFvbsdWdT29YQOFAYz+0=
+github.com/Rememorio/trpc-agent-go v0.0.0-20260514031153-ec42f304d527/go.mod h1:lksOlht6E+LR7AKOA0XoKrkI3AJNsfukTVes9BFmTow=
 github.com/anthropics/anthropic-sdk-go v1.37.0 h1:yBKUaBG3TCRb6das/Q5qNB9Fsafon09gu2yYVgvapKE=
 github.com/anthropics/anthropic-sdk-go v1.37.0/go.mod h1:dSIO7kSrOI7MA4fE6RRVaw8tyWP7HNQU5/H/KS4cax8=
 github.com/bmatcuk/doublestar/v4 v4.9.1 h1:X8jg9rRZmJd4yRy7ZeNDRnM+T3ZfHv15JiBJ/avrEXE=
@@ -188,8 +190,6 @@ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
 gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
 trpc.group/trpc-go/trpc-a2a-go v0.2.5 h1:X3pAlWD128LaS9TtXsUDZoJWPVuPZDkZKUecKRxmWn4=
 trpc.group/trpc-go/trpc-a2a-go v0.2.5/go.mod h1:Gtytau9Uoc3oPo/dpHvKit+tQn9Qlk5XFG1RiZTGqfk=
-trpc.group/trpc-go/trpc-agent-go v1.9.0 h1:lJJF4JyztkcQH1eHaqqYSpJlfeuN9Vx8zgqtVHJaYew=
-trpc.group/trpc-go/trpc-agent-go v1.9.0/go.mod h1:lksOlht6E+LR7AKOA0XoKrkI3AJNsfukTVes9BFmTow=
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0 h1:Nj5p3tzRY4llq8ZQWPjROm5eh3cWuykvtYq1y/yYfM8=
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.9.0/go.mod h1:lmWmpdikxTwqN1C2q1rzEaP/52ajPP2Lo51AOdpkWt8=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.9.0 h1:9z9MAN8Vcr64OnkQi24oJRBzt48/4xMQBGnR8xzsyqc=

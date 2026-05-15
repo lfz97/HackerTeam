@@ -42,14 +42,17 @@ var (
 	InMemorySessionService *inmemory.SessionService
 	frameworkLogFile       *os.File // 保存日志文件句柄，防止被 GC 回收
 
-	//go:embed prompt/*
+	//go:embed prompts/*
 	PromptFiles embed.FS
 
 	//go:embed skillsTemplates/*
-	ToolSkills embed.FS
-	envPrompt  string
-	Tools      []tool.Tool
-	Toolsets   []tool.ToolSet
+	ToolSkills             embed.FS
+	envPrompt              string
+	commandExecutionPrompt string
+	vulnConsensusPrompt    string
+	outputConsensusPrompt  string
+	Tools                  []tool.Tool
+	Toolsets               []tool.ToolSet
 )
 
 // 定义配置文件夹中的各种配置文件名称
@@ -66,14 +69,14 @@ var (
 	ReconSkillsFolderPath       string
 	ExploitSkillsFolderPath     string
 	PostExploitSkillsFolderPath string
-	VulnAnalyzeSkillsFolderPath string
+	ScannerSkillsFolderPath     string
 )
 
 const (
 	reconSkillsFolder       string = "ReconSkills"
 	exploitSkillsFolder     string = "ExploitSkills"
 	postExploitSkillsFolder string = "PostExploitSkills"
-	vulnAnalyzeSkillsFolder string = "VulnAnalyzeSkills"
+	scannerSkillsFolder     string = "ScannerSkills"
 )
 
 func Init(an string) handler.AgentRunner {
@@ -110,7 +113,7 @@ func Init(an string) handler.AgentRunner {
 
 // 配置系统提示词，替换其中的占位符
 func configENVPrompt() {
-	envPrompt_b, _ := PromptFiles.ReadFile("prompt/env.md")
+	envPrompt_b, _ := PromptFiles.ReadFile("prompts/common/env.md")
 	envPrompt = string(envPrompt_b)
 	//Agent名称
 	envPrompt = strings.ReplaceAll(envPrompt, "{{NAME}}", Agentname)
@@ -157,6 +160,18 @@ func configENVPrompt() {
 	//输出目录
 	outputDir := filepath.Join(CWD, outputDir)
 	envPrompt = strings.ReplaceAll(envPrompt, "{{OUTPUTDIR}}", outputDir)
+
+	// 读取共享的 Command Execution 提示词片段（sub-agent 共用）
+	cmdExecBytes, _ := PromptFiles.ReadFile("prompts/common/command_execution.md")
+	commandExecutionPrompt = string(cmdExecBytes)
+
+	// 读取共享的 Vuln Consensus 提示词片段（漏洞定义与定级共识）
+	vulnConsensusBytes, _ := PromptFiles.ReadFile("prompts/common/vuln_consensus.md")
+	vulnConsensusPrompt = string(vulnConsensusBytes)
+
+	// 读取共享的 Output Consensus 提示词片段（结果输出规范）
+	toolConsensusBytes, _ := PromptFiles.ReadFile("prompts/common/output_consensus.md")
+	outputConsensusPrompt = string(toolConsensusBytes)
 }
 
 // 获取当前可执行文件所在的目录完整路径
@@ -225,7 +240,7 @@ func checkSkillsFolder() {
 	ReconSkillsFolderPath = filepath.Join(ConfigFolderPath, reconSkillsFolder)
 	ExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, exploitSkillsFolder)
 	PostExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, postExploitSkillsFolder)
-	VulnAnalyzeSkillsFolderPath = filepath.Join(ConfigFolderPath, vulnAnalyzeSkillsFolder)
+	ScannerSkillsFolderPath = filepath.Join(ConfigFolderPath, scannerSkillsFolder)
 
 	_, err := os.Stat(ReconSkillsFolderPath)
 	if err != nil {
@@ -285,23 +300,23 @@ func checkSkillsFolder() {
 		ShowSuccess("检查PostExploitSkills文件夹通过")
 	}
 
-	_, err = os.Stat(VulnAnalyzeSkillsFolderPath)
+	_, err = os.Stat(ScannerSkillsFolderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err := os.MkdirAll(VulnAnalyzeSkillsFolderPath, os.ModePerm)
+			err := os.MkdirAll(ScannerSkillsFolderPath, os.ModePerm)
 			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("创建默认VulnAnalyzeSkills文件夹错误：%v", err))
+				ShowErrorAndExit(pretty.TErrorF("创建默认ScannerSkills文件夹错误：%v", err))
 			}
-			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(VulnAnalyzeSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
+			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(ScannerSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
 			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("复制技能模板到VulnAnalyzeSkills文件夹错误：%v", err))
+				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ScannerSkills文件夹错误：%v", err))
 			}
-			ShowSuccess("检查到VulnAnalyzeSkills文件夹不存在，已创建默认VulnAnalyzeSkills文件夹")
+			ShowSuccess("检查到ScannerSkills文件夹不存在，已创建默认ScannerSkills文件夹")
 		} else {
-			ShowErrorAndExit(pretty.TErrorF("检查VulnAnalyzeSkills文件夹错误：%v", err))
+			ShowErrorAndExit(pretty.TErrorF("检查ScannerSkills文件夹错误：%v", err))
 		}
 	} else {
-		ShowSuccess("检查VulnAnalyzeSkills文件夹通过")
+		ShowSuccess("检查ScannerSkills文件夹通过")
 	}
 }
 
@@ -354,11 +369,11 @@ func initTeam() runner.Runner {
 	exploitAgent := initexploit()
 	postexploitAgent := initpostexploit()
 	reconAgent := initRecon()
-	vulnanalyzeAgent := initvulnanalyst()
+	scannerAgent := initScanner()
 
 	team.New(
 		CaptainAgent,
-		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, vulnanalyzeAgent},
+		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, scannerAgent},
 		team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
 	)
 	Runner := runner.NewRunner(Agentname, CaptainAgent,

@@ -1,4 +1,4 @@
-﻿# HackerTeam
+# HackerTeam
 
 > **仅供授权渗透测试和安全研究使用。请遵守当地法律法规。**
 
@@ -6,7 +6,7 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 **核心优势：**
 - **独立二进制部署** — 单文件，无运行时依赖，跨平台开箱即用
-- **多 Agent 分工架构** — Captain 统一调度，4 个专职 Agent 各司其职
+- **共识驱动的多 Agent 协作** — 统一的漏洞定级共识和结果输出共识，Agent 间职责清晰、协作一致
 - **可扩展 Skill 配置** — 每个 Agent 独立 Skill 目录，支持 MCP 热扩展
 - **内置完整操作工具** — PTY 命令管理 + 文件系统工具，覆盖渗透全流程
 
@@ -14,65 +14,80 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 ## 目录
 
-- [独立二进制部署](#独立二进制部署)
-- [多 Agent 分工架构](#多-agent-分工架构)
+- [共识驱动的多 Agent 架构](#共识驱动的多-agent-架构)
 - [可扩展 Skill 配置](#可扩展-skill-配置)
-  - [预置模板](#预置模板)
 - [内置操作工具](#内置操作工具)
 - [快速开始](#快速开始)
 - [构建](#构建)
 
 ---
 
-## 独立二进制部署
+## 共识驱动的多 Agent 架构
 
-单个可执行文件，**无需安装 Go 运行时或任何依赖**，下载即用：
+### Agent 分工与协作流
 
-| 平台 | 架构 |
-|------|------|
-| Linux | x64 / arm64 |
-| macOS | x64 / arm64 |
-| Windows | x64 |
+`Captain` 作为中枢调度，将目标分解下发给子 Agent。**Recon 和 Scanner 可并行启动**，结果汇合到 Exploit 交叉验证后精准利用：
 
-**首次运行**会在可执行文件同目录自动生成配置目录（含主配置文件及各 Agent 的 Skill 模板目录），随后退出并提示填入 API Key。修改配置后再次运行即进入 TUI 交互界面。
+```
+              Captain
+             /        \
+        Recon          Scanner
+      (深度侦察)      (自动化广撒网)
+             \        /
+            Exploit (老师傅)
+         交叉比对 + 去误报 + 精准利用
+                 |
+            PostExploit
+         后渗透 + 横向移动
+```
+
+| Agent | 角色 | 职责 | 工具集 |
+|-------|------|------|--------|
+| **Captain** | 队长 | 任务规划、Agent 调度与并行协调、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
+| **Recon** | 侦察兵 | 子域名枚举、端口服务扫描、Web 指纹、目录爆破、被动情报（深度单点侦察） | LocalExec |
+| **Scanner** | 脚本小子 | 使用自动化扫描工具批量广撒网，覆盖面广速度快，不追求精准（误报交给 Exploit） | LocalExec |
+| **Exploit** | 老师傅 | 交叉比对 Recon + Scanner 结果，去误报后精准利用。负责漏洞最终技术定级 | LocalExec |
+| **PostExploit** | 后渗透 | 提权、凭证窃取、内网探测、横向移动、持久化、痕迹清理 | LocalExec |
+
+**协作关键：** Recon 告诉 Exploit "目标是什么"，Scanner 告诉 Exploit "哪里可能有洞"，Exploit 自主判断真伪后动手。
+
+### Agent 间共识体系
+
+所有 Agent 共享三份共识文件，通过系统提示词自动注入：
+
+```
+bootstrap/prompts/common/
+├── env.md                   # 执行环境信息
+├── command_execution.md     # 命令执行规范
+├── vuln_consensus.md        # 漏洞定义与定级共识
+└── output_consensus.md      # 结果输出共识
+```
+
+| 共识文件 | 核心内容 |
+|----------|----------|
+| **vuln_consensus** | 漏洞定义（攻击者获得了什么技术能力）、严重性等级（Critical/High/Medium/Low）纯技术标准、各 Agent 定级职责、定级冲突解决流程、Confidence 语义 |
+| **output_consensus** | 报告格式（MD only）、原始输出必须保存到 `TASK-{id}_raw/`、对话回复 JSON 通用字段、命令记录规范 |
+
+**定级原则：** 抛弃 CVSS 评分，从攻击者实际获得的技术能力出发 —— 拿到 Shell / 拿到任意身份 / 拿到核心凭证 → Critical；能读敏感数据 / 能越权 / 能打通内网 → High。
+
+### 首次运行目录结构
 
 ```
 .HackerTeam/
-├── HackerTeam.yaml          ← 主配置文件（填入 API Key 即可运行）
+├── HackerTeam.yaml          ← 主配置文件
 ├── HackerTeam.log
-├── ReconSkills/             ← 各子 Agent 独立的 Skill 目录
-├── VulnAnalyzeSkills/
+├── ReconSkills/             ← 各 Agent 独立的 Skill 目录
+├── ScannerSkills/
 ├── ExploitSkills/
-└── PostExploitSkills/
+├── PostExploitSkills/
+└── output/                  ← 任务报告与原始输出
 ```
-
-> 目录结构及 Skill 模板的详细说明见[可扩展 Skill 配置](#可扩展-skill-配置)章节。
-
----
-
-## 多 Agent 分工架构
-
-`Captain` 作为中枢调度，将目标分解并下发给 4 个专职子 Agent，按 PTES 标准自动流转攻击阶段：
-
-```
-Recon → VulnAnalyst → Exploit → PostExploit → (内网循环)
-```
-
-| Agent | 职责 | 工具集 |
-|-------|------|--------|
-| **Captain** | 任务规划、子 Agent 调度、结果审核（置信度 ≥ 70%）、生成报告 | 文件系统工具 |
-| **Recon** | 子域名枚举、端口扫描、Web 指纹、目录爆破、被动情报收集 | LocalExec |
-| **VulnAnalyst** | CVE 关联、配置缺陷识别、Web 漏洞分析、攻击路径规划（只分析，不利用） | LocalExec |
-| **Exploit** | SQLi / RCE / LFI / SSRF / XXE、认证绕过、反弹 Shell / WebShell | LocalExec |
-| **PostExploit** | 提权、凭证窃取、横向移动、持久化、痕迹清理 | LocalExec |
-
-Captain 通过 `<command>` JSON 标签向子 Agent 下发任务；子 Agent 将结果写入 `output/` 目录的结构化 Markdown 文件，Captain 读取并审核后决定下一步行动。
 
 ---
 
 ## 可扩展 Skill 配置
 
-每个 Agent 拥有独立的 Skill 目录（`ReconSkills` / `VulnAnalyzeSkills` / `ExploitSkills` / `PostExploitSkills`），通过 **`SKILL.md`** 文件以知识注入方式告知 Agent 如何使用外部安全工具：
+每个 Agent 拥有独立的 Skill 目录，通过 **`SKILL.md`** 文件以知识注入方式告知 Agent 如何使用外部安全工具：
 
 - Skill 注入到 Agent 的系统提示词，**工具本身仍通过 LocalExec 调用**，无需编写适配代码
 - 在 `SKILL.md` 中描述工具用法、参数和输出格式，Agent 即可正确使用该工具
@@ -100,9 +115,9 @@ description: Quick lookup of pentest tools.
 使用时将 `SKILL.md.template` 重命名为 `SKILL.md` 即生效。
 
 > **强烈建议按需定制：** 模板中的路径为占位示例，请替换为工具的实际安装路径，并根据各 Agent 职责配置对应的工具：
-> - **Recon** — nmap、fscan、dirsearch、subfinder、assetfinder 等信息收集工具
-> - **VulnAnalyst** — nuclei、searchsploit、CVEMap 等漏洞分析工具
-> - **Exploit** — sqlmap、metasploit、hydra 等漏洞利用工具
+> - **Recon** — nmap、fscan、dirsearch、subfinder、whatweb 等信息收集工具
+> - **Scanner** — nuclei、sqlmap（`--batch` 模式）、nikto、wafw00f 等自动化扫描工具
+> - **Exploit** — sqlmap（利用模式）、metasploit、hydra、反弹 Shell 工具等漏洞利用工具
 > - **PostExploit** — mimikatz、chisel、ligolo-ng 等后渗透工具
 >
 > Agent 只会「知道」你写进 SKILL.md 的工具 —— 未配置的工具即使已安装也无法被正确调用。

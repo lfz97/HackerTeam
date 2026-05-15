@@ -17,7 +17,7 @@ import (
 
 // 创建队长agent，负责任务规划、分配和总结，队长只挂载文件目录及文件读写工具
 func initCaptain() *llmagent.LLMAgent {
-	captainPromptBytes, err := PromptFiles.ReadFile("prompt/captain.md")
+	captainPromptBytes, err := PromptFiles.ReadFile("prompts/agents/captain.md")
 	if err != nil {
 		pretty.ErrorWithExit(fmt.Sprintf("读取队长提示词失败: %v", err))
 	}
@@ -42,13 +42,8 @@ func initCaptain() *llmagent.LLMAgent {
 }
 
 func initRecon() *llmagent.LLMAgent {
-	reconPromptBytes, err := PromptFiles.ReadFile("prompt/recon.md")
-	if err != nil {
-		pretty.ErrorWithExit(fmt.Sprintf("读取侦察员提示词失败: %v", err))
-	}
-	reconPrompt := string(reconPromptBytes)
-	reconPrompt = strings.ReplaceAll(reconPrompt, "{{ENV}}", envPrompt)
 
+	reconPrompt := assemblePrompt("prompts/agents/recon.md")
 	repo, _ := skill.NewFSRepository(ReconSkillsFolderPath)
 
 	toolsets := []tool.ToolSet{}
@@ -72,13 +67,8 @@ func initRecon() *llmagent.LLMAgent {
 }
 
 func initexploit() *llmagent.LLMAgent {
-	exploitPromptBytes, err := PromptFiles.ReadFile("prompt/exploit.md")
-	if err != nil {
-		pretty.ErrorWithExit(fmt.Sprintf("读取攻击者提示词失败: %v", err))
-	}
-	exploitPrompt := string(exploitPromptBytes)
-	exploitPrompt = strings.ReplaceAll(exploitPrompt, "{{ENV}}", envPrompt)
 
+	exploitPrompt := assemblePrompt("prompts/agents/exploit.md")
 	repo, _ := skill.NewFSRepository(ExploitSkillsFolderPath)
 
 	toolsets := []tool.ToolSet{}
@@ -103,13 +93,8 @@ func initexploit() *llmagent.LLMAgent {
 }
 
 func initpostexploit() *llmagent.LLMAgent {
-	postexploitPromptBytes, err := PromptFiles.ReadFile("prompt/post_exploit.md")
-	if err != nil {
-		pretty.ErrorWithExit(fmt.Sprintf("读取后渗透者提示词失败: %v", err))
-	}
-	postexploitPrompt := string(postexploitPromptBytes)
-	postexploitPrompt = strings.ReplaceAll(postexploitPrompt, "{{ENV}}", envPrompt)
 
+	postexploitPrompt := assemblePrompt("prompts/agents/post_exploit.md")
 	repo, _ := skill.NewFSRepository(PostExploitSkillsFolderPath)
 
 	toolsets := []tool.ToolSet{}
@@ -132,15 +117,10 @@ func initpostexploit() *llmagent.LLMAgent {
 	return agent_p
 }
 
-func initvulnanalyst() *llmagent.LLMAgent {
-	vulnanalystPromptBytes, err := PromptFiles.ReadFile("prompt/vuln_analyst.md")
-	if err != nil {
-		pretty.ErrorWithExit(fmt.Sprintf("读取漏洞分析师提示词失败: %v", err))
-	}
-	vulnanalystPrompt := string(vulnanalystPromptBytes)
-	vulnanalystPrompt = strings.ReplaceAll(vulnanalystPrompt, "{{ENV}}", envPrompt)
+func initScanner() *llmagent.LLMAgent {
 
-	repo, _ := skill.NewFSRepository(VulnAnalyzeSkillsFolderPath)
+	scannerPrompt := assemblePrompt("prompts/agents/scanner.md")
+	repo, _ := skill.NewFSRepository(ScannerSkillsFolderPath)
 
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
@@ -148,7 +128,7 @@ func initvulnanalyst() *llmagent.LLMAgent {
 			Stream: (*Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(vulnanalystPrompt), //系统提示词
+		llmagent.WithGlobalInstruction(scannerPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -158,7 +138,7 @@ func initvulnanalyst() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("VulnAnalyst", opts)
+	agent_p := setAgent("Scanner", opts)
 	return agent_p
 }
 
@@ -183,4 +163,15 @@ func setAgent(agentName string, opts []llmagent.Option) *llmagent.LLMAgent {
 		pretty.ErrorWithExit("不支持的API类型，请检查配置文件中的 Model.APIType 字段")
 		return nil
 	}
+}
+
+// 组装各个agent的提示词
+func assemblePrompt(path string) string {
+	prompt_b, _ := PromptFiles.ReadFile(path)
+	prompt := string(prompt_b)
+	prompt = strings.ReplaceAll(prompt, "{{ENV}}", envPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{COMMAND_EXECUTION}}", commandExecutionPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{VULN_CONSENSUS}}", vulnConsensusPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{OUTPUT_CONSENSUS}}", outputConsensusPrompt)
+	return prompt
 }

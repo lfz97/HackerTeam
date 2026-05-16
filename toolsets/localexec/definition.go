@@ -7,17 +7,17 @@ import (
 
 type LocalExecToolSet struct {
 	name string
+	mgr  *Manager
 }
 
 func (l *LocalExecToolSet) Tools(context.Context) []tool.Tool {
-	tools := GetTools()
-	return tools
+	return getTools(l.mgr)
 }
 
 func (l *LocalExecToolSet) Close() error {
-	manager.mu.Lock()
-	defer manager.mu.Unlock()
-	manager.jobs = map[string]*Job{} // 清空所有任务
+	l.mgr.mu.Lock()
+	defer l.mgr.mu.Unlock()
+	l.mgr.jobs = map[string]*Job{}
 	return nil
 }
 
@@ -28,5 +28,6 @@ func (l *LocalExecToolSet) Name() string {
 func LocalExec() tool.ToolSet {
 	return &LocalExecToolSet{
 		name: "LocalExec",
+		mgr:  &Manager{jobs: map[string]*Job{}},
 	}
 }

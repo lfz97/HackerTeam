@@ -26,14 +26,15 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 ### Agent 分工与协作流
 
-`Captain` 作为中枢调度，将目标分解下发给子 Agent。**Recon 和 Scanner 可并行启动**，结果汇合到 Exploit 交叉验证后精准利用：
+`Captain` 作为中枢调度，将目标分解后按攻击链顺序分发给子 Agent。**先 Recon 后 Scanner**，结果汇合到 Exploit 交叉验证后精准利用：
 
 ```
               Captain
-             /        \
-        Recon          Scanner
-      (深度侦察)      (自动化广撒网)
-             \        /
+                 |
+               Recon (深度侦察)
+                 |
+              Scanner (自动化广撒网)
+                 |
             Exploit (老师傅)
          交叉比对 + 去误报 + 精准利用
                  |
@@ -43,7 +44,7 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 | Agent | 角色 | 职责 | 工具集 |
 |-------|------|------|--------|
-| **Captain** | 队长 | 任务规划、Agent 调度与并行协调、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
+| **Captain** | 队长 | 任务规划、Agent 顺序调度、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
 | **Recon** | 侦察兵 | 子域名枚举、端口服务扫描、Web 指纹、目录爆破、被动情报（深度单点侦察） | LocalExec |
 | **Scanner** | 脚本小子 | 使用自动化扫描工具批量广撒网，覆盖面广速度快，不追求精准（误报交给 Exploit） | LocalExec |
 | **Exploit** | 老师傅 | 交叉比对 Recon + Scanner 结果，去误报后精准利用。负责漏洞最终技术定级 | LocalExec |
@@ -126,15 +127,14 @@ description: Quick lookup of pentest tools.
 
 ## 内置操作工具
 
-### LocalExec — PTY 命令管理（6 个工具）
+### LocalExec — PTY 命令管理（5 个工具）
 
-以伪终端（PTY）模式执行命令，完整支持 `ssh`、`sudo`、`msfconsole` 等需要交互式终端的工具，且不破坏 TUI 布局：
+以伪终端（PTY）模式异步执行命令，完整支持 `ssh`、`sudo`、`msfconsole` 等需要交互式终端的工具，且不破坏 TUI 布局：
 
 | 工具 | 功能 |
 |------|------|
-| `submit_command` | 提交命令（进程名 + 参数），返回任务 ID |
-| `start_command` | 按 ID 在 PTY 中启动命令 |
-| `get_status` | 查询任务状态（pending / running / done / failed / killed） |
+| `submit_command` | 异步执行命令（提交并立即启动），返回任务 ID 与运行状态 |
+| `get_status` | 查询任务状态（running / done / failed / killed） |
 | `get_output` | 获取 stdout/stderr 输出（支持滑动窗口） |
 | `intervene_command` | 向进程写 stdin 或发送信号（SIGINT / SIGTERM / SIGKILL） |
 | `kill_command` | 强制结束进程 |

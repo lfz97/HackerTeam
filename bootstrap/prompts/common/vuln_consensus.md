@@ -1,148 +1,146 @@
-# 漏洞定义与定级共识
+# Vulnerability Definition & Rating Consensus
 
-所有 Agent 必须遵守本共识。漏洞定级基于**攻击者实际获得的技术能力**，而非漏洞类型名称或 CVSS 数值。
-
----
-
-## 一、什么是漏洞
-
-**漏洞**是指攻击者可利用的系统缺陷，使其获得以下一项或多项**未经授权的技术能力**：
-
-1. **代码/命令执行** — 在目标系统上运行任意命令或代码
-2. **身份伪造** — 以他人（尤其是高权限用户）身份登录
-3. **数据访问** — 读取本不应访问的敏感数据（凭证、密钥、隐私数据、源码、数据库内容）
-4. **权限提升** — 从低权限提升到高权限（普通用户→管理员、容器→宿主机）
-5. **横向移动** — 从当前系统访问内网其他系统
-6. **持久化** — 在目标系统上维持长期访问能力
-7. **拒绝服务** — 使目标系统不可用
-
-**不是漏洞**的示例：版本号暴露、内部 IP 泄露、无敏感内容的错误信息、理论上存在但无法实际利用的配置问题。
+All Agents must adhere to this consensus. Vulnerability ratings are based on the **technical capability actually obtained by the attacker**, not vulnerability type names or CVSS scores.
 
 ---
 
-## 二、严重性等级定义（所有 Agent 统一使用）
+## 1. What Is a Vulnerability
 
-### Critical（严重）— 获得系统控制权或任意身份
+A **vulnerability** is an exploitable system defect that allows an attacker to obtain one or more of the following **unauthorized technical capabilities**:
 
-攻击者**实际获得了对目标系统的控制能力**或**任意用户身份的伪造能力**。该等级不依赖业务损失估算，仅依赖技术事实。
+1. **Code/Command Execution** — Run arbitrary commands or code on the target system
+2. **Identity Forgery** — Log in as another user (especially a high-privilege user)
+3. **Data Access** — Read sensitive data that should not be accessible (credentials, keys, PII, source code, database contents)
+4. **Privilege Escalation** — Escalate from low privilege to high privilege (user -> admin, container -> host)
+5. **Lateral Movement** — Access other internal network systems from the current system
+6. **Persistence** — Maintain long-term access on the target system
+7. **Denial of Service** — Make the target system unavailable
 
-**必须满足以下至少一项（附实际证据）：**
-
-| 技术能力 | 判定标准 | 证据要求 |
-|----------|----------|----------|
-| 任意代码/命令执行（RCE） | 在目标系统上成功执行了命令 | `whoami`/`id` 输出、反弹 Shell 连接确认 |
-| 任意文件写入且可解析执行 | 上传了 WebShell 并确认可执行 | 访问 WebShell URL 返回命令输出 |
-| SQL 注入获得 OS 层控制 | `xp_cmdshell`、`INTO OUTFILE` 写 shell、UDF 提权成功 | 命令执行回显 |
-| 任意用户身份伪造/认证绕过 | 能以管理员或其他用户身份登录 | 登录成功后的页面内容/响应 |
-| 核心凭证/密钥直接泄露 | 获取了数据库密码、云 AK/SK、JWT 签名密钥、API Token 等可直接用于访问核心系统的凭证 | 凭证内容（脱敏）及验证其有效性的证据 |
-
-### High（高危）— 获得关键数据访问或权限提升路径
-
-攻击者**获得了通往系统控制权或敏感数据的关键路径**，但尚未完全控制。
-
-**必须满足以下至少一项（附实际证据）：**
-
-| 技术能力 | 判定标准 | 证据要求 |
-|----------|----------|----------|
-| SQL 注入可读库但不能执行命令 | 通过 SQLi 读取了数据库内容，但无 OS 层权限 | 数据库内容回显 |
-| 任意文件读取（敏感信息） | 读取了 `/etc/shadow`、数据库配置、云元数据、源码中的密钥等 | 文件内容（脱敏） |
-| SSRF 可访问内网关键服务 | 成功访问云元数据 API、内网 Redis/MySQL/内部 API | 响应内容 |
-| 权限提升（垂直越权） | 普通用户执行了管理员操作（添加用户、修改全局配置、导出全量数据） | 操作成功响应 |
-| 水平越权（大范围敏感数据） | 遍历 ID 查看他人详细隐私（姓名、地址、电话、消费记录等） | 越权获取的数据（脱敏） |
-| 存储型 XSS（可劫持管理员会话） | 脚本被存储并在管理员访问时触发，可窃取 Cookie/Token | 脚本触发证据 |
-| 核心业务逻辑可被篡改 | 金额参数、权限参数、优惠券等可被客户端修改且服务端未校验 | 篡改前后的请求/响应对比 |
-| 严重认证缺陷 | 任意密码重置、Token 永不过期、MFA 可绕过 | 利用步骤和结果 |
-| 获取了立足点后的提权成功 | 从普通用户提升到 root/SYSTEM | `whoami` 输出变化 |
-| 内网认证凭据获取 | 转储了 NTLM 哈希、Kerberos Ticket、明文密码 | 凭据类型和来源（脱敏） |
-
-### Medium（中危）— 信息泄露或有限影响
-
-攻击者**获得了有价值的信息或有限的操作能力**，但无法直接导致系统控制或敏感数据批量泄露。通常需要**组合其他条件**才能造成实质伤害。
-
-**示例（附实际证据）：**
-
-| 技术能力 | 判定标准 |
-|----------|----------|
-| 敏感信息泄露（不直接导致控制） | 源码泄露、错误信息含路径、内部 IP、框架版本、开发者注释中的信息 |
-| 反射型/DOM XSS | 需用户交互，影响范围有限 |
-| CSRF（非敏感操作） | 可执行非关键操作（如修改个人头像、添加购物车） |
-| 目录遍历/目录浏览 | 可浏览目录结构但无可直接利用的敏感文件 |
-| 弱口令（低权限账号） | 仅限普通用户级别，无管理员权限 |
-| 不安全配置 | 缺少安全头（CSP、HSTS 等）、Cookie 未设 HttpOnly/Secure |
-| 有限 SSRF（仅端口探测） | 可探测内网存活端口但无法访问关键服务 |
-| 拒绝服务（有限影响） | 需特定条件触发，或影响范围有限 |
-
-### Low（低危）— 信息收集级别
-
-对攻击者**有帮助的信息**，但不能直接造成任何实质性伤害。通常作为进一步攻击的辅助输入。
-
-**示例：**
-- 版本号暴露（无已知漏洞关联）
-- 内部注释中的非敏感信息（开发者姓名、内部路径）
-- 可枚举用户名（但无法用于登录或密码喷洒）
-- 理论上存在但实际利用条件不满足的漏洞
-- HTTP 方法枚举（OPTIONS 返回允许的方法）
+**Not a vulnerability**: version number exposure, internal IP leaks, error messages without sensitive content, theoretically exploitable but practically unreachable configuration issues.
 
 ---
 
-## 三、各 Agent 的定级职责
+## 2. Severity Level Definitions (all Agents use uniformly)
 
-### Recon Agent（侦察）
-- **不输出漏洞定级。** Recon 收集的是资产和发现，不是漏洞。
-- 发现的每条资产使用 `priority` 字段，表示"建议后续 Agent 优先分析的程度"：
-  - `High` — 高价值目标，优先分析（数据库、域控、管理后台、高危端口）
-  - `Medium` — 常规目标
-  - `Low` — 低价值或信息有限的目标
-- `overall_priority` 汇总本次侦察结果的整体价值等级。
+### Critical — System Control or Arbitrary Identity Obtained
 
-### Scanner Agent（自动化漏洞扫描）
-- **不负责漏洞定级。** Scanner 使用自动化工具批量扫描，输出的是"扫描器发现"而非"确认的漏洞"。
-- 扫描报告中的风险标签来自扫描器自带分类（nuclei 的 severity、sqlmap 的 risk 等），不代表最终定级。
-- Scanner 的价值在于覆盖面，误报是预期内的。漏洞的真假验证和最终定级由 Exploit Agent 负责。
+The attacker has **actually obtained control of the target system** or the **ability to forge any user identity**. This level relies solely on technical facts, not business loss estimates.
 
-### Exploit Agent（渗透攻击）
-- **负责漏洞验证与最终技术定级。** 基于 Recon 的资产数据和 Scanner 的扫描报告，交叉比对后验证漏洞真实性，对确认的漏洞按本共识定级。
-- Scanner 的发现不等于确认的漏洞。Exploit 必须在报告中明确标注每条 Scanner 发现的验证结果（确认真实 / 判定误报及原因 / 无法确认）。
-- 如果 Scanner 报告中的风险标签与 Exploit 验证后的定级不一致，以 Exploit 定级为准，并在报告中说明原因。
-- `status` 字段区分：`success`（完全确认）/ `partial`（部分成功）/ `failed`（利用失败）/ `unconfirmed`（载荷已投递但无法确认执行结果）。
+**Must satisfy at least one of the following (with actual evidence):**
 
-### Post-Exploit Agent（后渗透）
-- 对后渗透操作的**成果**定级，标准与其他 Agent 一致。
-- 提权成功（user → root/SYSTEM）= Critical
-- 获取域控凭据 = Critical
-- 横向移动到新主机 = High（新主机上可能进一步获取 Critical 成果）
-- 数据收集的定级取决于数据敏感度：核心凭证 = Critical，业务数据 = High，系统信息 = Medium
+| Technical Capability | Criteria | Evidence Required |
+|----------------------|----------|-------------------|
+| Arbitrary Code/Command Execution (RCE) | Successfully executed commands on the target system | `whoami`/`id` output, reverse Shell connection confirmation |
+| Arbitrary file write with executable access | Uploaded WebShell and confirmed it can execute | WebShell URL access returns command output |
+| SQL injection achieving OS-level control | `xp_cmdshell`, `INTO OUTFILE` writes shell, UDF privilege escalation succeeded | Command execution output |
+| Arbitrary user identity forgery / authentication bypass | Able to log in as admin or other user | Page content/response after successful login |
+| Core credential/key directly leaked | Obtained database passwords, cloud AK/SK, JWT signing keys, API Tokens, etc. that can directly access core systems | Credential content (sanitized) and evidence of its validity |
 
-### Captain Agent（队长）
-- **拥有最终定级裁决权。**
-- 审查 Exploit 的定级时，必须检查：验证过程是否充分、证据是否支撑等级、Scanner 的发现是否被正确验证。
-- 下调等级时必须给出具体技术理由（"因为缺少 X 证据，不符合 Y 等级标准"）。
-- 上调等级时同样需要给出理由。
-- 最终报告中的漏洞等级以 Captain 的裁决为准，但原始分析 Agent 的定级和 Captain 的调整理由都须保留。
+### High — Critical Data Access or Privilege Escalation Path Obtained
+
+The attacker has **obtained a critical path toward system control or sensitive data**, but has not yet achieved full control.
+
+**Must satisfy at least one of the following (with actual evidence):**
+
+| Technical Capability | Criteria | Evidence Required |
+|----------------------|----------|-------------------|
+| SQL injection can read database but no OS commands | Read database contents via SQLi, but no OS-level access | Database content output |
+| Arbitrary file read (sensitive) | Read `/etc/shadow`, database configs, cloud metadata, source code keys, etc. | File content (sanitized) |
+| SSRF can access critical internal services | Successfully accessed cloud metadata API, internal Redis/MySQL/internal API | Response content |
+| Privilege escalation (vertical) | Regular user performed admin operations (add user, modify global config, export full data) | Operation success response |
+| Horizontal privilege escalation (large-scale sensitive data) | Enumerated IDs to view others' detailed PII (name, address, phone, transaction records, etc.) | Escalated data (sanitized) |
+| Stored XSS (can hijack admin sessions) | Script stored and triggered when admin accesses, can steal Cookies/Tokens | Script trigger evidence |
+| Core business logic tamperable | Amount parameters, permission parameters, coupons, etc. can be modified client-side with no server validation | Before/after tampering request/response comparison |
+| Severe authentication flaws | Arbitrary password reset, permanent Tokens, MFA bypassable | Exploit steps and result |
+| Successful privilege escalation after foothold | Escalated from regular user to root/SYSTEM | `whoami` output change |
+| Internal network credentials obtained | Dumped NTLM hashes, Kerberos Tickets, plaintext passwords | Credential type and source (sanitized) |
+
+### Medium — Information Disclosure or Limited Impact
+
+The attacker has **obtained valuable information or limited operational capability**, but cannot directly cause system control or bulk sensitive data leakage. Typically requires **combination with other conditions** to cause substantial harm.
+
+**Examples (with actual evidence):**
+
+| Technical Capability | Criteria |
+|----------------------|----------|
+| Sensitive information disclosure (not directly leading to control) | Source code leaks, error messages with paths, internal IPs, framework versions, developer comments with information |
+| Reflected/DOM XSS | Requires user interaction, limited impact scope |
+| CSRF (non-sensitive operations) | Can perform non-critical operations (e.g., change avatar, add to cart) |
+| Directory listing/traversal | Can browse directory structure but no directly exploitable sensitive files |
+| Weak password (low-privilege account) | Regular user level only, no admin privileges |
+| Insecure configuration | Missing security headers (CSP, HSTS, etc.), Cookies missing HttpOnly/Secure |
+| Limited SSRF (port probing only) | Can probe internal ports but cannot access critical services |
+| Denial of service (limited impact) | Requires specific conditions to trigger, or limited impact scope |
+
+### Low — Information Gathering Level
+
+Information that is **helpful to an attacker** but cannot directly cause any substantive harm. Typically serves as auxiliary input for further attacks.
+
+**Examples:**
+- Version number exposure (no known vulnerability associated)
+- Non-sensitive information in internal comments (developer name, internal paths)
+- Enumerable usernames (but not usable for login or password spraying)
+- Theoretically present but practically unexploitable vulnerabilities
+- HTTP method enumeration (OPTIONS returning allowed methods)
 
 ---
 
-## 四、定级冲突解决流程
+## 3. Rating Responsibilities per Agent
 
-当两个 Agent 对同一漏洞给出不同等级时，按以下流程解决：
+### Recon Agent
+- **Does NOT output vulnerability ratings.** Recon collects assets and discoveries, not vulnerabilities.
+- Each discovered asset uses the `priority` field, indicating "how much the subsequent Agent should prioritize analysis":
+  - `High` — High-value targets, prioritize analysis (databases, Domain Controllers, admin panels, high-risk ports)
+  - `Medium` — Routine targets
+  - `Low` — Low-value or information-limited targets
+- `overall_priority` summarizes the overall value level of this reconnaissance run.
 
-1. **Exploit 验证结果覆盖 Scanner 发现** — Scanner 的报告可能包含误报。Exploit 实际验证后的结论（确认真实 / 判定误报）优先级高于 Scanner 的原始发现。
-2. **Captain 拥有最终裁决权** — 任何 Agent 的定级都可以被 Captain 调整，但调整必须有具体技术理由。
-3. **理由必须公开** — 每次定级调整的理由记录在最终报告中。
+### Scanner Agent
+- **Does NOT rate vulnerabilities.** Scanner uses automated tools for batch scanning and outputs "scanner findings," not "confirmed vulnerabilities."
+- Risk labels in scan reports come from the scanner's own classification (nuclei severity, sqlmap risk, etc.) and do NOT represent final ratings.
+- Scanner's value is in coverage — false positives are expected. Vulnerability truth verification and final rating are Exploit Agent's responsibility.
+
+### Exploit Agent
+- **Responsible for vulnerability verification and final technical rating.** Based on Recon's asset data and Scanner's scan report, cross-reference to verify vulnerability authenticity, then rate confirmed vulnerabilities per this consensus.
+- Scanner findings are NOT confirmed vulnerabilities. Exploit MUST explicitly label each Scanner finding's verification result in the report (confirmed real / false positive with reason / unable to confirm).
+- If a Scanner report risk label differs from Exploit's verified rating, Exploit's rating takes precedence, with the reason documented in the report.
+- `status` field distinguishes: `success` (fully confirmed) / `partial` (partially successful) / `failed` (exploit failed) / `unconfirmed` (payload delivered but execution result cannot be confirmed).
+
+### Post-Exploit Agent
+- Rates the **outcomes** of post-exploitation operations, using the same standards as other Agents.
+- Successful privilege escalation (user -> root/SYSTEM) = Critical
+- Domain Controller credentials obtained = Critical
+- Lateral movement to a new host = High (further Critical outcomes possible on the new host)
+- Data collection rating depends on data sensitivity: core credentials = Critical, business data = High, system information = Medium
+
+### Captain Agent
+- **Has the final rating authority.**
+- When reviewing Exploit's ratings, must check: whether the verification process is sufficient, whether evidence supports the level, whether Scanner findings were correctly verified.
+- When downgrading, must give a specific technical reason ("because X evidence is missing, Y level criteria are not met").
+- When upgrading, must similarly give a reason.
+- The final report's vulnerability levels are based on Captain's ruling, but the original analyzing Agent's rating and Captain's adjustment reason must both be preserved.
 
 ---
 
-## 五、Confidence 字段语义
+## 4. Rating Conflict Resolution
 
-所有 Agent 的 `confidence` 字段使用统一语义：
+When two Agents give different ratings for the same vulnerability, resolve as follows:
 
-| 置信度 | 含义 |
-|--------|------|
-| 90-100% | 已实际验证确认（如 Exploit 成功执行命令、Scanner 的扫描器原始输出与 Exploit 验证结果一致） |
-| 70-89% | 高概率存在（版本精确匹配已知漏洞、多个信息来源交叉确认），但尚未进行实际验证 |
-| 50-69% | 中等概率（部分特征匹配、但版本范围不确定或有干扰因素） |
-| <50% | 低概率/推测（仅基于间接信息），必须在报告中标注不确定性原因 |
+1. **Exploit's verified result overrides Scanner's finding** — Scanner's report may contain false positives. Exploit's post-verification conclusion (confirmed real / false positive) takes priority over Scanner's original finding.
+2. **Captain has the final ruling authority** — Any Agent's rating can be adjusted by Captain, but the adjustment must have a specific technical reason.
+3. **Reasons must be public** — The reason for each rating adjustment is recorded in the final report.
 
-Captain 审查时：任何定级为 Critical 或 High 的漏洞，如果 confidence < 70%，必须退回要求补充验证。
+---
 
+## 5. Confidence Field Semantics
 
+All Agents use unified semantics for the `confidence` field:
+
+| Confidence | Meaning |
+|------------|---------|
+| 90-100% | Actually verified and confirmed (e.g., Exploit successfully executed commands, Scanner raw output consistent with Exploit verification) |
+| 70-89% | High probability exists (exact version match for known CVE, multiple information sources cross-confirmed), but not yet actually verified |
+| 50-69% | Medium probability (partial feature match but version range uncertain or interfering factors present) |
+| <50% | Low probability/speculation (based only on indirect information), must flag uncertainty reason in the report |
+
+Captain review rule: Any vulnerability rated Critical or High with confidence < 70% MUST be returned for supplementary verification.

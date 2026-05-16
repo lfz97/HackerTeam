@@ -375,6 +375,8 @@ func initTeam() runner.Runner {
 		CaptainAgent,
 		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, scannerAgent},
 		team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
+		team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
+		team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
 	)
 	Runner := runner.NewRunner(Agentname, CaptainAgent,
 		runner.WithSessionService(InMemorySessionService), // 使用内存会话服务，其中包含自动摘要功能

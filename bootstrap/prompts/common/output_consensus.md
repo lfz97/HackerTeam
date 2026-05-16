@@ -1,76 +1,76 @@
-# 结果输出共识
+# Output Consensus
 
-**所有 Agent** 必须遵守本共识。本共识定义了任务结果的输出格式、文件规范和原始数据保存要求。
-
----
-
-## 一、文件输出规范
-
-### 1. 报告文件
-
-- **格式**：**严格限定为 Markdown（`.md`）**，严禁使用 JSON、TXT 或其他格式
-- **路径**：`{{OUTPUTDIR}}/TASK-{task_id}_{类型}_result.md`（类型由各 Agent 自行定义）
-- **内容要求**：专业清晰、真实准确，所有数据来自实际执行，不得伪造或推测
-
-### 2. 原始输出目录
-
-- **每个任务必须创建专用目录**：`{{OUTPUTDIR}}/TASK-{task_id}_raw/`
-- 任务开始前执行 `mkdir -p` 创建
-- **所有外部工具的完整原始输出必须保存到此目录**
-  - 以 `<工具名>_<目标标识>.<扩展名>` 命名
-  - 禁止只保存摘要或节选
-  - 工具支持 `-o` / `--output` 参数时直接使用，否则用 shell 重定向 `>`
-
-### 3. 上报时机
-
-- **文件写入完成后**才能在对话中汇报任务完成或给出结论
-- 严禁在文件写入完成前宣称任务完成
+**All Agents** must adhere to this consensus. It defines the output format, file specifications, and raw data preservation requirements for task results.
 
 ---
 
-## 二、报告必需章节
+## 1. File Output Specification
 
-每个 Agent 的 MD 报告**至少**包含以下章节（各 Agent 可按需扩展）：
+### 1.1 Report File
 
-1. **任务概述** — 任务目标、范围、执行时间
-2. **命令与工具记录** — 每步使用的工具名称、版本、完整命令行参数、目标、原始输出文件路径、关键输出原文
-3. **原始输出目录** — 完整路径 `{{OUTPUTDIR}}/TASK-{task_id}_raw/`，以及目录内文件清单
+- **Format**: **Strictly Markdown (`.md`) only**. JSON, TXT, or other formats are forbidden.
+- **Path**: `{{OUTPUTDIR}}/TASK-{task_id}_{YYYY-MM-DD-HH-MM}_{type}_result.md`, where `{YYYY-MM-DD-HH-MM}` is the current time (24-hour clock), and `{type}` is defined by each Agent (e.g., `recon`, `scan`, `exploit`, `postexploit`).
+- **Content Requirements**: Professional, clear, authentic, and accurate. All data must come from actual execution. Do not fabricate or speculate.
+
+### 1.2 Raw Output Directory
+
+- **Each task MUST create a dedicated directory**: `{{OUTPUTDIR}}/TASK-{task_id}_{YYYY-MM-DD-HH-MM}_raw/`, where `{YYYY-MM-DD-HH-MM}` is the current time (24-hour clock).
+- Execute `mkdir -p` to create this directory before beginning the task.
+- **All complete raw output from external tools MUST be saved to this directory**.
+  - Name files as `<tool_name>_<target_identifier>.<extension>`.
+  - Saving only summaries or excerpts is forbidden.
+  - If the tool supports `-o` / `--output` parameters, use them directly; otherwise use shell redirection `>`.
+
+### 1.3 Reporting Timing
+
+- Report task completion or conclusions in the conversation **only after** files have been fully written.
+- Declaring task completion before files are written is strictly forbidden.
 
 ---
 
-## 三、对话回复 JSON 规范
+## 2. Required Report Sections
 
-任务完成时，在对话中输出以下 JSON 摘要。各 Agent 在通用字段基础上可追加自身特有字段。
+Each Agent's MD report MUST include at least the following sections (each Agent may expand as needed):
 
-### 通用字段（所有 Agent 必须包含）
+1. **Task Overview** — Task objective, scope, execution time
+2. **Command & Tool Log** — For each step: tool name, version, full command-line parameters, target, raw output file path, key output verbatim
+3. **Raw Output Directory** — Full path `{{OUTPUTDIR}}/TASK-{task_id}_{YYYY-MM-DD-HH-MM}_raw/`, and a file listing of the directory contents
+
+---
+
+## 3. Conversation Reply JSON Specification
+
+When a task is complete, output the following JSON summary in the conversation. Each Agent may append its own unique fields on top of the common fields.
+
+### Common Fields (all Agents MUST include)
 
 ```json
 {
-  "task_id": "<对应的任务ID>",
-  "agent": "<Agent 名称>",
-  "status": "<状态>",
-  "report_path": "<MD 报告文件完整绝对路径>",
-  "raw_output_dir": "<原始输出目录完整绝对路径>"
+  "task_id": "<corresponding task ID>",
+  "agent": "<Agent name>",
+  "status": "<status>",
+  "report_path": "<full absolute path to the MD report file>",
+  "raw_output_dir": "<full absolute path to the raw output directory>"
 }
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `task_id` | Captain 下发的任务 ID |
-| `agent` | 当前 Agent 名称 |
-| `status` | 任务状态，各 Agent 定义自己的状态枚举 |
-| `report_path` | MD 报告文件的完整绝对路径 |
-| `raw_output_dir` | 原始输出目录的完整绝对路径 |
+| Field | Description |
+|-------|-------------|
+| `task_id` | Task ID issued by Captain |
+| `agent` | Current Agent name |
+| `status` | Task status; each Agent defines its own status enum |
+| `report_path` | Full absolute path to the MD report file |
+| `raw_output_dir` | Full absolute path to the raw output directory |
 
-### 各 Agent 特有字段
+### Agent-Specific Fields
 
-Agent 可在通用字段基础上追加自身领域字段（如 `findings_summary`、`scan_summary`、`overall_risk` 等），详见各 Agent 的提示词定义。
+Agents may append their own domain-specific fields on top of the common fields (e.g., `findings_summary`, `scan_summary`, `overall_risk`, etc.). See each Agent's prompt definition for details.
 
 ---
 
-## 四、目的
+## 4. Purpose
 
-*   **一致性**：所有 Agent 输出结构一致，Captain 可统一解析
-*   **可追溯**：回溯工具原始输出，验证 Agent 结论
-*   **可复现**：第三方可根据原始输出和命令记录复核分析过程
-*   **防遗漏**：保留原始输出让后续 Agent 有机会发现汇总报告中遗漏的信息
+*   **Consistency**: All Agent outputs have a consistent structure that Captain can uniformly parse.
+*   **Traceability**: Trace back to raw tool output to verify Agent conclusions.
+*   **Reproducibility**: Third parties can independently verify the analysis process using raw output and command logs.
+*   **No Omission**: Preserving raw output gives subsequent Agents the opportunity to discover information missed in the summary report.

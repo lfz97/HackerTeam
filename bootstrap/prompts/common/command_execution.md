@@ -22,5 +22,5 @@ Key usage rules for the command lifecycle tools:
 - `intervene_command`: On Windows, signal support is limited. Use `kill_command` instead when needed.
 - `kill_command`: Use only when a command must be forcefully terminated.
 
-- **Workflow**: `submit_command` starts execution immediately and returns asynchronously → poll `get_status` to check running/finished → `get_output` to retrieve stdout/stderr → `intervene_command` if input needed → `kill_command` if forced termination needed.
+- **Workflow**: `submit_command` starts execution immediately and returns asynchronously -> poll `get_status` to check running/finished -> `get_output` to retrieve stdout/stderr -> `intervene_command` if input needed -> `kill_command` if forced termination needed.
 - **Important**: Commands execute asynchronously. `submit_command` returns immediately after starting the command; you MUST use `get_status` to check whether the command is still running or has finished before relying on its output.

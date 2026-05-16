@@ -371,10 +371,12 @@ func initTeam() runner.Runner {
 	reconAgent := initRecon()
 	scannerAgent := initScanner()
 
+	teamMemberToolConfig := team.DefaultMemberToolConfig()
 	team.New(
 		CaptainAgent,
 		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, scannerAgent},
 		team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
+		team.WithMemberToolConfig(teamMemberToolConfig),
 	)
 	Runner := runner.NewRunner(Agentname, CaptainAgent,
 		runner.WithSessionService(InMemorySessionService), // 使用内存会话服务，其中包含自动摘要功能

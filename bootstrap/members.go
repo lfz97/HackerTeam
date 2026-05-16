@@ -7,7 +7,6 @@ import (
 
 	"HackerTeam/utils/pretty"
 
-	"fmt"
 	"strings"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -17,12 +16,7 @@ import (
 
 // 创建队长agent，负责任务规划、分配和总结，队长只挂载文件目录及文件读写工具
 func initCaptain() *llmagent.LLMAgent {
-	captainPromptBytes, err := PromptFiles.ReadFile("prompts/agents/captain.md")
-	if err != nil {
-		pretty.ErrorWithExit(fmt.Sprintf("读取队长提示词失败: %v", err))
-	}
-	captainPrompt := string(captainPromptBytes)
-	captainPrompt = strings.ReplaceAll(captainPrompt, "{{ENV}}", envPrompt)
+	captainPrompt := assemblePrompt("prompts/agents/captain.md")
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()

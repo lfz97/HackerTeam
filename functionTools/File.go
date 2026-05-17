@@ -37,8 +37,9 @@ func WriteFile(ctx context.Context, req struct {
 }
 
 func ReadFile(ctx context.Context, req struct {
-	Path  string `json:"path" jsonschema:"description:要读取的文件路径。"`
-	Bytes int    `json:"bytes" jsonschema:"description:读取文件的窗口大小，单位为字节。默认为1024字节。"`
+	Path   string `json:"path" jsonschema:"description:要读取的文件路径。"`
+	Bytes  int    `json:"bytes" jsonschema:"description:读取文件的窗口大小，单位为字节。默认为1024字节。"`
+	Offset int    `json:"offset" jsonschema:"description:读取文件的偏移位置，单位为字节。默认为0，即从文件开头开始读取。"`
 }) (map[string]string, error) {
 
 	if req.Path == "" {
@@ -52,8 +53,8 @@ func ReadFile(ctx context.Context, req struct {
 		return nil, err
 	}
 	defer fd.Close()
-
-	buf := make([]byte, req.Bytes) //根据请求的窗口大小创建缓冲区
+	fd.Seek(int64(req.Offset), io.SeekStart) //根据请求的偏移位置调整文件指针位置，默认为0即从文件开头开始读取
+	buf := make([]byte, req.Bytes)           //根据请求的窗口大小创建缓冲区
 	n, err := fd.Read(buf)
 	if err != nil && err != io.EOF {
 		return nil, err
@@ -78,7 +79,7 @@ func GetFileOperationsTools() []tool.Tool {
 	rftool := function.NewFunctionTool(
 		ReadFile,
 		function.WithName("ReadFile"),
-		function.WithDescription("从指定文件读取内容，支持设置读取窗口大小。"),
+		function.WithDescription("从指定文件读取内容，支持设置读取窗口大小和偏移量。"),
 	)
 	return []tool.Tool{wftool, rftool}
 }

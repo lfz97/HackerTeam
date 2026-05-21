@@ -8,6 +8,7 @@ import (
 	"HackerTeam/utils/pretty"
 
 	"strings"
+
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
@@ -40,13 +41,17 @@ func initRecon() *llmagent.LLMAgent {
 	reconPrompt := assemblePrompt("prompts/agents/recon.md")
 	repo, _ := skill.NewFSRepository(ReconSkillsFolderPath)
 
+	systemtools := functionTools.GetFileSystemTools()
+	operationtools := functionTools.GetFileOperationsTools()
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true),                           //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(reconPrompt),                    //系统提示词
+		llmagent.WithAddSessionSummary(true), //启用上下文压缩注入
+		llmagent.WithGlobalInstruction(reconPrompt),
+		llmagent.WithTools(append(systemtools, operationtools...)),     //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())), //侦察员挂载LocalExec工具集，包含本地命令执行工具
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -65,6 +70,9 @@ func initexploit() *llmagent.LLMAgent {
 	exploitPrompt := assemblePrompt("prompts/agents/exploit.md")
 	repo, _ := skill.NewFSRepository(ExploitSkillsFolderPath)
 
+	systemtools := functionTools.GetFileSystemTools()
+	operationtools := functionTools.GetFileOperationsTools()
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -72,6 +80,7 @@ func initexploit() *llmagent.LLMAgent {
 		}),
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(exploitPrompt), //系统提示词
+		llmagent.WithTools(append(systemtools, operationtools...)),
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -91,6 +100,9 @@ func initpostexploit() *llmagent.LLMAgent {
 	postexploitPrompt := assemblePrompt("prompts/agents/post_exploit.md")
 	repo, _ := skill.NewFSRepository(PostExploitSkillsFolderPath)
 
+	systemtools := functionTools.GetFileSystemTools()
+	operationtools := functionTools.GetFileOperationsTools()
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -99,6 +111,7 @@ func initpostexploit() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(postexploitPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithTools(append(systemtools, operationtools...)),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
 		//仅注入知识，不注入执行工具的能力，统一通过localexec执行

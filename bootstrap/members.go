@@ -129,6 +129,9 @@ func initScanner() *llmagent.LLMAgent {
 	scannerPrompt := assemblePrompt("prompts/agents/scanner.md")
 	repo, _ := skill.NewFSRepository(ScannerSkillsFolderPath)
 
+	systemtools := functionTools.GetFileSystemTools()
+	operationtools := functionTools.GetFileOperationsTools()
+
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
@@ -137,6 +140,7 @@ func initScanner() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(scannerPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithTools(append(systemtools, operationtools...)),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
 		//仅注入知识，不注入执行工具的能力，统一通过localexec执行

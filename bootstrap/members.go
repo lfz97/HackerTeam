@@ -21,12 +21,16 @@ func initCaptain() *llmagent.LLMAgent {
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
+	datetools := functionTools.GetDateTools()
+
+	tools := append(systemtools, operationtools...)
+	tools = append(tools, datetools...)
 
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*Config_p).Model.Stream,
 		}),
-		llmagent.WithTools(append(systemtools, operationtools...)),
+		llmagent.WithTools(tools),                     //队长挂载文件系统工具、文件操作工具和日期工具
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(captainPrompt), //系统提示词
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
@@ -43,6 +47,10 @@ func initRecon() *llmagent.LLMAgent {
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
+	datetools := functionTools.GetDateTools()
+
+	tools := append(systemtools, operationtools...)
+	tools = append(tools, datetools...)
 
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
@@ -51,7 +59,7 @@ func initRecon() *llmagent.LLMAgent {
 		}),
 		llmagent.WithAddSessionSummary(true), //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(reconPrompt),
-		llmagent.WithTools(append(systemtools, operationtools...)),     //系统提示词
+		llmagent.WithTools(tools),
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())), //侦察员挂载LocalExec工具集，包含本地命令执行工具
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -72,6 +80,10 @@ func initexploit() *llmagent.LLMAgent {
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
+	datetools := functionTools.GetDateTools()
+
+	tools := append(systemtools, operationtools...)
+	tools = append(tools, datetools...)
 
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
@@ -80,7 +92,7 @@ func initexploit() *llmagent.LLMAgent {
 		}),
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(exploitPrompt), //系统提示词
-		llmagent.WithTools(append(systemtools, operationtools...)),
+		llmagent.WithTools(tools),
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -102,6 +114,10 @@ func initpostexploit() *llmagent.LLMAgent {
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
+	datetools := functionTools.GetDateTools()
+
+	tools := append(systemtools, operationtools...)
+	tools = append(tools, datetools...)
 
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
@@ -111,7 +127,7 @@ func initpostexploit() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(postexploitPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
-		llmagent.WithTools(append(systemtools, operationtools...)),
+		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
 		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
@@ -131,6 +147,10 @@ func initScanner() *llmagent.LLMAgent {
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
+	datetools := functionTools.GetDateTools()
+
+	tools := append(systemtools, operationtools...)
+	tools = append(tools, datetools...)
 
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
@@ -140,7 +160,7 @@ func initScanner() *llmagent.LLMAgent {
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(scannerPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
-		llmagent.WithTools(append(systemtools, operationtools...)),
+		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
 		//仅注入知识，不注入执行工具的能力，统一通过localexec执行

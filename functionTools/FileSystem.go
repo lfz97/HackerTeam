@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
+	"github.com/otiai10/copy"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 	"syscall"
-
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -112,6 +114,33 @@ func Mkdir(ctx context.Context, req struct {
 	}, nil
 }
 
+// 复制文件或目录
+func Copy(ctx context.Context, req struct {
+	Src string `json:"src" jsonschema:"description:源文件或目录路径。"`
+	Dst string `json:"dst" jsonschema:"description:目标文件或目录路径。"`
+}) (map[string]string, error) {
+	if req.Src == "" || req.Dst == "" {
+		return nil, errors.New("`src` and `dst` can't be empty!")
+	}
+	if req.Src == req.Dst {
+		return nil, errors.New("`src` and `dst` can't be the same!")
+	}
+	if _, err := os.Stat(req.Src); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("source path does not exist: %w", err)
+		}
+		return nil, fmt.Errorf("failed to stat source: %w", err)
+	}
+	if err := copy.Copy(req.Src, req.Dst); err != nil {
+		return nil, fmt.Errorf("failed to copy: %w", err)
+	}
+	return map[string]string{
+		"Src": req.Src,
+		"Dst": req.Dst,
+	}, nil
+}
+
+// 移动或重命名文件或目录
 func MV(ctx context.Context, req struct {
 	OldPath string `json:"oldPath" jsonschema:"description:要移动或重命名的文件或目录的原路径。"`
 	NewPath string `json:"newPath" jsonschema:"description:要移动或重命名的文件或目录的新路径。"`
@@ -122,28 +151,24 @@ func MV(ctx context.Context, req struct {
 	if req.OldPath == req.NewPath {
 		return nil, errors.New("`oldPath` and `newPath` can't be the same!")
 	}
-	err := os.Rename(req.OldPath, req.NewPath)
-	if err == nil {
+	// 同设备直接重命名
+	if err := os.Rename(req.OldPath, req.NewPath); err == nil {
 		return map[string]string{
 			"OldPath": req.OldPath,
 			"NewPath": req.NewPath,
 		}, nil
-	}
-	if !errors.Is(err, syscall.EXDEV) {
+	} else if !errors.Is(err, syscall.EXDEV) {
 		return nil, err
 	}
-	// 跨设备移动：复制后删除
-	srcInfo, err := os.Stat(req.OldPath)
-	if err != nil {
-		return nil, err
+	// 跨设备移动：先删目标（避免合并），复制源，再删源
+	if err := os.RemoveAll(req.NewPath); err != nil {
+		return nil, fmt.Errorf("failed to remove existing destination: %w", err)
 	}
-	if srcInfo.IsDir() {
-		err = moveDir(req.OldPath, req.NewPath)
-	} else {
-		err = moveFile(req.OldPath, req.NewPath, srcInfo)
+	if err := copy.Copy(req.OldPath, req.NewPath); err != nil {
+		return nil, fmt.Errorf("failed to copy across devices: %w", err)
 	}
-	if err != nil {
-		return nil, err
+	if err := os.RemoveAll(req.OldPath); err != nil {
+		return nil, fmt.Errorf("source was moved but could not be removed: %w", err)
 	}
 	return map[string]string{
 		"OldPath": req.OldPath,
@@ -151,43 +176,58 @@ func MV(ctx context.Context, req struct {
 	}, nil
 }
 
-func moveFile(src, dst string, srcInfo os.FileInfo) error {
-	if src == dst {
-		return errors.New("source and destination paths are the same")
+func Glob(ctx context.Context, req struct {
+	Regex string `json:"regex" jsonschema:"description:要搜索的正则表达式。"`
+	Root  string `json:"root" jsonschema:"description:要搜索的起始路径。默认为当前目录。"`
+	Depth int    `json:"depth" jsonschema:"description:搜索深度，默认为0表示同目录，如果传入-1，则无深度限制。"`
+}) (map[string]string, error) {
+	if req.Depth < -1 {
+		return nil, errors.New("`depth` must be -1 (for unlimited) or a non-negative integer")
 	}
-	srcFile, err := os.Open(src)
+	if req.Root == "" {
+		req.Root = "."
+	}
+	_, err := os.Stat(req.Root)
 	if err != nil {
-		return fmt.Errorf("failed to open source file: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("path does not exist: %w", err)
+		}
+		return nil, fmt.Errorf("failed to stat path: %w", err)
 	}
-	defer srcFile.Close()
-
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
+	regex_p, err := regexp.Compile(req.Regex)
 	if err != nil {
-		return fmt.Errorf("failed to create destination file: %w", err)
+		return nil, fmt.Errorf("invalid regex pattern: %w", err)
 	}
-	defer dstFile.Close()
-
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy file content: %w", err)
+	mathesFiles := []string{}
+	err = filepath.WalkDir(req.Root, func(path string, d os.DirEntry, err error) error {
+		rel, err := filepath.Rel(req.Root, path)
+		if err != nil {
+			return err
+		}
+		if rel != "." {
+			// 深度 = 相对路径中用分隔符分隔的组件数
+			depth := len(strings.Split(rel, string(os.PathSeparator))) - 1
+			if depth > req.Depth && req.Depth >= 0 {
+				return filepath.SkipDir
+			}
+		}
+		if !d.IsDir() {
+			if regex_p.MatchString(d.Name()) {
+				mathesFiles = append(mathesFiles, path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to walk directory: %w", err)
 	}
-	if err := os.Remove(src); err != nil {
-		return fmt.Errorf("source file was moved but could not be removed: %w", err)
+	jsonBytes, err := json.Marshal(mathesFiles)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal results: %w", err)
 	}
-	return nil
-}
-
-func moveDir(src, dst string) error {
-	// MV 语义：用源替换目标，先删除目标再复制，避免 os.CopyFS 的合并行为
-	if err := os.RemoveAll(dst); err != nil {
-		return fmt.Errorf("failed to remove existing destination: %w", err)
-	}
-	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
-		return fmt.Errorf("failed to copy directory: %w", err)
-	}
-	if err := os.RemoveAll(src); err != nil {
-		return fmt.Errorf("source directory was moved but could not be removed: %w", err)
-	}
-	return nil
+	return map[string]string{
+		"matches": string(jsonBytes),
+	}, nil
 }
 
 // 获取文件系统相关工具集合
@@ -212,10 +252,20 @@ func GetFileSystemTools() []tool.Tool {
 		function.WithName("Mkdir"),
 		function.WithDescription("创建目录，支持递归创建父目录"),
 	)
+	copyTool := function.NewFunctionTool(
+		Copy,
+		function.WithName("CP"),
+		function.WithDescription("复制文件或目录，支持跨设备复制"),
+	)
 	mvTool := function.NewFunctionTool(
 		MV,
 		function.WithName("MV"),
 		function.WithDescription("移动或重命名文件或目录，支持跨设备移动"),
 	)
-	return []tool.Tool{pwdtool, cdtool, lstool, mkdirTool, mvTool}
+	globTool := function.NewFunctionTool(
+		Glob,
+		function.WithName("Glob"),
+		function.WithDescription("按正则表达式搜索文件名，支持指定根目录和搜索深度"),
+	)
+	return []tool.Tool{pwdtool, cdtool, lstool, mkdirTool, copyTool, mvTool, globTool}
 }

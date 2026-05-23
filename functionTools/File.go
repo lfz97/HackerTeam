@@ -182,6 +182,25 @@ func DeleteFile(ctx context.Context, req struct {
 	}, nil
 }
 
+func FileInfo(ctx context.Context, req struct {
+	Path string `json:"path" jsonschema:"description:要获取信息的文件路径。"`
+}) (map[string]string, error) {
+	if req.Path == "" {
+		return nil, errors.New("`Path` cannot be empty")
+	}
+	info, err := os.Stat(req.Path)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"Name":     info.Name(),
+		"Size":     strconv.FormatInt(info.Size(), 10),
+		"IsDir":    strconv.FormatBool(info.IsDir()),
+		"Mode":     info.Mode().String(),
+		"ModeTime": info.ModTime().String(),
+	}, nil
+}
+
 // 获取文件操作工具集合：
 // WriteFile：将内容写入指定文件，如果文件不存在则创建，已存在则覆盖。
 // ReadFile：从指定文件读取内容，支持设置读取窗口大小。
@@ -211,5 +230,10 @@ func GetFileOperationsTools() []tool.Tool {
 		function.WithName("DeleteFile"),
 		function.WithDescription("删除指定文件或目录，目录会被递归删除，请谨慎使用。"),
 	)
-	return []tool.Tool{wftool, rftool, eftool, sftool, dftool}
+	fitool := function.NewFunctionTool(
+		FileInfo,
+		function.WithName("FileStat"),
+		function.WithDescription("获取指定文件或目录的信息，包括名称、大小、是否为目录、权限模式和修改时间等。"),
+	)
+	return []tool.Tool{wftool, rftool, eftool, sftool, dftool, fitool}
 }

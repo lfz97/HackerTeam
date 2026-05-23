@@ -6,6 +6,7 @@ import (
 
 	"encoding/json"
 	"strconv"
+	"time"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -38,8 +39,42 @@ func getTools(m *Manager) []tool.Tool {
 
 	get_statusTool := function.NewFunctionTool(
 		func(ctx context.Context, req struct {
-			Id string `json:"id" jsonschema:"description:命令ID"`
+			Id           string `json:"id" jsonschema:"description:可选：命令ID;如不传ID返回全部命令状态"`
+			Wait_seconds int    `json:"wait_seconds" jsonschema:"description:可选：最长等待n秒直到命令完成再返回状态，期间每秒轮询一次，命令完成即提前返回；默认0表示不等待直接返回当前状态"`
 		}) (map[string]string, error) {
+			if req.Wait_seconds < 0 {
+				return nil, errors.New("`wait_seconds` must be >= 0")
+			}
+			if req.Id != "" && req.Wait_seconds > 0 {
+				deadline := time.After(time.Duration(req.Wait_seconds) * time.Second)
+				ticker := time.NewTicker(time.Second)
+				defer ticker.Stop()
+				for {
+					select {
+					case <-deadline:
+						st := m.Status(req.Id)
+						return map[string]string{
+							"id":       st.ID,
+							"status":   st.Status,
+							"pid":      strconv.Itoa(st.PID),
+							"error":    st.Error,
+							"exitCode": strconv.Itoa(st.ExitCode),
+							"msg":      "wait timed out, command still running",
+						}, nil
+					case <-ticker.C: //ticker.C 每秒或获得一个time消息，这里就实现每秒查一次状态的场景
+						st := m.Status(req.Id)
+						if st.Status == "done" || st.Status == "failed" || st.Status == "killed" {
+							return map[string]string{
+								"id":       st.ID,
+								"status":   st.Status,
+								"pid":      strconv.Itoa(st.PID),
+								"error":    st.Error,
+								"exitCode": strconv.Itoa(st.ExitCode),
+							}, nil
+						}
+					}
+				}
+			}
 			if req.Id != "" {
 				st := m.Status(req.Id)
 				return map[string]string{
@@ -56,7 +91,7 @@ func getTools(m *Manager) []tool.Tool {
 			}, nil
 		},
 		function.WithName("get_status"),
-		function.WithDescription("查看命令状态；如不传ID返回全部命令状态"),
+		function.WithDescription("查看命令状态，如不传ID返回全部命令状态。传wait_seconds时，阻塞等待命令完成（每秒轮询，完成即返回），超时返回当前状态；适合长时间异步任务，避免反复轮询。"),
 	)
 
 	get_outputTool := function.NewFunctionTool(

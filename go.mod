@@ -7,6 +7,7 @@ require (
 	github.com/gdamore/tcell/v2 v2.13.9
 	github.com/google/uuid v1.6.0
 	github.com/otiai10/copy v1.14.1
+	github.com/pmezard/go-difflib v1.0.0
 	github.com/rivo/tview v0.42.0
 	go.uber.org/zap v1.28.0
 	gopkg.in/yaml.v2 v2.4.0

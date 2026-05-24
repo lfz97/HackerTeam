@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/pmezard/go-difflib/difflib"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -81,11 +83,12 @@ func ReadFile(ctx context.Context, req struct {
 	}, nil
 }
 
-// EditFile：编辑指定文件中的内容，支持替换指定的旧内容为新内容。注意：会替换文件中所有匹配的字符串，非仅第一处。
+// EditFile：编辑指定文件中的内容，支持替换指定的旧内容为新内容。默认仅允许唯一匹配时替换（多处匹配会报错），设置replace_all为true则全量替换。
 func EditFile(ctx context.Context, req struct {
-	Path string `json:"path" jsonschema:"description:要编辑的文件路径。"`
-	Old  string `json:"old" jsonschema:"description:要替换的旧内容。"`
-	New  string `json:"new" jsonschema:"description:要替换的新内容。"`
+	Path       string `json:"path" jsonschema:"description:要编辑的文件路径。"`
+	Old        string `json:"old" jsonschema:"description:要替换的旧内容。"`
+	New        string `json:"new" jsonschema:"description:要替换的新内容。"`
+	ReplaceAll bool   `json:"replace_all" jsonschema:"description:是否替换文件中所有匹配的字符串，默认为false仅允许唯一匹配（多处匹配会报错）。设置为true则全量替换。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
@@ -97,20 +100,57 @@ func EditFile(ctx context.Context, req struct {
 	if err != nil {
 		return nil, err
 	}
-	Now := string(contentBytes)
-	if !strings.Contains(Now, req.Old) {
+	contentNow := string(contentBytes)
+	Indexes := []int{}
+	offset := 0
+	for {
+		idx := strings.Index(contentNow[offset:], req.Old)
+		if idx == -1 {
+			break
+		}
+		offset += idx //指针移动到匹配字符串的起始位置
+		Indexes = append(Indexes, offset)
+		offset += len(req.Old) //指针移动到匹配字符串的末尾位置，继续向后搜索下一个匹配字符串
+
+	}
+	if len(Indexes) == 0 {
 		return nil, errors.New("oldContent not found in file")
-	} else {
-		err = os.WriteFile(req.Path, []byte(strings.ReplaceAll(Now, req.Old, req.New)), 0644)
+	}
+	matchLines := []int{}
+	for _, Index := range Indexes {
+		line := strings.Count(contentNow[:Index], "\n") + 1
+		matchLines = append(matchLines, line)
+	}
+	if !req.ReplaceAll {
+		if len(Indexes) > 1 {
+			return nil, errors.New("multiple matches found for oldContent, but replace_all is set to false")
+		}
+		err = os.WriteFile(req.Path, []byte(strings.ReplaceAll(contentNow, req.Old, req.New)), 0644) //仅替换唯一匹配
 		if err != nil {
 			return nil, err
 		}
 		return map[string]string{
 			"EditPath": req.Path,
 			"message":  "Success",
+			"EditLine": strconv.Itoa(matchLines[0]),
 		}, nil
 
+	} else {
+		err = os.WriteFile(req.Path, []byte(strings.ReplaceAll(contentNow, req.Old, req.New)), 0644)
+		if err != nil {
+			return nil, err
+		}
+		bytes, err := json.Marshal(matchLines)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{
+			"EditPath":  req.Path,
+			"message":   "Success",
+			"EditLines": string(bytes),
+		}, nil
 	}
+
 }
 
 type matchInfo struct {
@@ -201,6 +241,43 @@ func FileInfo(ctx context.Context, req struct {
 	}, nil
 }
 
+func Diff(ctx context.Context, req struct {
+	PathA string `json:"path_a" jsonschema:"description:要比较的第一个文件路径。"`
+	PathB string `json:"path_b" jsonschema:"description:要比较的第二个文件路径。"`
+}) (map[string]string, error) {
+	if req.PathA == "" || req.PathB == "" {
+		return nil, errors.New("`PathA` and `PathB` cannot be empty")
+	}
+	if req.PathA == req.PathB {
+		return map[string]string{
+			"message": "The two paths are the same, no differences.",
+		}, nil
+	}
+	fileA_bytes, err := os.ReadFile(req.PathA)
+	if err != nil {
+		return nil, err
+	}
+	fileB_bytes, err := os.ReadFile(req.PathB)
+	if err != nil {
+		return nil, err
+	}
+
+	diff := difflib.UnifiedDiff{
+		A:        difflib.SplitLines(string(fileA_bytes)),
+		B:        difflib.SplitLines(string(fileB_bytes)),
+		FromFile: filepath.Base(req.PathA),
+		ToFile:   filepath.Base(req.PathB),
+		Context:  3,
+	}
+	text, err := difflib.GetUnifiedDiffString(diff)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"diff": text,
+	}, nil
+}
+
 // 获取文件操作工具集合：
 // WriteFile：将内容写入指定文件，如果文件不存在则创建，已存在则覆盖。
 // ReadFile：从指定文件读取内容，支持设置读取窗口大小。
@@ -218,7 +295,7 @@ func GetFileOperationsTools() []tool.Tool {
 	eftool := function.NewFunctionTool(
 		EditFile,
 		function.WithName("EditFile"),
-		function.WithDescription("编辑指定文件中的内容，支持替换指定的旧内容为新内容。注意：会替换文件中所有匹配的字符串，非仅第一处。"),
+		function.WithDescription("编辑指定文件中的内容，支持替换指定的旧内容为新内容。默认仅允许唯一匹配时替换（多处匹配会报错），设置replace_all为true则全量替换。"),
 	)
 	sftool := function.NewFunctionTool(
 		SearchInFile,
@@ -235,5 +312,10 @@ func GetFileOperationsTools() []tool.Tool {
 		function.WithName("FileStat"),
 		function.WithDescription("获取指定文件或目录的信息，包括名称、大小、是否为目录、权限模式和修改时间等。"),
 	)
-	return []tool.Tool{wftool, rftool, eftool, sftool, dftool, fitool}
+	difftool := function.NewFunctionTool(
+		Diff,
+		function.WithName("Diff"),
+		function.WithDescription("比较两个文件的差异，返回unified diff格式的结果。"),
+	)
+	return []tool.Tool{wftool, rftool, eftool, sftool, dftool, fitool, difftool}
 }

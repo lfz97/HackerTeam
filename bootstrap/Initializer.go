@@ -70,6 +70,7 @@ var (
 	ExploitSkillsFolderPath     string
 	PostExploitSkillsFolderPath string
 	ScannerSkillsFolderPath     string
+	ReproducerSkillsFolderPath  string
 )
 
 const (
@@ -77,6 +78,7 @@ const (
 	exploitSkillsFolder     string = "ExploitSkills"
 	postExploitSkillsFolder string = "PostExploitSkills"
 	scannerSkillsFolder     string = "ScannerSkills"
+	reproducerSkillsFolder  string = "ReproducerSkills"
 )
 
 func Init(an string) handler.AgentRunner {
@@ -241,83 +243,32 @@ func checkSkillsFolder() {
 	ExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, exploitSkillsFolder)
 	PostExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, postExploitSkillsFolder)
 	ScannerSkillsFolderPath = filepath.Join(ConfigFolderPath, scannerSkillsFolder)
+	ReproducerSkillsFolderPath = filepath.Join(ConfigFolderPath, reproducerSkillsFolder)
 
-	_, err := os.Stat(ReconSkillsFolderPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			//skills 文件夹不存在，创建一个默认的 skills 文件夹
-			err := os.MkdirAll(ReconSkillsFolderPath, os.ModePerm)
+	func(skillsFolders []string) {
+		for _, folder := range skillsFolders {
+			_, err := os.Stat(folder)
 			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("创建默认ReconSkills文件夹错误：%v", err))
+				if os.IsNotExist(err) {
+					//skills 文件夹不存在，创建一个默认的 skills 文件夹
+					err := os.MkdirAll(folder, os.ModePerm)
+					if err != nil {
+						ShowErrorAndExit(pretty.TErrorF("创建默认%s文件夹错误：%s", folder, err.Error()))
+					}
+					err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(folder, "pentest-tools"), copy.Options{FS: ToolSkills})
+					if err != nil {
+						ShowErrorAndExit(pretty.TErrorF("复制技能模板到%s文件夹错误：%s", folder, err.Error()))
+					}
+					ShowSuccess(fmt.Sprintf("检查到%s文件夹不存在，已创建", folder))
+				} else {
+					ShowErrorAndExit(pretty.TErrorF("检查%s文件夹错误：%s", folder, err.Error()))
+				}
+			} else {
+				ShowSuccess(fmt.Sprintf("检查%s文件夹通过", folder))
 			}
-			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(ReconSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ReconSkills文件夹错误：%v", err))
-			}
-			ShowSuccess("检查到ReconSkills文件夹不存在，已创建默认ReconSkills文件夹")
-		} else {
-			ShowErrorAndExit(pretty.TErrorF("检查ReconSkills文件夹错误：%v", err))
 		}
-	} else {
-		ShowSuccess("检查ReconSkills文件夹通过")
-	}
+	}([]string{ReconSkillsFolderPath, ExploitSkillsFolderPath, PostExploitSkillsFolderPath, ScannerSkillsFolderPath, ReproducerSkillsFolderPath})
 
-	_, err = os.Stat(ExploitSkillsFolderPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err := os.MkdirAll(ExploitSkillsFolderPath, os.ModePerm)
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("创建默认ExploitSkills文件夹错误：%v", err))
-			}
-			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(ExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ExploitSkills文件夹错误：%v", err))
-			}
-			ShowSuccess("检查到ExploitSkills文件夹不存在，已创建默认ExploitSkills文件夹")
-		} else {
-			ShowErrorAndExit(pretty.TErrorF("检查ExploitSkills文件夹错误：%v", err))
-		}
-	} else {
-		ShowSuccess("检查ExploitSkills文件夹通过")
-	}
-
-	_, err = os.Stat(PostExploitSkillsFolderPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err := os.MkdirAll(PostExploitSkillsFolderPath, os.ModePerm)
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("创建默认PostExploitSkills文件夹错误：%v", err))
-			}
-			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(PostExploitSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("复制技能模板到PostExploitSkills文件夹错误：%v", err))
-			}
-			ShowSuccess("检查到PostExploitSkills文件夹不存在，已创建默认PostExploitSkills文件夹")
-		} else {
-			ShowErrorAndExit(pretty.TErrorF("检查PostExploitSkills文件夹错误：%v", err))
-		}
-	} else {
-		ShowSuccess("检查PostExploitSkills文件夹通过")
-	}
-
-	_, err = os.Stat(ScannerSkillsFolderPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err := os.MkdirAll(ScannerSkillsFolderPath, os.ModePerm)
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("创建默认ScannerSkills文件夹错误：%v", err))
-			}
-			err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(ScannerSkillsFolderPath, "pentest-tools"), copy.Options{FS: ToolSkills})
-			if err != nil {
-				ShowErrorAndExit(pretty.TErrorF("复制技能模板到ScannerSkills文件夹错误：%v", err))
-			}
-			ShowSuccess("检查到ScannerSkills文件夹不存在，已创建默认ScannerSkills文件夹")
-		} else {
-			ShowErrorAndExit(pretty.TErrorF("检查ScannerSkills文件夹错误：%v", err))
-		}
-	} else {
-		ShowSuccess("检查ScannerSkills文件夹通过")
-	}
 }
 
 func loadConfig() (*config.Config, error) {
@@ -370,10 +321,11 @@ func initTeam() runner.Runner {
 	postexploitAgent := initpostexploit()
 	reconAgent := initRecon()
 	scannerAgent := initScanner()
+	reproducerAgent := initReproducer()
 
 	team.New(
 		CaptainAgent,
-		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, scannerAgent},
+		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, scannerAgent, reproducerAgent},
 		team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
 		team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
 		team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)

@@ -54,6 +54,8 @@ For general output standards (file format, raw output preservation, reporting ti
    - **Note: You do NOT judge truth or falsehood — report verbatim**
 3. **Notes**: Blocked targets, timed-out tools, obviously suspicious patterns (flag only, do not judge)
 
+**IMPORTANT — Vulnerability Structured Blocks**: Every finding in the Findings section **MUST** include a structured block per the Output Consensus Section 4. As Scanner, you fill fields based on scanner tool output — `verification` and `prerequisites` should be marked `pending_verification` since you do not verify findings yourself. The `severity` field should use the tool's own label (e.g., nuclei severity), NOT your own judgment. Extract `entry_point` and `payload` verbatim from raw tool output — do not summarize or paraphrase.
+
 {{OUTPUT_CONSENSUS}}
 
 ## Conversation Reply Specification

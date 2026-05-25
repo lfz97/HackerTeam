@@ -26,7 +26,7 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 ### Agent 分工与协作流
 
-`Captain` 作为中枢调度，将目标分解后按攻击链顺序分发给子 Agent。**先 Recon 后 Scanner**，结果汇合到 Exploit 交叉验证后精准利用：
+`Captain` 作为中枢调度，将目标分解后按攻击链顺序分发给子 Agent。**先 Recon 后 Scanner**，结果汇合到 Exploit 交叉验证后精准利用，最后由 Reproducer 为所有已确认漏洞生成可运行的 Python 复现脚本：
 
 ```
               Captain
@@ -38,19 +38,25 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
             Exploit (老师傅)
          交叉比对 + 去误报 + 精准利用
                  |
-            PostExploit
-         后渗透 + 横向移动
+         ┌───────┴───────┐
+         │               │
+    PostExploit      Reproducer (Batch1)
+  后渗透+横向移动   为 Scanner+Exploit 确认的漏洞写脚本
+         │
+    Reproducer (Batch2)
+  为 PostExploit 的提权/横向等写脚本
 ```
 
 | Agent | 角色 | 职责 | 工具集 |
 |-------|------|------|--------|
 | **Captain** | 队长 | 任务规划、Agent 顺序调度、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
-| **Recon** | 侦察兵 | 子域名枚举、端口服务扫描、Web 指纹、目录爆破、被动情报（深度单点侦察） | LocalExec |
-| **Scanner** | 脚本小子 | 使用自动化扫描工具批量广撒网，覆盖面广速度快，不追求精准（误报交给 Exploit） | LocalExec |
-| **Exploit** | 老师傅 | 交叉比对 Recon + Scanner 结果，去误报后精准利用。负责漏洞最终技术定级 | LocalExec |
-| **PostExploit** | 后渗透 | 提权、凭证窃取、内网探测、横向移动、持久化、痕迹清理 | LocalExec |
+| **Recon** | 侦察兵 | 子域名枚举、端口服务扫描、Web 指纹、目录爆破、被动情报（深度单点侦察） | LocalExec + Skills |
+| **Scanner** | 脚本小子 | 使用自动化扫描工具批量广撒网，覆盖面广速度快，不追求精准（误报交给 Exploit） | LocalExec + Skills |
+| **Exploit** | 老师傅 | 交叉比对 Recon + Scanner 结果，去误报后精准利用。负责漏洞最终技术定级 | LocalExec + Skills |
+| **PostExploit** | 后渗透 | 提权、凭证窃取、内网探测、横向移动、持久化、痕迹清理 | LocalExec + Skills |
+| **Reproducer** | 复现员 | 读取前序 Agent 报告中的漏洞结构化数据，为每个已确认漏洞生成 PoC + Exploit 双模式 Python 脚本 | LocalExec（仅语法检查） |
 
-**协作关键：** Recon 告诉 Exploit "目标是什么"，Scanner 告诉 Exploit "哪里可能有洞"，Exploit 自主判断真伪后动手。
+**协作关键：** Recon 告诉 Exploit "目标是什么"，Scanner 告诉 Exploit "哪里可能有洞"，Exploit 自主判断真伪后动手，Reproducer 根据前序报告中的漏洞结构化块自动生成可运行的复现脚本。
 
 ### Agent 间共识体系
 
@@ -67,9 +73,11 @@ bootstrap/prompts/common/
 | 共识文件 | 核心内容 |
 |----------|----------|
 | **vuln_consensus** | 漏洞定义（攻击者获得了什么技术能力）、严重性等级（Critical/High/Medium/Low）纯技术标准、各 Agent 定级职责、定级冲突解决流程、Confidence 语义 |
-| **output_consensus** | 报告格式（MD only）、原始输出必须保存到 `TASK-{id}_raw/`、对话回复 JSON 通用字段、命令记录规范 |
+| **output_consensus** | 报告格式（MD only）、原始输出必须保存到 `TASK-{id}_raw/`、对话回复 JSON 通用字段、命令记录规范、**漏洞结构化块**（YAML 格式，为 Reproducer 提供满信号数据：entry_point / payload / verification / prerequisites / evidence） |
 
 **定级原则：** 抛弃 CVSS 评分，从攻击者实际获得的技术能力出发 —— 拿到 Shell / 拿到任意身份 / 拿到核心凭证 → Critical；能读敏感数据 / 能越权 / 能打通内网 → High。
+
+**漏洞结构化块：** 所有产出漏洞的 Agent（Scanner/Exploit/PostExploit）必须在报告中为每个漏洞输出 YAML 结构化块，包含完整的攻击入口、payload、验证方式、前置条件和证据。这是 Reproducer 生成脚本的唯一数据源——结构化块不完整，脚本就无法产出。Captain 在审核时会检查结构化块完整性，模糊描述会被打回重写。
 
 ### 首次运行目录结构
 
@@ -81,7 +89,9 @@ bootstrap/prompts/common/
 ├── ScannerSkills/
 ├── ExploitSkills/
 ├── PostExploitSkills/
+├── ReproducerSkills/        ← Reproducer 专用（默认为空，不加载 pentest-tools）
 └── output/                  ← 任务报告与原始输出
+    └── poc_scripts/         ← Reproducer 生成的 Python 复现脚本
 ```
 
 ---
@@ -101,27 +111,177 @@ bootstrap/prompts/common/
 ```markdown
 ---
 name: pentest-tools
-description: Quick lookup of pentest tools.
+description: >-
+  Quick lookup of pentest tools.
+  Use when you need the name, type, or path of any installed pentest tool.
 ---
 
 # Pentest Tools
 
-- **nmap**        — Network Scanning   — /opt/pentest/nmap/nmap
-- **fscan**       — Network Scanning   — /opt/pentest/fscan/fscan
-- **dirsearch**   — Web Testing        — /opt/pentest/dirsearch/dirsearch.py
-- **sqlmap**      — Web Testing        — /opt/pentest/sqlmap/sqlmap.py
-- **nuclei**      — Vuln Scanning      — /opt/pentest/nuclei/nuclei
+- **<tool example>**
+  - category: <tool category>
+  - path: `<tool absolute path>`
+  - symlink: `<tool symlink if you need>`
+  - repo: <tool github or gitee repo>
 ```
 
 使用时将 `SKILL.md.template` 重命名为 `SKILL.md` 即生效。
 
-> **强烈建议按需定制：** 模板中的路径为占位示例，请替换为工具的实际安装路径，并根据各 Agent 职责配置对应的工具：
-> - **Recon** — nmap、fscan、dirsearch、subfinder、whatweb 等信息收集工具
-> - **Scanner** — nuclei、sqlmap（`--batch` 模式）、nikto、wafw00f 等自动化扫描工具
-> - **Exploit** — sqlmap（利用模式）、metasploit、hydra、反弹 Shell 工具等漏洞利用工具
-> - **PostExploit** — mimikatz、chisel、ligolo-ng 等后渗透工具
->
 > Agent 只会「知道」你写进 SKILL.md 的工具 —— 未配置的工具即使已安装也无法被正确调用。
+
+### 配置示例
+
+以下为各 Agent 的 SKILL.md 实际配置示例，按职责分配工具：
+
+**Recon** — `.HackerTeam/ReconSkills/pentest-tools/SKILL.md`
+
+```markdown
+---
+name: pentest-tools
+description: >-
+  Quick lookup of pentest tools.
+  Use when you need the name, type, or path of any installed pentest tool.
+---
+
+# Pentest Tools
+
+- **nmap**
+  - category: Network Scanning
+  - path: `/opt/pentest/nmap/nmap`
+  - symlink: `/usr/bin/nmap`
+  - repo: https://github.com/nmap/nmap
+
+- **subfinder**
+  - category: Subdomain Enumeration
+  - path: `/opt/pentest/subfinder/subfinder`
+  - repo: https://github.com/projectdiscovery/subfinder
+
+- **whatweb**
+  - category: Web Fingerprinting
+  - path: `/opt/pentest/whatweb/whatweb`
+  - repo: https://github.com/urbanadventurer/WhatWeb
+
+- **dirsearch**
+  - category: Directory Brute-forcing
+  - path: `/opt/pentest/dirsearch/dirsearch.py`
+  - repo: https://github.com/maurosoria/dirsearch
+
+- **fscan**
+  - category: Network Scanning
+  - path: `/opt/pentest/fscan/fscan`
+  - repo: https://github.com/shadow1ng/fscan
+```
+
+**Scanner** — `.HackerTeam/ScannerSkills/pentest-tools/SKILL.md`
+
+```markdown
+---
+name: pentest-tools
+description: >-
+  Quick lookup of pentest tools.
+  Use when you need the name, type, or path of any installed pentest tool.
+---
+
+# Pentest Tools
+
+- **nuclei**
+  - category: Vulnerability Scanning
+  - path: `/opt/pentest/nuclei/nuclei`
+  - repo: https://github.com/projectdiscovery/nuclei
+
+- **sqlmap**
+  - category: SQL Injection Detection
+  - path: `/opt/pentest/sqlmap/sqlmap.py`
+  - repo: https://github.com/sqlmapproject/sqlmap
+
+- **nikto**
+  - category: Web Server Audit
+  - path: `/opt/pentest/nikto/nikto`
+  - repo: https://github.com/sullo/nikto
+
+- **wafw00f**
+  - category: WAF Detection
+  - path: `/opt/pentest/wafw00f/wafw00f`
+  - repo: https://github.com/EnableSecurity/wafw00f
+
+- **dirsearch**
+  - category: Directory Brute-forcing
+  - path: `/opt/pentest/dirsearch/dirsearch.py`
+  - repo: https://github.com/maurosoria/dirsearch
+```
+
+**Exploit** — `.HackerTeam/ExploitSkills/pentest-tools/SKILL.md`
+
+```markdown
+---
+name: pentest-tools
+description: >-
+  Quick lookup of pentest tools.
+  Use when you need the name, type, or path of any installed pentest tool.
+---
+
+# Pentest Tools
+
+- **sqlmap**
+  - category: SQL Injection Exploitation
+  - path: `/opt/pentest/sqlmap/sqlmap.py`
+  - repo: https://github.com/sqlmapproject/sqlmap
+
+- **msfconsole**
+  - category: Exploitation Framework
+  - path: `/opt/pentest/metasploit/msfconsole`
+  - repo: https://github.com/rapid7/metasploit-framework
+
+- **hydra**
+  - category: Credential Brute-forcing
+  - path: `/opt/pentest/hydra/hydra`
+  - repo: https://github.com/vanhauser-thc/thc-hydra
+
+- **msfvenom**
+  - category: Payload Generation
+  - path: `/opt/pentest/metasploit/msfvenom`
+  - repo: https://github.com/rapid7/metasploit-framework
+```
+
+**PostExploit** — `.HackerTeam/PostExploitSkills/pentest-tools/SKILL.md`
+
+```markdown
+---
+name: pentest-tools
+description: >-
+  Quick lookup of pentest tools.
+  Use when you need the name, type, or path of any installed pentest tool.
+---
+
+# Pentest Tools
+
+- **mimikatz**
+  - category: Credential Dumping
+  - path: `/opt/pentest/mimikatz/mimikatz.exe`
+  - repo: https://github.com/gentilkiwi/mimikatz
+
+- **chisel**
+  - category: Tunneling
+  - path: `/opt/pentest/chisel/chisel`
+  - repo: https://github.com/jpillora/chisel
+
+- **ligolo-ng**
+  - category: Tunneling
+  - path: `/opt/pentest/ligolo/proxy`
+  - repo: https://github.com/nicocha30/ligolo-ng
+
+- **pypykatz**
+  - category: Credential Dumping
+  - path: `/opt/pentest/pypykatz/pypykatz`
+  - repo: https://github.com/skelsec/pypykatz
+
+- **impacket-psexec**
+  - category: Lateral Movement
+  - path: `/opt/pentest/impacket/psexec.py`
+  - repo: https://github.com/fortra/impacket
+```
+
+**Reproducer** — `.HackerTeam/ReproducerSkills/` — 保持为空，不需要配置任何 Skill。
 
 ---
 
@@ -139,17 +299,19 @@ description: Quick lookup of pentest tools.
 | `intervene_command` | 向进程写 stdin 或发送信号（SIGINT / SIGTERM / SIGKILL） |
 | `kill_command` | 强制结束进程 |
 
-### Captain 文件系统工具（5 个）
+### 所有 Agent 共享工具
 
-Captain 使用这些工具读写子 Agent 产出的报告文件：
+除 Captain 外，所有子 Agent 均挂载完整工具集：
 
-| 工具 | 功能 |
-|------|------|
-| `PWD` | 打印当前工作目录 |
-| `CD` | 切换工作目录 |
-| `LS` | 列出目录内容 |
-| `ReadFile` | 读取文件内容（支持滑动窗口） |
-| `WriteFile` | 创建或覆写文件 |
+| 工具集 | 工具 | 功能 |
+|--------|------|------|
+| **FileSystem** | `PWD` / `CD` / `LS` / `Mkdir` / `CP` / `MV` / `Glob` | 文件系统导航与操作 |
+| **FileOps** | `ReadFile` / `WriteFile` / `EditFile` / `SearchInFile` / `DeleteFile` / `FileStat` / `Diff` | 文件读写与搜索 |
+| **Date** | `date_now` | 获取当前日期时间 |
+| **LocalExec** | `submit_command` / `get_status` / `get_output` / `intervene_command` / `kill_command` | PTY 命令管理 |
+| **Skills** | 知识注入 | 将 SKILL.md 内容注入系统提示词 |
+
+Captain 仅挂载 FileSystem + FileOps + Date，不挂载 LocalExec 和 Skills。Reproducer 挂载 LocalExec 但仅用于语法检查（`python3 -m py_compile`），不执行实际攻击。
 
 ---
 

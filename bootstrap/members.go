@@ -40,6 +40,7 @@ func initCaptain() *llmagent.LLMAgent {
 
 }
 
+// 侦察agent，负责信息收集和环境侦察，挂载相关技能库和工具
 func initRecon() *llmagent.LLMAgent {
 
 	reconPrompt := assemblePrompt("prompts/agents/recon.md")
@@ -73,6 +74,7 @@ func initRecon() *llmagent.LLMAgent {
 	return agent_p
 }
 
+// 渗透agent，负责漏洞利用和权限提升，挂载相关技能库和工具
 func initexploit() *llmagent.LLMAgent {
 
 	exploitPrompt := assemblePrompt("prompts/agents/exploit.md")
@@ -107,6 +109,7 @@ func initexploit() *llmagent.LLMAgent {
 
 }
 
+// 后渗透agent，负责权限维持、横向移动和痕迹清除，挂载相关技能库和工具
 func initpostexploit() *llmagent.LLMAgent {
 
 	postexploitPrompt := assemblePrompt("prompts/agents/post_exploit.md")
@@ -140,6 +143,7 @@ func initpostexploit() *llmagent.LLMAgent {
 	return agent_p
 }
 
+// 扫描agent，负责漏洞扫描和安全评估，挂载相关技能库和工具
 func initScanner() *llmagent.LLMAgent {
 
 	scannerPrompt := assemblePrompt("prompts/agents/scanner.md")
@@ -170,6 +174,38 @@ func initScanner() *llmagent.LLMAgent {
 		),
 	}
 	agent_p := setAgent("Scanner", opts)
+	return agent_p
+}
+
+// 复现agent，负责漏洞复现和验证，挂载相关技能库和工具
+func initReproducer() *llmagent.LLMAgent {
+	reproducerPrompt := assemblePrompt("prompts/agents/reproducer.md")
+	repo, _ := skill.NewFSRepository(ReproducerSkillsFolderPath)
+
+	systemtools := functionTools.GetFileSystemTools()
+	operationtools := functionTools.GetFileOperationsTools()
+	datetools := functionTools.GetDateTools()
+
+	tools := append(systemtools, operationtools...)
+	tools = append(tools, datetools...)
+
+	toolsets := []tool.ToolSet{}
+	opts := []llmagent.Option{
+		llmagent.WithGenerationConfig(model.GenerationConfig{
+			Stream: (*Config_p).Model.Stream,
+		}),
+		llmagent.WithAddSessionSummary(true),             //启用上下文压缩注入
+		llmagent.WithGlobalInstruction(reproducerPrompt), //系统提示词
+		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithTools(tools),
+		llmagent.WithRefreshToolSetsOnRun(true),
+		llmagent.WithSkillsLoadedContentInToolResults(true),
+		llmagent.WithSkills(repo),
+		llmagent.WithSkillToolProfile(
+			llmagent.SkillToolProfileKnowledgeOnly,
+		),
+	}
+	agent_p := setAgent("Reproducer", opts)
 	return agent_p
 }
 

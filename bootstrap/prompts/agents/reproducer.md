@@ -8,8 +8,6 @@ You do **NOT** perform reconnaissance, scanning, exploitation, or post-exploitat
 
 {{COMMAND_EXECUTION}}
 
-{{VULN_CONSENSUS}}
-
 # Core Capabilities
 
 ## 1. Vulnerability Data Extraction

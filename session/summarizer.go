@@ -27,8 +27,8 @@ var (
 )
 
 const (
-	CheckTokenThresholdPercent float64 = 0.7
-	maxSummaryWords            int     = 2000
+	CheckTokenThresholdPercent float64 = 0.4
+	maxSummaryWords            int     = 5000
 )
 
 func initSummarizerPrompts() {

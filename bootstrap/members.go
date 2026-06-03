@@ -4,7 +4,6 @@ import (
 	"HackerTeam/functionTools"
 	"HackerTeam/models"
 	"HackerTeam/toolsets/localexec"
-
 	"HackerTeam/utils/pretty"
 
 	"strings"

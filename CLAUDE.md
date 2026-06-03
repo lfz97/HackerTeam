@@ -25,6 +25,7 @@
 - `/new`, `/flush`, `/exit`, `ESC` — built-in TUI commands
 - Agent prompts embedded via `//go:embed` in `bootstrap/` (`PromptFiles`, `prompts/*` prefix in ReadFile) and `session/` (`promptFiles`, `prompt/*` prefix)
 - Adding a new shared consensus prompt pattern: 1) create `bootstrap/prompts/common/<name>.md`, 2) add variable + load in `Initializer.go` (follow `vulnConsensusPrompt` pattern), 3) add `{{<NAME>}}` replacement in `assemblePrompt()` in `members.go`, 4) add `{{<NAME>}}` placeholder to each agent prompt `.md` file
+- `{{OUTPUTDIR}}` is the exception — NOT replaced by `assemblePrompt()`. It's resolved once in `env.md` via `configENVPrompt()` then injected into all agents through `{{ENV}}`. Agents infer the path from the "Output Directory" field shown in the environment block. Use `{{OUTPUTDIR}}` directly in prompt `.md` files, do NOT add Go-level replacement for it.
 - Adding a new agent: 1) create `bootstrap/prompts/agents/<name>.md` (include `{{ENV}}`, `{{COMMAND_EXECUTION}}`, `{{VULN_CONSENSUS}}`, `{{OUTPUT_CONSENSUS}}` as needed), 2) add `init<Name>()` in `members.go` (follow existing agent pattern), 3) add skill folder path var + const in `Initializer.go`, 4) add folder to `checkSkillsFolder()` slice, 5) register agent in `initTeam()` team.New member list, 6) add agent definition + dispatch rules in Captain prompt (`captain.md`)
 
 ## Directory Map

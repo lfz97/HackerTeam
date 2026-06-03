@@ -160,7 +160,8 @@ func configENVPrompt() {
 	envPrompt = strings.ReplaceAll(envPrompt, "{{OperationRecord}}", operationRecord)
 
 	//输出目录
-	outputDir := filepath.Join(CWD, outputDir)
+	time := time.Now().Format("20060102150405")
+	outputDir := filepath.Join(CWD, outputDir, time)
 	envPrompt = strings.ReplaceAll(envPrompt, "{{OUTPUTDIR}}", outputDir)
 
 	// 读取共享的 Command Execution 提示词片段（sub-agent 共用）

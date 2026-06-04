@@ -40,8 +40,7 @@
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
 
 ## Dependencies
-- `trpc-agent-go` uses a **fork replacement** in `go.mod`: `replace trpc.group/trpc-go/trpc-agent-go => github.com/Rememorio/trpc-agent-go v0.0.0-...`
-- Do not remove this replace directive — upstream lacks fixes needed for this project
+- `trpc-agent-go` — main agent framework, currently from upstream `trpc.group/trpc-go/trpc-agent-go` (no fork/replace)
 
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools

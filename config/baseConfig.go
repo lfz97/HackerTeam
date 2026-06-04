@@ -13,8 +13,6 @@ type User struct {
 }
 
 type Config struct {
-	Mcp      []MCP      `yaml:"mcp"`
-	StdinMcp []StdinMCP `yaml:"stdin_mcp"`
-	Model    Model      `yaml:"model"`
-	User     User       `yaml:"user"`
+	Model Model `yaml:"model"`
+	User  User  `yaml:"user"`
 }

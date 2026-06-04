@@ -4,8 +4,6 @@ import (
 	"HackerTeam/config"
 	"HackerTeam/handler"
 	"HackerTeam/session"
-	"HackerTeam/toolsets"
-	"HackerTeam/toolsets/localexec"
 	"HackerTeam/tui/global_object"
 	"HackerTeam/utils/pretty"
 	"embed"
@@ -27,7 +25,6 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/team"
-	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-mcp-go"
 )
 
@@ -51,8 +48,6 @@ var (
 	commandExecutionPrompt string
 	vulnConsensusPrompt    string
 	outputConsensusPrompt  string
-	Tools                  []tool.Tool
-	Toolsets               []tool.ToolSet
 )
 
 // 定义配置文件夹中的各种配置文件名称
@@ -285,33 +280,6 @@ func loadConfig() (*config.Config, error) {
 	return &YamlConfig, nil
 }
 
-func parseConfig() {
-
-	if len((*Config_p).Mcp) != 0 {
-		//读取配置文件中的 MCP 配置，创建 MCP ToolSet 并添加到 Toolsets 中
-		for _, mcpConfig := range (*Config_p).Mcp {
-			//只有配置了 Enabled 字段为 true 的 MCP 配置才会被创建 ToolSet 并添加到 Toolsets 中
-			if mcpConfig.Enabled == true {
-				mcpToolSet := toolsets.MCP(string(mcpConfig.Type), mcpConfig.Endpoint, mcpConfig.Headers)
-				Toolsets = append(Toolsets, mcpToolSet)
-			}
-
-		}
-	}
-	if len((*Config_p).StdinMcp) != 0 {
-		//读取配置文件中的 StdinMCP 配置，创建 StdinMCP ToolSet 并添加到 Toolsets 中
-		for _, stdinMcpConfig := range (*Config_p).StdinMcp {
-			if stdinMcpConfig.Enabled == true {
-				stdinMcpToolSet := toolsets.StdinMCP(stdinMcpConfig.Command, stdinMcpConfig.Args)
-				Toolsets = append(Toolsets, stdinMcpToolSet)
-			}
-		}
-	}
-
-	Toolsets = append(Toolsets, localexec.LocalExec()) //localexec 必须启用
-
-}
-
 func initMemorySessionService() {
 	InMemorySessionService = session.NewMemorySessionService((*Config_p).Model)
 }
@@ -348,8 +316,6 @@ func LoadConfig() {
 
 // 解析加载完成的配置文件，内部创建Team agent，并生成一个runner
 func NewRunner() handler.AgentRunner {
-	//解析配置文件
-	parseConfig()
 	runner := initTeam()
 	ar := handler.AgentRunner{
 		Runner: runner,

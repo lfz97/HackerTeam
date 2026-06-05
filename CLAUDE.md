@@ -11,7 +11,7 @@
 - `make` or `make linux-x64` etc. — cross-compile (Makefile)
 - `go run .` — run directly (auto-loads config from `<cwd>/.HackerTeam/`)
 - `go vet ./...` — static analysis (passes clean)
-- Go module: `HackerTeam` (Go 1.26)
+- Go module: `HackerTeam` (Go 1.26.1)
 
 ## Architecture
 - Multi-agent AI pentesting platform: Captain serially dispatches Recon → Scanner → Exploit (cross-validate) → PostExploit, plus Reproducer in two batches (Batch1: after Scanner+Exploit, Batch2: after PostExploit)
@@ -35,7 +35,7 @@
 - `config/` — Config struct and YAML loading (`HackerTeam.yaml`)
 - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
 - `tui/` — tview-based terminal UI, PTY management
-- `toolsets/` — Agent toolset definitions (LocalExec skills, etc.)
+- `toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents)
 - `functionTools/` — Custom Go function tools for agents
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
 

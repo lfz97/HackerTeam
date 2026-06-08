@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"HackerTeam/functionTools"
+	"HackerTeam/global"
 	"HackerTeam/models"
 	"HackerTeam/toolsets/localexec"
 	"HackerTeam/utils/pretty"
@@ -27,7 +28,7 @@ func initCaptain() *llmagent.LLMAgent {
 
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*Config_p).Model.Stream,
+			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithTools(tools),                     //队长挂载文件系统工具、文件操作工具和日期工具
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
@@ -43,7 +44,7 @@ func initCaptain() *llmagent.LLMAgent {
 func initRecon() *llmagent.LLMAgent {
 
 	reconPrompt := assemblePrompt("prompts/agents/recon.md")
-	repo, _ := skill.NewFSRepository(ReconSkillsFolderPath)
+	repo, _ := skill.NewFSRepository(global.ReconSkillsFolderPath)
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
@@ -55,7 +56,7 @@ func initRecon() *llmagent.LLMAgent {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*Config_p).Model.Stream,
+			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true), //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(reconPrompt),
@@ -77,7 +78,7 @@ func initRecon() *llmagent.LLMAgent {
 func initexploit() *llmagent.LLMAgent {
 
 	exploitPrompt := assemblePrompt("prompts/agents/exploit.md")
-	repo, _ := skill.NewFSRepository(ExploitSkillsFolderPath)
+	repo, _ := skill.NewFSRepository(global.ExploitSkillsFolderPath)
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
@@ -89,7 +90,7 @@ func initexploit() *llmagent.LLMAgent {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*Config_p).Model.Stream,
+			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(exploitPrompt), //系统提示词
@@ -112,7 +113,7 @@ func initexploit() *llmagent.LLMAgent {
 func initpostexploit() *llmagent.LLMAgent {
 
 	postexploitPrompt := assemblePrompt("prompts/agents/post_exploit.md")
-	repo, _ := skill.NewFSRepository(PostExploitSkillsFolderPath)
+	repo, _ := skill.NewFSRepository(global.PostExploitSkillsFolderPath)
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
@@ -124,7 +125,7 @@ func initpostexploit() *llmagent.LLMAgent {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*Config_p).Model.Stream,
+			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(postexploitPrompt), //系统提示词
@@ -146,7 +147,7 @@ func initpostexploit() *llmagent.LLMAgent {
 func initScanner() *llmagent.LLMAgent {
 
 	scannerPrompt := assemblePrompt("prompts/agents/scanner.md")
-	repo, _ := skill.NewFSRepository(ScannerSkillsFolderPath)
+	repo, _ := skill.NewFSRepository(global.ScannerSkillsFolderPath)
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
@@ -158,7 +159,7 @@ func initScanner() *llmagent.LLMAgent {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*Config_p).Model.Stream,
+			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(scannerPrompt), //系统提示词
@@ -179,7 +180,7 @@ func initScanner() *llmagent.LLMAgent {
 // 复现agent，负责漏洞复现和验证，挂载相关技能库和工具
 func initReproducer() *llmagent.LLMAgent {
 	reproducerPrompt := assemblePrompt("prompts/agents/reproducer.md")
-	repo, _ := skill.NewFSRepository(ReproducerSkillsFolderPath)
+	repo, _ := skill.NewFSRepository(global.ReproducerSkillsFolderPath)
 
 	systemtools := functionTools.GetFileSystemTools()
 	operationtools := functionTools.GetFileOperationsTools()
@@ -191,14 +192,13 @@ func initReproducer() *llmagent.LLMAgent {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*Config_p).Model.Stream,
+			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),             //启用上下文压缩注入
 		llmagent.WithGlobalInstruction(reproducerPrompt), //系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
-		llmagent.WithSkillsLoadedContentInToolResults(true),
 		llmagent.WithSkills(repo),
 		llmagent.WithSkillToolProfile(
 			llmagent.SkillToolProfileKnowledgeOnly,
@@ -209,18 +209,18 @@ func initReproducer() *llmagent.LLMAgent {
 }
 
 func setAgent(agentName string, opts []llmagent.Option) *llmagent.LLMAgent {
-	if (*Config_p).Model.APIType == "openai" {
-		openaimodel := models.Openai((*Config_p).Model.Model,
-			(*Config_p).Model.BaseURL,
-			(*Config_p).Model.APIKey)
+	if (*global.Config_p).Model.APIType == "openai" {
+		openaimodel := models.Openai((*global.Config_p).Model.Model,
+			(*global.Config_p).Model.BaseURL,
+			(*global.Config_p).Model.APIKey)
 		opts = append(opts, llmagent.WithModel(openaimodel))
 		Agent_p := llmagent.New(agentName, opts...)
 		return Agent_p
 
-	} else if (*Config_p).Model.APIType == "anthropic" {
-		Anthropicagent := models.Anthropic((*Config_p).Model.Model,
-			(*Config_p).Model.BaseURL,
-			(*Config_p).Model.APIKey)
+	} else if (*global.Config_p).Model.APIType == "anthropic" {
+		Anthropicagent := models.Anthropic((*global.Config_p).Model.Model,
+			(*global.Config_p).Model.BaseURL,
+			(*global.Config_p).Model.APIKey)
 		opts = append(opts, llmagent.WithModel(Anthropicagent))
 		Agent_p := llmagent.New(agentName, opts...)
 		return Agent_p
@@ -233,11 +233,11 @@ func setAgent(agentName string, opts []llmagent.Option) *llmagent.LLMAgent {
 
 // 组装各个agent的提示词
 func assemblePrompt(path string) string {
-	prompt_b, _ := PromptFiles.ReadFile(path)
+	prompt_b, _ := global.PromptFiles.ReadFile(path)
 	prompt := string(prompt_b)
-	prompt = strings.ReplaceAll(prompt, "{{ENV}}", envPrompt)
-	prompt = strings.ReplaceAll(prompt, "{{COMMAND_EXECUTION}}", commandExecutionPrompt)
-	prompt = strings.ReplaceAll(prompt, "{{VULN_CONSENSUS}}", vulnConsensusPrompt)
-	prompt = strings.ReplaceAll(prompt, "{{OUTPUT_CONSENSUS}}", outputConsensusPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{ENV}}", global.EnvPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{COMMAND_EXECUTION}}", global.CommandExecutionPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{VULN_CONSENSUS}}", global.VulnConsensusPrompt)
+	prompt = strings.ReplaceAll(prompt, "{{OUTPUT_CONSENSUS}}", global.OutputConsensusPrompt)
 	return prompt
 }

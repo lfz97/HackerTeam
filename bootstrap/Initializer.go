@@ -2,11 +2,9 @@ package bootstrap
 
 import (
 	"HackerTeam/config"
-	"HackerTeam/handler"
+	"HackerTeam/global"
 	"HackerTeam/session"
-	"HackerTeam/tui/global_object"
 	"HackerTeam/utils/pretty"
-	"embed"
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/google/uuid"
@@ -23,31 +21,8 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
-	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 	"trpc.group/trpc-go/trpc-agent-go/team"
 	"trpc.group/trpc-go/trpc-mcp-go"
-)
-
-// 定义核心的状态变量
-var (
-	Config_p               *config.Config
-	Agentname              string
-	CWD                    string
-	ConfigFolderPath       string
-	HackerTeamConfigPath   string
-	AgentRunner            handler.AgentRunner
-	InMemorySessionService *inmemory.SessionService
-	frameworkLogFile       *os.File // 保存日志文件句柄，防止被 GC 回收
-
-	//go:embed prompts/*
-	PromptFiles embed.FS
-
-	//go:embed skillsTemplates/*
-	ToolSkills             embed.FS
-	envPrompt              string
-	commandExecutionPrompt string
-	vulnConsensusPrompt    string
-	outputConsensusPrompt  string
 )
 
 // 定义配置文件夹中的各种配置文件名称
@@ -59,15 +34,7 @@ const (
 	outputDir              string = "output"
 )
 
-// 定义技能目录相关配置
-var (
-	ReconSkillsFolderPath       string
-	ExploitSkillsFolderPath     string
-	PostExploitSkillsFolderPath string
-	ScannerSkillsFolderPath     string
-	ReproducerSkillsFolderPath  string
-)
-
+// 技能目录名称
 const (
 	reconSkillsFolder       string = "ReconSkills"
 	exploitSkillsFolder     string = "ExploitSkills"
@@ -76,8 +43,8 @@ const (
 	reproducerSkillsFolder  string = "ReproducerSkills"
 )
 
-func Init(an string) handler.AgentRunner {
-	Agentname = an
+func Init(an string) {
+	global.Agentname = an
 
 	//获取Agent可执行文件所在的目录路径
 	getcwd()
@@ -104,72 +71,71 @@ func Init(an string) handler.AgentRunner {
 	initMemorySessionService()
 
 	//初始化AgentRunner
-	AgentRunner = NewRunner()
-	return AgentRunner
+	NewRunner()
 }
 
 // 配置系统提示词，替换其中的占位符
 func configENVPrompt() {
-	envPrompt_b, _ := PromptFiles.ReadFile("prompts/common/env.md")
-	envPrompt = string(envPrompt_b)
+	envPrompt_b, _ := global.PromptFiles.ReadFile("prompts/common/env.md")
+	global.EnvPrompt = string(envPrompt_b)
 	//Agent名称
-	envPrompt = strings.ReplaceAll(envPrompt, "{{NAME}}", Agentname)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{NAME}}", global.Agentname)
 
 	//当前日期
-	envPrompt = strings.ReplaceAll(envPrompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
 
 	//当前时区
 	zone, _ := time.Now().Zone()
-	envPrompt = strings.ReplaceAll(envPrompt, "{{TIMEZONE}}", fmt.Sprintf("%s (%s)", time.Now().Location().String(), zone))
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{TIMEZONE}}", fmt.Sprintf("%s (%s)", time.Now().Location().String(), zone))
 
 	//操作系统
-	envPrompt = strings.ReplaceAll(envPrompt, "{{OSTYPE}}", runtime.GOOS)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{OSTYPE}}", runtime.GOOS)
 
 	//CPU架构
-	envPrompt = strings.ReplaceAll(envPrompt, "{{AARCH}}", runtime.GOARCH)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{AARCH}}", runtime.GOARCH)
 
 	//主目录
 	homeDir, _ := os.UserHomeDir()
-	envPrompt = strings.ReplaceAll(envPrompt, "{{HOME}}", homeDir)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{HOME}}", homeDir)
 
 	//临时目录
-	envPrompt = strings.ReplaceAll(envPrompt, "{{TMPDIR}}", os.TempDir())
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{TMPDIR}}", os.TempDir())
 
 	//当前用户
 	u, _ := user.Current()
-	envPrompt = strings.ReplaceAll(envPrompt, "{{CURRENTUSER}}", u.Username)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{CURRENTUSER}}", u.Username)
 
 	//主机名
 	hostName, _ := os.Hostname()
-	envPrompt = strings.ReplaceAll(envPrompt, "{{HOSTNAME}}", hostName)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{HOSTNAME}}", hostName)
 
 	//运行目录
-	envPrompt = strings.ReplaceAll(envPrompt, "{{CWD}}", CWD)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{CWD}}", global.CWD)
 
 	//配置目录
-	envPrompt = strings.ReplaceAll(envPrompt, "{{CONFIGPATH}}", ConfigFolderPath)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{CONFIGPATH}}", global.ConfigFolderPath)
 
 	//配置文件
-	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamConfig}}", hackerTeamConfig)
-	envPrompt = strings.ReplaceAll(envPrompt, "{{HackerTeamLogFile}}", hackerTeamLogFile)
-	envPrompt = strings.ReplaceAll(envPrompt, "{{OperationRecord}}", operationRecord)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{HackerTeamConfig}}", hackerTeamConfig)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{HackerTeamLogFile}}", hackerTeamLogFile)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{OperationRecord}}", operationRecord)
 
 	//输出目录
 	time := time.Now().Format("20060102150405")
-	outputDir := filepath.Join(CWD, outputDir, time)
-	envPrompt = strings.ReplaceAll(envPrompt, "{{OUTPUTDIR}}", outputDir)
+	outputDir := filepath.Join(global.CWD, outputDir, time)
+	global.EnvPrompt = strings.ReplaceAll(global.EnvPrompt, "{{OUTPUTDIR}}", outputDir)
 
 	// 读取共享的 Command Execution 提示词片段（sub-agent 共用）
-	cmdExecBytes, _ := PromptFiles.ReadFile("prompts/common/command_execution.md")
-	commandExecutionPrompt = string(cmdExecBytes)
+	cmdExecBytes, _ := global.PromptFiles.ReadFile("prompts/common/command_execution.md")
+	global.CommandExecutionPrompt = string(cmdExecBytes)
 
 	// 读取共享的 Vuln Consensus 提示词片段（漏洞定义与定级共识）
-	vulnConsensusBytes, _ := PromptFiles.ReadFile("prompts/common/vuln_consensus.md")
-	vulnConsensusPrompt = string(vulnConsensusBytes)
+	vulnConsensusBytes, _ := global.PromptFiles.ReadFile("prompts/common/vuln_consensus.md")
+	global.VulnConsensusPrompt = string(vulnConsensusBytes)
 
 	// 读取共享的 Output Consensus 提示词片段（结果输出规范）
-	toolConsensusBytes, _ := PromptFiles.ReadFile("prompts/common/output_consensus.md")
-	outputConsensusPrompt = string(toolConsensusBytes)
+	toolConsensusBytes, _ := global.PromptFiles.ReadFile("prompts/common/output_consensus.md")
+	global.OutputConsensusPrompt = string(toolConsensusBytes)
 }
 
 // 获取当前可执行文件所在的目录完整路径
@@ -179,18 +145,18 @@ func getcwd() {
 	if err != nil {
 		ShowErrorAndExit(pretty.TErrorF("获取可执行文件目录错误: %v,按任意键退出", err))
 	}
-	CWD = filepath.Dir(exePath) // 获取当前可执行文件的目录路径（不包含程序名）
+	global.CWD = filepath.Dir(exePath) // 获取当前可执行文件的目录路径（不包含程序名）
 
 }
 
 // 检查配置文件夹是否存在
 func checkConfigFolder() {
-	ConfigFolderPath = filepath.Join(CWD, hackerTeamConfigFolder)
-	_, err := os.Stat(ConfigFolderPath)
+	global.ConfigFolderPath = filepath.Join(global.CWD, hackerTeamConfigFolder)
+	_, err := os.Stat(global.ConfigFolderPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			//config 文件夹不存在，创建一个默认的 config 文件夹
-			err := os.MkdirAll(ConfigFolderPath, os.ModePerm)
+			err := os.MkdirAll(global.ConfigFolderPath, os.ModePerm)
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认config文件夹错误：%v", err))
 			}
@@ -206,13 +172,13 @@ func checkConfigFolder() {
 
 // 检查配置文件是否存在，不存在则创建一个默认的配置文件
 func checkConfig() {
-	HackerTeamConfigPath = filepath.Join(ConfigFolderPath, hackerTeamConfig)
+	global.HackerTeamConfigPath = filepath.Join(global.ConfigFolderPath, hackerTeamConfig)
 	// TODO: 读取并解析 configPath 中的 YAML 配置
-	_, err := os.Stat(HackerTeamConfigPath)
+	_, err := os.Stat(global.HackerTeamConfigPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// 文件不存在，创建一个默认的 config.yaml
-			fd, err := os.OpenFile(HackerTeamConfigPath, os.O_RDWR|os.O_CREATE, 0644)
+			fd, err := os.OpenFile(global.HackerTeamConfigPath, os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
 				ShowErrorAndExit(pretty.TErrorF("创建默认配置文件错误：%v", err))
 			}
@@ -235,11 +201,11 @@ func checkConfig() {
 
 func checkSkillsFolder() {
 
-	ReconSkillsFolderPath = filepath.Join(ConfigFolderPath, reconSkillsFolder)
-	ExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, exploitSkillsFolder)
-	PostExploitSkillsFolderPath = filepath.Join(ConfigFolderPath, postExploitSkillsFolder)
-	ScannerSkillsFolderPath = filepath.Join(ConfigFolderPath, scannerSkillsFolder)
-	ReproducerSkillsFolderPath = filepath.Join(ConfigFolderPath, reproducerSkillsFolder)
+	global.ReconSkillsFolderPath = filepath.Join(global.ConfigFolderPath, reconSkillsFolder)
+	global.ExploitSkillsFolderPath = filepath.Join(global.ConfigFolderPath, exploitSkillsFolder)
+	global.PostExploitSkillsFolderPath = filepath.Join(global.ConfigFolderPath, postExploitSkillsFolder)
+	global.ScannerSkillsFolderPath = filepath.Join(global.ConfigFolderPath, scannerSkillsFolder)
+	global.ReproducerSkillsFolderPath = filepath.Join(global.ConfigFolderPath, reproducerSkillsFolder)
 
 	func(skillsFolders []string) {
 		for _, folder := range skillsFolders {
@@ -251,7 +217,7 @@ func checkSkillsFolder() {
 					if err != nil {
 						ShowErrorAndExit(pretty.TErrorF("创建默认%s文件夹错误：%s", folder, err.Error()))
 					}
-					err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(folder, "pentest-tools"), copy.Options{FS: ToolSkills})
+					err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(folder, "pentest-tools"), copy.Options{FS: global.ToolSkills})
 					if err != nil {
 						ShowErrorAndExit(pretty.TErrorF("复制技能模板到%s文件夹错误：%s", folder, err.Error()))
 					}
@@ -263,13 +229,13 @@ func checkSkillsFolder() {
 				ShowSuccess(fmt.Sprintf("检查%s文件夹通过", folder))
 			}
 		}
-	}([]string{ReconSkillsFolderPath, ExploitSkillsFolderPath, PostExploitSkillsFolderPath, ScannerSkillsFolderPath, ReproducerSkillsFolderPath})
+	}([]string{global.ReconSkillsFolderPath, global.ExploitSkillsFolderPath, global.PostExploitSkillsFolderPath, global.ScannerSkillsFolderPath, global.ReproducerSkillsFolderPath})
 
 }
 
 func loadConfig() (*config.Config, error) {
 	YamlConfig := config.Config{}
-	yamlFile, err := os.ReadFile(HackerTeamConfigPath)
+	yamlFile, err := os.ReadFile(global.HackerTeamConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件错误：%v", err)
 	}
@@ -281,7 +247,7 @@ func loadConfig() (*config.Config, error) {
 }
 
 func initMemorySessionService() {
-	InMemorySessionService = session.NewMemorySessionService((*Config_p).Model)
+	global.SessionService = session.NewMemorySessionService((*global.Config_p).Model)
 }
 
 func initTeam() runner.Runner {
@@ -299,8 +265,8 @@ func initTeam() runner.Runner {
 		team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
 		team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
 	)
-	Runner := runner.NewRunner(Agentname, CaptainAgent,
-		runner.WithSessionService(InMemorySessionService), // 使用内存会话服务，其中包含自动摘要功能
+	Runner := runner.NewRunner(global.Agentname, CaptainAgent,
+		runner.WithSessionService(global.SessionService), // 使用内存会话服务，其中包含自动摘要功能
 	)
 	return Runner
 }
@@ -311,47 +277,45 @@ func LoadConfig() {
 	if err != nil {
 		ShowErrorAndExit(pretty.TErrorF("加载配置文件错误: %v,按任意键退出", err))
 	}
-	Config_p = config_p
+	global.Config_p = config_p
 }
 
 // 解析加载完成的配置文件，内部创建Team agent，并生成一个runner
-func NewRunner() handler.AgentRunner {
+func NewRunner() {
 	runner := initTeam()
-	ar := handler.AgentRunner{
+	global.AgentRunner_p = &global.Agentrunner{
 		Runner: runner,
-		Stream: (*Config_p).Model.Stream,
-		UserId: (*Config_p).User.UserID,
+		Stream: (*global.Config_p).Model.Stream,
 	}
-	global_object.Print2LogView(pretty.TReady(Agentname))
-	return ar
+	global.Print2LogView(pretty.TReady(global.Agentname))
 }
 
 func ShowErrorAndExit(errmsg string) {
 	done := make(chan struct{})
-	global_object.Print2LogView(errmsg)
-	global_object.App_p.QueueUpdateDraw(func() {
+	global.Print2LogView(errmsg)
+	global.App_p.QueueUpdateDraw(func() {
 		//只要有按键就退出程序
-		global_object.App_p.SetFocus(global_object.LogView_p)
-		global_object.LogView_p.SetInputCapture(
+		global.App_p.SetFocus(global.LogView_p)
+		global.LogView_p.SetInputCapture(
 			func(event *tcell.EventKey) *tcell.EventKey {
-				global_object.App_p.Stop()
+				global.App_p.Stop()
 				return nil
 			})
 	})
 	<-done
 }
 func ShowSuccess(sussessmsg string) {
-	global_object.Print2LogView(pretty.TSuccess(sussessmsg))
+	global.Print2LogView(pretty.TSuccess(sussessmsg))
 }
 func ShowSuccessAndExit(sussessmsg string) {
 	done := make(chan struct{})
-	global_object.Print2LogView(pretty.TSuccess(sussessmsg))
-	global_object.App_p.QueueUpdateDraw(func() {
+	global.Print2LogView(pretty.TSuccess(sussessmsg))
+	global.App_p.QueueUpdateDraw(func() {
 		//只要有按键就退出程序
-		global_object.App_p.SetFocus(global_object.LogView_p)
-		global_object.LogView_p.SetInputCapture(
+		global.App_p.SetFocus(global.LogView_p)
+		global.LogView_p.SetInputCapture(
 			func(event *tcell.EventKey) *tcell.EventKey {
-				global_object.App_p.Stop()
+				global.App_p.Stop()
 				return nil
 			})
 	})
@@ -360,9 +324,9 @@ func ShowSuccessAndExit(sussessmsg string) {
 
 // redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 HackerTeam.log 文件-created by copilot
 func redirectFrameworkLog() {
-	logPath := filepath.Join(ConfigFolderPath, hackerTeamLogFile)
+	logPath := filepath.Join(global.ConfigFolderPath, hackerTeamLogFile)
 	var err error
-	frameworkLogFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	global.FrameworkLogFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return
 	}
@@ -381,7 +345,7 @@ func redirectFrameworkLog() {
 	}
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderCfg),
-		zapcore.AddSync(frameworkLogFile),
+		zapcore.AddSync(global.FrameworkLogFile),
 		zapcore.DebugLevel,
 	)
 	fileLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()

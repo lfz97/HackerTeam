@@ -4,6 +4,9 @@ debuglog/
 OPTIMIZATION.md
 reproduce/
 
+# 编译产物
+/HackerTeam
+
 # 运行时文件（首次启动自动生成，含用户配置与日志，不应入库）
 /.HackerTeam/
 /config.yaml

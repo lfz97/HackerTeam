@@ -16,25 +16,26 @@
 ## Architecture
 - Multi-agent AI pentesting platform: Captain serially dispatches Recon → Scanner → Exploit (cross-validate) → PostExploit, plus Reproducer in two batches (Batch1: after Scanner+Exploit, Batch2: after PostExploit)
 - Each agent prompt must have a "职责边界" rule as the first constraint — explicitly list what this agent MUST NOT do and WHICH agent handles that; LLMs cross role boundaries unless explicitly forbidden (Recon may try sqlmap, Scanner may try to exploit). Forbidding tool NAMES is not enough — LLMs bypass "don't use sqlmap" by doing manual injection with the same payloads. Forbid concrete BEHAVIORS with exact examples (e.g. "NEVER append ' / OR 1=1 / UNION SELECT to URL params") so the LLM cannot self-rationalize. Do NOT add cross-boundary refusal logic on sub-agents — if Recon rejects and Scanner also rejects, tasks deadlock; enforce boundaries on Captain's dispatch side only, accept the risk of Captain hallucination.
-- Shared consensus system in `bootstrap/prompts/common/`: `vuln_consensus.md` (vulnerability definition + severity rating by technical impact, no CVSS), `output_consensus.md` (output format, raw tool output preservation, vulnerability structured block format for Reproducer consumption)
+- Shared consensus system in `global/prompts/common/` (embedded via `//go:embed` in `global/agentCore.go`): `vuln_consensus.md` (vulnerability definition + severity rating by technical impact, no CVSS), `output_consensus.md` (output format, raw tool output preservation, vulnerability structured block format for Reproducer consumption)
 - TUI built with `rivo/tview` + `gdamore/tcell/v2`, PTY execution via `creack/pty`
 - Agent framework: `trpc.group/trpc-go/trpc-agent-go`, MCP: `trpc.group/trpc-go/trpc-mcp-go`
 - LLM backends: OpenAI-compatible API or Anthropic native SDK
 - Config auto-generated at first run: `<binary-dir>/.HackerTeam/HackerTeam.yaml`
 - TUI colors centralized in `utils/pretty/pretty.go` (TuiXxx constants)
 - `/new`, `/flush`, `/exit`, `ESC` — built-in TUI commands
-- Agent prompts embedded via `//go:embed` in `bootstrap/` (`PromptFiles`, `prompts/*` prefix in ReadFile) and `session/` (`promptFiles`, `prompt/*` prefix)
-- Adding a new shared consensus prompt pattern: 1) create `bootstrap/prompts/common/<name>.md`, 2) add variable + load in `Initializer.go` (follow `vulnConsensusPrompt` pattern), 3) add `{{<NAME>}}` replacement in `assemblePrompt()` in `members.go`, 4) add `{{<NAME>}}` placeholder to each agent prompt `.md` file
+- Agent prompts embedded via `//go:embed` in `global/agentCore.go` (`PromptFiles`, `prompts/*` prefix in ReadFile) and `session/summarizer.go` (`promptFiles`, `prompt/*` prefix)
+- Adding a new shared consensus prompt pattern: 1) create `global/prompts/common/<name>.md`, 2) add variable in `global/agentCore.go` + load in `Initializer.go` (follow `VulnConsensusPrompt` pattern), 3) add `{{<NAME>}}` replacement in `assemblePrompt()` in `members.go`, 4) add `{{<NAME>}}` placeholder to each agent prompt `.md` file
 - `{{OUTPUTDIR}}` is the exception — NOT replaced by `assemblePrompt()`. It's resolved once in `env.md` via `configENVPrompt()` then injected into all agents through `{{ENV}}`. Agents infer the path from the "Output Directory" field shown in the environment block. Use `{{OUTPUTDIR}}` directly in prompt `.md` files, do NOT add Go-level replacement for it.
-- Adding a new agent: 1) create `bootstrap/prompts/agents/<name>.md` (include `{{ENV}}`, `{{COMMAND_EXECUTION}}`, `{{VULN_CONSENSUS}}`, `{{OUTPUT_CONSENSUS}}` as needed), 2) add `init<Name>()` in `members.go` (follow existing agent pattern), 3) add skill folder path var + const in `Initializer.go`, 4) add folder to `checkSkillsFolder()` slice, 5) register agent in `initTeam()` team.New member list, 6) add agent definition + dispatch rules in Captain prompt (`captain.md`)
+- Adding a new agent: 1) create `global/prompts/agents/<name>.md` (include `{{ENV}}`, `{{COMMAND_EXECUTION}}`, `{{VULN_CONSENSUS}}`, `{{OUTPUT_CONSENSUS}}` as needed), 2) add `init<Name>()` in `members.go` (follow existing agent pattern), 3) add skill folder path var in `global/agentCore.go` + const in `Initializer.go`, 4) add folder to `checkSkillsFolder()` slice, 5) register agent in `initTeam()` team.New member list, 6) add agent definition + dispatch rules in Captain prompt (`captain.md`)
 
 ## Directory Map
-- `bootstrap/` — Agent prompt embedding (`//go:embed`), Initializer, member assembly
-- `session/` — Agent runtime: summarizer, LocalExec lifecycle, prompt embedding (`prompt/*`)
-- `handler/` — HTTP/gRPC handlers or Captain orchestration entry points
+- `global/` — Shared state: `Agentrunner` struct, config pointer, session service, embedFS (`PromptFiles`/`ToolSkills`), prompt strings, TUI widget references
+- `bootstrap/` — Initializer (config, logging, session), member assembly (6 agent factories), main dialog loop
+- `session/` — Agent runtime: summarizer, session service, prompt embedding (`prompt/*`)
+- `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), types (`model.go`)
 - `config/` — Config struct and YAML loading (`HackerTeam.yaml`)
 - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
-- `tui/` — tview-based terminal UI, PTY management
+- `tui/` — tview-based terminal UI (ConfigPage + AgentPage), PTY management
 - `toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents)
 - `functionTools/` — Custom Go function tools for agents
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
@@ -46,7 +47,7 @@
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
 - Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer's folder is intentionally left empty, no pentest-tool skills)
-- Embedded skill template: `bootstrap/skillsTemplates/pentest-tools/SKILL.md.template`
+- Embedded skill template: `global/skillsTemplates/pentest-tools/SKILL.md.template` (via `//go:embed` in `global/agentCore.go`)
 - `/flush` must re-create skill repos and re-attach to agents
 
 ## Terminology

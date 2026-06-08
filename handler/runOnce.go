@@ -1,11 +1,12 @@
 package handler
 
 import (
-	"HackerTeam/tui/global_object"
+	"HackerTeam/global"
 	"HackerTeam/tui/tip"
 	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
+
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -16,22 +17,22 @@ type AgentError struct {
 	OutputPart string
 }
 
-func AgentRunOnce(Ctx context.Context, r AgentRunner, sessionID string, userID string, requestID string, userPrompt string) *AgentError {
+func AgentRunOnce(Ctx context.Context, userPrompt string) *AgentError {
 	// 修改状态栏提示，显示正在运行中
 	statusBarCtx := context.Background()
 	statusBarCtx, cancel := context.WithCancel(statusBarCtx)
 	defer cancel() // 确保函数退出时取消状态栏提示的上下文
-	go tip.StatusBarScrollingTip(statusBarCtx, "Processing....", pretty.TColorLightMagenta, global_object.App_p, global_object.StatusBar_p)
+	go tip.StatusBarScrollingTip(statusBarCtx, "Processing....", pretty.TColorLightMagenta, global.App_p, global.StatusBar_p)
 
-	eventChan, err := r.Runner.Run(
+	eventChan, err := (*global.AgentRunner_p).Runner.Run(
 		Ctx,
-		userID,
-		sessionID,
+		(*global.Config_p).User.UserID,
+		global.SessionId,
 		model.Message{
 			Role:    model.RoleUser,
 			Content: userPrompt,
 		},
-		agent.WithRequestID(requestID),
+		agent.WithRequestID(global.RequestId),
 		agent.WithToolCallArgumentsJSONRepairEnabled(true), //开启工具调用参数的JSON修复功能，解决因模型输出格式不规范导致的工具调用失败问题
 	)
 	if err != nil {
@@ -50,7 +51,7 @@ func AgentRunOnce(Ctx context.Context, r AgentRunner, sessionID string, userID s
 			if event.IsTerminalError() {
 				//填充err，使得返回的err不为nil，表示对话发生了错误
 				err = fmt.Errorf("Event发生TerminalError: %v", event.Error)
-				global_object.Print2AgentMessageView(pretty.TErrorF("%v", err))
+				global.Print2AgentMessageView(pretty.TErrorF("%v", err))
 				return &AgentError{
 					Error:      err,
 					ErrorType:  "TerminalError",
@@ -63,7 +64,7 @@ func AgentRunOnce(Ctx context.Context, r AgentRunner, sessionID string, userID s
 		}
 		select {
 		case <-Ctx.Done():
-			global_object.Print2AgentMessageView(pretty.TCancelled())
+			global.Print2AgentMessageView(pretty.TCancelled())
 			return nil
 
 		default:
@@ -71,8 +72,8 @@ func AgentRunOnce(Ctx context.Context, r AgentRunner, sessionID string, userID s
 		if event.Response != nil && len((*(*event).Response).Choices) > 0 {
 
 			Choice := (*(*event).Response).Choices[0]
-			printMessage(Choice, &startReasoning, r.Stream)
-			gatherContentMessage(&OutputPart, Choice, r.Stream)
+			printMessage(Choice, &startReasoning, (*global.AgentRunner_p).Stream)
+			gatherContentMessage(&OutputPart, Choice, (*global.AgentRunner_p).Stream)
 
 		}
 		// event.IsRunnerCompletion()判断是否完成输出

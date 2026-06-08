@@ -1,9 +1,5 @@
 package handler
 
-import (
-	"trpc.group/trpc-go/trpc-agent-go/runner"
-)
-
 type TurnResult struct {
 	Code       TurnCode
 	Reason     string
@@ -19,9 +15,3 @@ const (
 	Continue TurnCode = 5 //继续对话
 	Flush    TurnCode = 6 //刷新工具
 )
-
-type AgentRunner struct {
-	Runner runner.Runner
-	Stream bool
-	UserId string
-}

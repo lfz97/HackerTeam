@@ -18,6 +18,7 @@
 - Each agent prompt must have a "职责边界" rule as the first constraint — explicitly list what this agent MUST NOT do and WHICH agent handles that; LLMs cross role boundaries unless explicitly forbidden (Recon may try sqlmap, Scanner may try to exploit). Forbidding tool NAMES is not enough — LLMs bypass "don't use sqlmap" by doing manual injection with the same payloads. Forbid concrete BEHAVIORS with exact examples (e.g. "NEVER append ' / OR 1=1 / UNION SELECT to URL params") so the LLM cannot self-rationalize. Do NOT add cross-boundary refusal logic on sub-agents — if Recon rejects and Scanner also rejects, tasks deadlock; enforce boundaries on Captain's dispatch side only, accept the risk of Captain hallucination.
 - Shared consensus system in `global/prompts/common/` (embedded via `//go:embed` in `global/agentCore.go`): `vuln_consensus.md` (vulnerability definition + severity rating by technical impact, no CVSS), `output_consensus.md` (output format, raw tool output preservation, vulnerability structured block format for Reproducer consumption)
 - TUI built with `rivo/tview` + `gdamore/tcell/v2`, PTY execution via `creack/pty`
+- **TUI refactored (v1.0.0)**: `tui/tui.go` + `tui/tip/tip.go` merged into `global/tui.go` + `global/tuihandler.go`. `handler/` and `bootstrap/` no longer import `tcell` directly — all TUI operations go through `global.PrintToTui()`, `global.LoadTextAreaWithCtrlEnter()`, etc. Old widget vars (`App_p`, `AgentMessageView_p`, `Sidebar_p` etc.) renamed to `app_p`, `AgentMessage`, `Sidebar`, etc. The `tui/` directory no longer exists.
 - Agent framework: `trpc.group/trpc-go/trpc-agent-go`, MCP: `trpc.group/trpc-go/trpc-mcp-go`
 - LLM backends: OpenAI-compatible API or Anthropic native SDK
 - Config auto-generated at first run: `<binary-dir>/.HackerTeam/HackerTeam.yaml`
@@ -30,12 +31,14 @@
 
 ## Directory Map
 - `global/` — Shared state: `Agentrunner` struct, config pointer, session service, embedFS (`PromptFiles`/`ToolSkills`), prompt strings, TUI widget references
+  - `global/backendCore.go` — Core domain state (config, runner, session, tools, embedded prompts)
+  - `global/tui.go` — TUI page construction: `TuiInit(initFn, startFn)`, `CreateConfigPage`, `createAgentPage`
+  - `global/tuihandler.go` — TUI operation wrappers: `PrintToTui(view, content, clear)`, `LoadTextAreaWithCtrlEnter`, `SetAppFuncTriggerWithEsc`, `ShowErrorAndExit`, `ShowMsgAndExitNoTrigger`, etc.
 - `bootstrap/` — Initializer (config, logging, session), member assembly (6 agent factories), main dialog loop
 - `session/` — Agent runtime: summarizer, session service, prompt embedding (`prompt/*`)
 - `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), types (`model.go`)
 - `config/` — Config struct and YAML loading (`HackerTeam.yaml`)
 - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
-- `tui/` — tview-based terminal UI (ConfigPage + AgentPage), PTY management
 - `toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents)
 - `functionTools/` — Custom Go function tools for agents
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)

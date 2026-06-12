@@ -30,9 +30,12 @@ func initCaptain() *llmagent.LLMAgent {
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithTools(tools),                     //队长挂载文件系统工具、文件操作工具和日期工具
-		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(captainPrompt), //系统提示词
+		llmagent.WithTools(tools),                                      // 队长挂载文件系统工具、文件操作工具和日期工具
+		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
+		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
+		llmagent.WithGlobalInstruction(captainPrompt),                  // 系统提示词
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
 	agent_p := setAgent("Captain", opts)
@@ -58,7 +61,10 @@ func initRecon() *llmagent.LLMAgent {
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true), //启用上下文压缩注入
+		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
+		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithGlobalInstruction(reconPrompt),
 		llmagent.WithTools(tools),
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())), //侦察员挂载LocalExec工具集，包含本地命令执行工具
@@ -92,8 +98,11 @@ func initexploit() *llmagent.LLMAgent {
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(exploitPrompt), //系统提示词
+		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
+		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
+		llmagent.WithGlobalInstruction(exploitPrompt),                  // 系统提示词
 		llmagent.WithTools(tools),
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -127,8 +136,11 @@ func initpostexploit() *llmagent.LLMAgent {
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true),              //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(postexploitPrompt), //系统提示词
+		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
+		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
+		llmagent.WithGlobalInstruction(postexploitPrompt),              // 系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -161,8 +173,11 @@ func initScanner() *llmagent.LLMAgent {
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true),          //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(scannerPrompt), //系统提示词
+		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
+		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
+		llmagent.WithGlobalInstruction(scannerPrompt),                  // 系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -194,8 +209,11 @@ func initReproducer() *llmagent.LLMAgent {
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true),             //启用上下文压缩注入
-		llmagent.WithGlobalInstruction(reproducerPrompt), //系统提示词
+		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
+		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
+		llmagent.WithGlobalInstruction(reproducerPrompt),               // 系统提示词
 		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),

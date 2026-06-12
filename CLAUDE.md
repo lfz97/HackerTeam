@@ -60,3 +60,39 @@
 - `LocalExec.submit_command` executes immediately (submit+start merged into one async call) — agents MUST poll `get_status` before `get_output`; `start_command` tool no longer exists
 - `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed
 - `team.WithMemberToolStreamInner(true)` + `team.WithMemberToolInnerTextMode(team.InnerTextModeInclude)` — TUI shows sub-agent full transcript (text+tool calls+results); use `InnerTextModeExclude` to show only progress signals, hiding assistant text
+
+## Context Management
+
+HackerTeam uses three complementary mechanisms to prevent context overflow:
+
+### 1. Session Summarization (`session/summarizer.go` + `bootstrap/members.go`)
+- `WithAddSessionSummary(true)` on ALL 6 agents (Captain + 5 sub-agents) enables async summary injection
+- Summarizer triggers at `CheckTokenThreshold(0.4 * contextwindow)` OR `CheckTimeThreshold(10min)` via `WithChecksAny`
+- Token counting uses `model/tiktoken` (BPE), configured via `summary.SetTokenCounter(counter)`
+- Summary model is the same as main model; for DeepSeek reasoning models, the token counter falls back to `cl100k_base` (within ~4-7% of DeepSeek's actual count per empirical testing)
+- **Team-specific risk**: sub-agent tool results (nmap, sqlmap, gobuster output) can be 50K+ tokens each. Team serial dispatch (5 sub-agents) can produce 1M+ tokens in a single `runner.Run()`. If the summarizer's first attempt fails (e.g. summary model itself exceeds context), session grows unbounded — check `HackerTeam.log` for "summary worker failed"
+- Post-summary hook strips `<think>...</think>` tags from summary text
+
+### 2. Context Compaction (`bootstrap/members.go`)
+- `WithEnableContextCompaction(true)` on ALL 6 agents enables deterministic tool result compression before each LLM call
+- **Pass 1**: Historical tool results > 1024 tokens → replaced with placeholder (`event_id`/`tool_call_id` preserved for `session_load` recovery)
+  - Protects current invocation + `KeepRecentRequests` (default 1) most recent completed invocations
+- **Pass 2**: Any tool result > 8192 tokens → head+tail truncation with `[...N chars truncated...]` marker
+  - Applies to ALL invocations including current; gated on `OversizedToolResultMaxTokens > 0`
+  - Critical for sub-agents: single nmap/sqlmap output truncated from 50K to ~16K before entering summarizer input
+- Triggers at 70% context window (`ContextCompactionThresholdRatio`, default 0.7)
+- If still over threshold after compaction → sync `CreateSessionSummary` runs as fallback → request rebuilt
+- `ForceCleanToolNames`/`KeepToolNames` available for per-tool policy (not currently configured)
+
+### 3. On-Demand Session (`bootstrap/members.go`)
+- `WithEnableOnDemandSession(true)` on ALL 6 agents gives `session_load`/`session_search` tools
+- Compacted/truncated tool results can be retrieved by `event_id` with `content_offset`/`content_limit`
+- Enables sliced loading of large outputs (e.g. read nmap port list without loading full scan)
+
+### Troubleshooting Context Overflow
+- **Symptom**: API error "requested X tokens exceeds maximum 1048565" (X > 1M)
+- **Check**: `HackerTeam.log` for "summary worker failed" — if present, summaries are failing
+- **Verify**: `contextwindow` in config MUST be ≤ actual model limit
+- **Note**: tiktoken `cl100k_base` vs DeepSeek API token count differs ~4-7% (empirically verified) — not accurate enough to explain 2x+ discrepancies
+- **Root cause pattern**: first summary attempt fails → delta grows unbounded → cascade failure → permanent retry loop
+- **Fix priority**: (1) enable Context Compaction for tool result size control, (2) lower `CheckTokenThresholdPercent` if needed, (3) use non-reasoning model for summarization as last resort

@@ -1,13 +1,14 @@
 package main
 
 import (
+	"HackerTeam/bootstrap"
 	"HackerTeam/global"
-	"HackerTeam/tui"
 )
 
 func main() {
-	tui.TuiInit()
-	if err := global.App_p.Run(); err != nil {
-		panic(err)
-	}
+	global.TuiInit(
+		func() { bootstrap.Init("HackerTeam") },
+		func() { bootstrap.AgentStart() },
+	)
+	global.TuiRun()
 }

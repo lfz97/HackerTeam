@@ -83,7 +83,7 @@ func NewSummarizer(m config.Model) summary.SessionSummarizer {
 		summary.WithPrompt(userSummarizerPrompt),         //设置用户提示词，指导模型如何根据会话内容生成摘要，默认为空，可以根据需要自定义
 		summary.WithPostSummaryHook(func(s *summary.PostSummaryHookContext) error {
 			cleanSummary := reThink.ReplaceAllString(s.Summary, "") //将摘要内容中的<think>...</think>部分去掉
-			fmt.Fprint(global.AgentMessageView_p, pretty.TColoredText(pretty.TColorGreen, fmt.Sprintf("\n->已生成摘要：\n%v\n", cleanSummary)))
+			global.PrintToTui(global.AgentMessage, pretty.TColoredText(pretty.TColorGreen, fmt.Sprintf("\n->已生成摘要：\n%v\n", cleanSummary)), false)
 			return nil
 		}),
 	)

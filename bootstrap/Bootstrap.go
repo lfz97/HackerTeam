@@ -5,7 +5,6 @@ import (
 	"HackerTeam/handler"
 	"HackerTeam/utils/pretty"
 	"context"
-	"fmt"
 	"github.com/google/uuid"
 )
 
@@ -25,14 +24,8 @@ func AgentStart() {
 		EndTurn_p := handler.AgentRunIteratively(context.Background(), MsgContext)
 		if (*EndTurn_p).Code == handler.Exit { //用户主动结束对话，退出程序
 			//关闭AgentRunner，释放资源
-			done := make(chan struct{})
 			(*global.AgentRunner_p).Runner.Close()
-			global.App_p.QueueUpdateDraw(func() {
-				fmt.Fprint(global.AgentMessageView_p, pretty.TExit("对话已结束，感谢使用！后会有期！"))
-				global.AgentMessageView_p.ScrollToEnd()
-				global.App_p.Stop()
-			})
-			<-done
+			global.ShowMsgAndExitNoTrigger(global.AgentMessage, pretty.TExit("对话已结束，感谢使用！后会有期！"))
 
 		} else if (*EndTurn_p).Code == handler.New { //用户开始新对话，重置global.SessionId, global.RequestId，更新MsgContext为新对话的初始状态
 			RandomStartID()

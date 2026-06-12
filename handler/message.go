@@ -12,23 +12,23 @@ func printMessage(Choice model.Choice, startReasoning *bool, stream bool) {
 		//------------------处理流式的响应---------------------------------------------------------------------------
 		if Choice.Delta.ReasoningContent != "" && !(*startReasoning) {
 
-			global.Print2AgentMessageView(pretty.TReasoningStart())
+			global.PrintToTui(global.AgentMessage, pretty.TReasoningStart(), false)
 			*startReasoning = true
 
 		} else if Choice.Delta.ReasoningContent != "" && (*startReasoning) {
 
 			// 思考内容
-			global.Print2AgentMessageView(pretty.TReasoningContent(Choice.Delta.ReasoningContent))
+			global.PrintToTui(global.AgentMessage, pretty.TReasoningContent(Choice.Delta.ReasoningContent), false)
 
 		} else if Choice.Delta.ReasoningContent == "" && (*startReasoning) {
 			*startReasoning = false
 
-			global.Print2AgentMessageView(pretty.TReasoningEnd())
+			global.PrintToTui(global.AgentMessage, pretty.TReasoningEnd(), false)
 
 		}
 		if Choice.Delta.Content != "" {
 			// 正文内容
-			global.Print2AgentMessageView(Choice.Delta.Content)
+			global.PrintToTui(global.AgentMessage, Choice.Delta.Content, false)
 		}
 
 	} else {
@@ -36,14 +36,14 @@ func printMessage(Choice model.Choice, startReasoning *bool, stream bool) {
 		//处理思考信息 - 使用黄色
 		if Choice.Message.ReasoningContent != "" {
 
-			global.Print2AgentMessageView(pretty.TReasoningStart())
-			global.Print2AgentMessageView(pretty.TReasoningContent(Choice.Message.ReasoningContent))
-			global.Print2AgentMessageView(pretty.TReasoningEnd())
+			global.PrintToTui(global.AgentMessage, pretty.TReasoningStart(), false)
+			global.PrintToTui(global.AgentMessage, pretty.TReasoningContent(Choice.Message.ReasoningContent), false)
+			global.PrintToTui(global.AgentMessage, pretty.TReasoningEnd(), false)
 
 		}
 		// 正文内容
 		if Choice.Message.Content != "" {
-			global.Print2AgentMessageView(Choice.Message.Content)
+			global.PrintToTui(global.AgentMessage, Choice.Message.Content, false)
 		}
 	}
 
@@ -53,23 +53,23 @@ func printMessage(Choice model.Choice, startReasoning *bool, stream bool) {
 	//工具请求信息不一定在delta中，也可能在message中，所以两者都要处理
 	if len(Choice.Delta.ToolCalls) != 0 {
 		for _, toolCall := range Choice.Delta.ToolCalls {
-			global.Print2AgentMessageView(pretty.TToolCall(toolCall.Function.Name) + pretty.TToolArgs(string(toolCall.Function.Arguments)))
+			global.PrintToTui(global.AgentMessage, pretty.TToolCall(toolCall.Function.Name)+pretty.TToolArgs(string(toolCall.Function.Arguments)), false)
 		}
 	}
 
 	if len(Choice.Message.ToolCalls) != 0 {
 		for _, toolCall := range Choice.Message.ToolCalls {
-			global.Print2AgentMessageView(pretty.TToolCall(toolCall.Function.Name) + pretty.TToolArgs(string(toolCall.Function.Arguments)))
+			global.PrintToTui(global.AgentMessage, pretty.TToolCall(toolCall.Function.Name)+pretty.TToolArgs(string(toolCall.Function.Arguments)), false)
 		}
 	}
 	//处理工具结果------------------------------------
 	//工具结果的role是tool，但信息不一定在delta中，也可能在message中，所以两者都要处理
 	{
 		if Choice.Delta.Role == "tool" {
-			global.Print2AgentMessageView(pretty.TToolResult(Choice.Delta.Content))
+			global.PrintToTui(global.AgentMessage, pretty.TToolResult(Choice.Delta.Content), false)
 		}
 		if Choice.Message.Role == "tool" {
-			global.Print2AgentMessageView(pretty.TToolResult(Choice.Message.Content))
+			global.PrintToTui(global.AgentMessage, pretty.TToolResult(Choice.Message.Content), false)
 		}
 	}
 }

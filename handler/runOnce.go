@@ -2,7 +2,6 @@ package handler
 
 import (
 	"HackerTeam/global"
-	"HackerTeam/tui/tip"
 	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
@@ -22,7 +21,7 @@ func AgentRunOnce(Ctx context.Context, userPrompt string) *AgentError {
 	statusBarCtx := context.Background()
 	statusBarCtx, cancel := context.WithCancel(statusBarCtx)
 	defer cancel() // 确保函数退出时取消状态栏提示的上下文
-	go tip.StatusBarScrollingTip(statusBarCtx, "Processing....", pretty.TColorLightMagenta, global.App_p, global.StatusBar_p)
+	go global.StatusBarScrollingTip(statusBarCtx, "Processing....", pretty.TColorLightMagenta)
 
 	eventChan, err := (*global.AgentRunner_p).Runner.Run(
 		Ctx,
@@ -51,7 +50,7 @@ func AgentRunOnce(Ctx context.Context, userPrompt string) *AgentError {
 			if event.IsTerminalError() {
 				//填充err，使得返回的err不为nil，表示对话发生了错误
 				err = fmt.Errorf("Event发生TerminalError: %v", event.Error)
-				global.Print2AgentMessageView(pretty.TErrorF("%v", err))
+				global.PrintToTui(global.AgentMessage, pretty.TErrorF("%v", err), false)
 				return &AgentError{
 					Error:      err,
 					ErrorType:  "TerminalError",
@@ -64,7 +63,7 @@ func AgentRunOnce(Ctx context.Context, userPrompt string) *AgentError {
 		}
 		select {
 		case <-Ctx.Done():
-			global.Print2AgentMessageView(pretty.TCancelled())
+			global.PrintToTui(global.AgentMessage, pretty.TCancelled(), false)
 			return nil
 
 		default:

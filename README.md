@@ -85,6 +85,7 @@ bootstrap/prompts/common/
 .HackerTeam/
 ├── HackerTeam.yaml          ← 主配置文件
 ├── HackerTeam.log
+├── memory.db                ← 长期记忆数据库
 ├── ReconSkills/             ← 各 Agent 独立的 Skill 目录
 ├── ScannerSkills/
 ├── ExploitSkills/
@@ -359,18 +360,63 @@ model:
 
 ---
 
+## 长期记忆
+
+每轮对话完成后自动提取关键信息并持久化到 SQLite，下次对话时智能注入上下文：
+
+- **自动提取**：后台 LLM 异步分析对话，提取事实和事件记忆（增量去重）
+- **智能预加载**：记忆少时全量注入，多了自动切语义检索
+- **SQLite 持久化**：单文件 `memory.db`，零运维，重启不丢失
+- **主动检索**：Captain 拥有 `memory_search` / `memory_load` 工具，可随时查找历史记忆
+
 ## 构建
 
 ```sh
-# 当前平台
-go build -ldflags "-s -w" -o HackerTeam .
+# Linux
+./build.sh
 
-# 跨平台（PowerShell）
+# Windows (PowerShell)
 .\build.ps1
-
-# 跨平台（Make）
-make                 # 全平台
-make linux-x64
-make macos-arm64
-make windows-x64
 ```
+
+产物输出到 `release/` 目录。
+
+
+## 部署与迁移
+
+HackerTeam 是**单文件部署**——一个二进制 + 一个配置目录就是完整的运行实例，无需 Docker、数据库或任何运行时依赖。
+
+### 部署
+
+```bash
+# 编译或下载二进制后，放到任意目录直接运行
+./HackerTeam
+# 首次运行自动生成 .HackerTeam/ 配置目录
+```
+
+只需确保二进制**所在目录可读写**。
+
+### 迁移
+
+把二进制和 `.HackerTeam/` 目录打包拷到另一台机器即可，**所有数据完整保留**：
+
+```bash
+scp HackerTeam user@new-host:/opt/hackerteam/
+scp -r .HackerTeam user@new-host:/opt/hackerteam/
+```
+
+`.HackerTeam/` 目录包含：
+
+| 文件/目录 | 内容 |
+|-----------|------|
+| `HackerTeam.yaml` | API Key、模型配置 |
+| `memory.db` | 长期记忆（渗透过程的关键信息提取） |
+| `*Skills/` | 各 Agent 的 Skill 定义 |
+| `HackerTeam.log` | 运行日志 |
+
+> **注意**：`HackerTeam.yaml` 中的 API Key 是敏感信息，迁移前请确保目标环境安全。
+
+
+## 许可证
+
+仅限授权安全测试和研究使用。详见项目根目录 LICENSE 文件。

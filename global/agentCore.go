@@ -5,6 +5,7 @@ import (
 	"embed"
 	"os"
 
+	memorysqlite "trpc.group/trpc-go/trpc-agent-go/memory/sqlite"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 )
@@ -23,6 +24,7 @@ var (
 	HackerTeamConfigPath string                   //配置文件路径
 	AgentRunner_p        *Agentrunner             //Runner，全局唯一
 	SessionService       *inmemory.SessionService //会话服务，包含自动摘要功能
+	SqliteMemoryService  *memorysqlite.Service    // sqlite记忆服务
 	FrameworkLogFile     *os.File                 // 保存日志文件句柄，防止被 GC 回收
 
 	//go:embed prompts/*

@@ -25,17 +25,19 @@ func initCaptain() *llmagent.LLMAgent {
 
 	tools := append(systemtools, operationtools...)
 	tools = append(tools, datetools...)
+	tools = append(tools, global.SqliteMemoryService.Tools()...) // 记忆工具：memory_search / memory_load
 
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			Stream: (*global.Config_p).Model.Stream,
 		}),
-		llmagent.WithTools(tools),                                      // 队长挂载文件系统工具、文件操作工具和日期工具
-		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
-		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithTools(tools),                                       // 队长挂载文件系统工具、文件操作工具、日期工具和记忆工具
+		llmagent.WithAddSessionSummary(true),                            // 启用上下文压缩注入
+		llmagent.WithEnableContextCompaction(true),                      // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithGlobalInstruction(captainPrompt),                  // 系统提示词
+		llmagent.WithEnableOnDemandSession(true),                        // 按需加载被压缩的原始数据（session_load）
+		llmagent.WithPreloadMemory(10),                                  // 预加载记忆到上下文中
+		llmagent.WithGlobalInstruction(captainPrompt),                   // 系统提示词
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
 	agent_p := setAgent("Captain", opts)

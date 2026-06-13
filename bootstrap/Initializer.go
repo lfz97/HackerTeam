@@ -3,9 +3,11 @@ package bootstrap
 import (
 	"HackerTeam/config"
 	"HackerTeam/global"
+	"HackerTeam/memory"
 	"HackerTeam/session"
 	"HackerTeam/utils/pretty"
 	"fmt"
+	stdlog "log"
 	"github.com/google/uuid"
 	"github.com/otiai10/copy"
 	"go.uber.org/zap"
@@ -29,6 +31,7 @@ const (
 	hackerTeamConfigFolder string = ".HackerTeam"
 	hackerTeamConfig       string = "HackerTeam.yaml"
 	hackerTeamLogFile      string = "HackerTeam.log"
+	memoryDBFileName       string = "memory.db"
 	operationRecord        string = "OperationRecord.md"
 	outputDir              string = "output"
 )
@@ -68,6 +71,9 @@ func Init(an string) {
 
 	//初始化内存会话服务
 	initMemorySessionService()
+
+	//初始化sqlite记忆服务
+	initSqliteMemoryService()
 
 	//初始化AgentRunner
 	NewRunner()
@@ -249,6 +255,14 @@ func initMemorySessionService() {
 	global.SessionService = session.NewMemorySessionService((*global.Config_p).Model)
 }
 
+func initSqliteMemoryService() {
+	service, err := memory.NewSQLiteMemoryService((*global.Config_p).Model, filepath.Join(global.ConfigFolderPath, memoryDBFileName))
+	if err != nil {
+		global.ShowErrorAndExit(global.Log, pretty.TErrorF("初始化sqlite记忆服务错误: %v", err))
+	}
+	global.SqliteMemoryService = service
+}
+
 func initTeam() runner.Runner {
 	CaptainAgent := initCaptain()
 	exploitAgent := initexploit()
@@ -265,7 +279,8 @@ func initTeam() runner.Runner {
 		team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
 	)
 	Runner := runner.NewRunner(global.Agentname, CaptainAgent,
-		runner.WithSessionService(global.SessionService), // 使用内存会话服务，其中包含自动摘要功能
+		runner.WithSessionService(global.SessionService),     // 使用内存会话服务，其中包含自动摘要功能
+		runner.WithMemoryService(global.SqliteMemoryService), // 使用sqlite记忆服务
 	)
 	return Runner
 }
@@ -322,4 +337,9 @@ func redirectFrameworkLog() {
 
 	//定向trpc-mcp-go的日志输出到文件
 	mcp.SetDefaultLogger(fileLogger)
+
+	//重定向标准库 log 到文件（避免 gse 等第三方库的日志污染终端）
+	if global.FrameworkLogFile != nil {
+		stdlog.SetOutput(global.FrameworkLogFile)
+	}
 }

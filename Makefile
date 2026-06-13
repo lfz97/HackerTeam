@@ -1,37 +1,13 @@
-# 最小化交叉编译 Makefile
-# 支持: linux-arm64, linux-x64, macos-arm64, macos-x64, windows-x64
-
-# 定义目标平台和架构
-TARGETS := linux-arm64 linux-x64 macos-arm64 macos-x64 windows-x64
-
-# 编译输出目录
+# 最小化 Makefile - 本地编译
 OUTPUT_DIR := release
-
-# Go 构建参数
 GO := go
 LDFLAGS := -s -w
 
-.PHONY: all clean $(TARGETS)
+.PHONY: all clean
 
-# 默认目标：构建所有平台
-all: $(TARGETS)
+all:
+	mkdir -p $(OUTPUT_DIR)
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/HackerTeam
 
-# 单独平台构建
-linux-arm64:
-	GOOS=linux GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/linux-arm64/HackerTeam
-
-linux-x64:
-	GOOS=linux GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/linux-x64/HackerTeam
-
-macos-arm64:
-	GOOS=darwin GOARCH=arm64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/macos-arm64/HackerTeam
-
-macos-x64:
-	GOOS=darwin GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/macos-x64/HackerTeam
-
-windows-x64:
-	GOOS=windows GOARCH=amd64 $(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/windows-x64/HackerTeam.exe
-
-# 清理构建产物
 clean:
 	rm -rf $(OUTPUT_DIR)/*

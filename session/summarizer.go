@@ -3,16 +3,14 @@ package session
 import (
 	"HackerTeam/config"
 	"HackerTeam/global"
+	"HackerTeam/models"
 	"HackerTeam/utils/pretty"
 	"embed"
 	"fmt"
 	"regexp"
-	"strings"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/model"
-	"trpc.group/trpc-go/trpc-agent-go/model/anthropic"
-	"trpc.group/trpc-go/trpc-agent-go/model/openai"
 	"trpc.group/trpc-go/trpc-agent-go/model/tiktoken"
 	"trpc.group/trpc-go/trpc-agent-go/session/summary"
 )
@@ -46,30 +44,9 @@ func NewSummarizer(m config.Model) summary.SessionSummarizer {
 	var summarizerModel model.Model
 
 	if m.APIType == "openai" {
-		opts := []openai.Option{
-			openai.WithBaseURL(m.BaseURL),
-			openai.WithAPIKey(m.APIKey),
-		}
-		if strings.Contains(m.Model, "deepseek") == true {
-			opts = append(opts,
-				openai.WithVariant(openai.VariantDeepSeek),
-				openai.WithReasoningContentBackfill(true), //开启推理内容回填，解决模型响应reasoning为空时，框架不拼接推理字段，导致api报错
-			)
-		}
-		summarizerModel = openai.New(
-			m.Model,
-			opts...,
-		)
-
+		summarizerModel = models.Openai(m.Model, m.BaseURL, m.APIKey)
 	} else if m.APIType == "anthropic" {
-		opts := []anthropic.Option{
-			anthropic.WithBaseURL(m.BaseURL),
-			anthropic.WithAPIKey(m.APIKey),
-		}
-		summarizerModel = anthropic.New(
-			m.Model,
-			opts...,
-		)
+		summarizerModel = models.Anthropic(m.Model, m.BaseURL, m.APIKey)
 	}
 	// ── 创建 summarizer阈值 ───────────────
 	sum := summary.NewSummarizer(

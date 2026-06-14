@@ -31,7 +31,7 @@ func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Servic
 	service, err := memorysqlite.NewService(
 		db,
 		memorysqlite.WithSoftDelete(true),
-		memorysqlite.WithMemoryLimit(200),
+		memorysqlite.WithMemoryLimit(100000),
 		memorysqlite.WithExtractor(ext),
 		memorysqlite.WithAutoMemoryExposedTools([]string{memory.AddToolName, memory.UpdateToolName}...), //为agent额外暴露添加工具和更新工具的能力，以便agent能够在记忆中添加和更新工具信息
 	)

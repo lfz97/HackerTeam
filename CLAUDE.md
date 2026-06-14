@@ -7,10 +7,10 @@
 
 ## Build & Run
 - `go build -ldflags "-s -w" -o HackerTeam .` — build for current platform
-- `.\build.ps1` — cross-compile all platforms (PowerShell)
-- `make` or `make linux-x64` etc. — cross-compile (Makefile)
+- `./build.sh` (Linux) / `.\build.ps1` (Windows) — native build → `release/`
 - `go run .` — run directly (auto-loads config from `<cwd>/.HackerTeam/`)
 - `go vet ./...` — static analysis (passes clean)
+- **CGO required** — `memory/sqlite` depends on `mattn/go-sqlite3`. Cross-compilation no longer supported; build natively on each platform.
 - Go module: `HackerTeam` (Go 1.26.1)
 
 ## Architecture
@@ -34,7 +34,8 @@
   - `global/backendCore.go` — Core domain state (config, runner, session, tools, embedded prompts)
   - `global/tui.go` — TUI page construction: `TuiInit(initFn, startFn)`, `CreateConfigPage`, `createAgentPage`
   - `global/tuihandler.go` — TUI operation wrappers: `PrintToTui(view, content, clear)`, `LoadTextAreaWithCtrlEnter`, `SetAppFuncTriggerWithEsc`, `ShowErrorAndExit`, `ShowMsgAndExitNoTrigger`, etc.
-- `bootstrap/` — Initializer (config, logging, session), member assembly (6 agent factories), main dialog loop
+- `bootstrap/` — Initializer (config, logging, session, memory), member assembly (6 agent factories), main dialog loop
+- `memory/` — `sqlite.go`: SQLite memory service factory with auto-extraction
 - `session/` — Agent runtime: summarizer, session service, prompt embedding (`prompt/*`)
 - `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), types (`model.go`)
 - `config/` — Config struct and YAML loading (`HackerTeam.yaml`)
@@ -63,6 +64,27 @@
 - `LocalExec.submit_command` executes immediately (submit+start merged into one async call) — agents MUST poll `get_status` before `get_output`; `start_command` tool no longer exists
 - `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed
 - `team.WithMemberToolStreamInner(true)` + `team.WithMemberToolInnerTextMode(team.InnerTextModeInclude)` — TUI shows sub-agent full transcript (text+tool calls+results); use `InnerTextModeExclude` to show only progress signals, hiding assistant text
+- **`models.Openai()` / `models.Anthropic()` are canonical model constructors** — `memory/sqlite.go`, `session/summarizer.go`, and `setAgent()` all use these two functions. They handle DeepSeek variant detection, reasoning backfill, and API auth. When creating a new model instance from config, call these instead of manually assembling options.
+
+## Auto Memory (SQLite)
+
+Introduced in v1.2.0. Persistent long-term memory using SQLite with background LLM extraction.
+
+### Architecture
+- `memory/sqlite.go` — factory: creates `memorysqlite.Service` with `extractor.NewExtractor`. Calls `models.Openai()`/`Anthropic()`.
+- `global/agentCore.go` — `SqliteMemoryService *memorysqlite.Service` global
+- `bootstrap/Initializer.go` — `initSqliteMemoryService()` called in `Init()`. `initTeam()` adds `runner.WithMemoryService()` to Runner.
+- `bootstrap/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
+
+### Team considerations
+- Auto extraction runs on the shared session — all sub-agent activities are captured
+- Captain is the sole memory consumer: preload injects memories into Captain's context, and memory tools are on Captain only
+- Sub-agents benefit indirectly — their work is extracted as memories, and Captain can reference past operations
+
+### Gotchas
+- `initSqliteMemoryService()` MUST be called before `initTeam()` — team creation reads `SqliteMemoryService.Tools()`, nil service → panic
+- `stdlog.SetOutput(file)` in `redirectFrameworkLog()` redirects gse dictionary-loading chatter away from TUI
+- Default memory limit: 200
 
 ## Context Management
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	_ "github.com/mattn/go-sqlite3"
+	"trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/memory/extractor"
 	memorysqlite "trpc.group/trpc-go/trpc-agent-go/memory/sqlite"
 	"trpc.group/trpc-go/trpc-agent-go/model"
@@ -32,6 +33,7 @@ func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Servic
 		memorysqlite.WithSoftDelete(true),
 		memorysqlite.WithMemoryLimit(200),
 		memorysqlite.WithExtractor(ext),
+		memorysqlite.WithAutoMemoryExposedTools([]string{memory.AddToolName, memory.UpdateToolName}...), //为agent额外暴露添加工具和更新工具的能力，以便agent能够在记忆中添加和更新工具信息
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sqlite memory service: %w", err)

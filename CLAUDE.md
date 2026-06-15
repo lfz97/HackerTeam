@@ -64,27 +64,38 @@
 - `LocalExec.submit_command` executes immediately (submit+start merged into one async call) — agents MUST poll `get_status` before `get_output`; `start_command` tool no longer exists
 - `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed
 - `team.WithMemberToolStreamInner(true)` + `team.WithMemberToolInnerTextMode(team.InnerTextModeInclude)` — TUI shows sub-agent full transcript (text+tool calls+results); use `InnerTextModeExclude` to show only progress signals, hiding assistant text
-- **`models.Openai()` / `models.Anthropic()` are canonical model constructors** — `memory/sqlite.go`, `session/summarizer.go`, and `setAgent()` all use these two functions. They handle DeepSeek variant detection, reasoning backfill, and API auth. When creating a new model instance from config, call these instead of manually assembling options.
+- **`models.Openai()` / `models.Anthropic()` are canonical model constructors** — `session/summarizer.go` and `setAgent()` use these two functions. They handle DeepSeek variant detection, reasoning backfill, and API auth. When creating a new model instance from config, call these instead of manually assembling options.
 
-## Auto Memory (SQLite)
+## Agent-Driven Memory (SQLite)
 
 Introduced in v1.2.0. Persistent long-term memory using SQLite with background LLM extraction.
 
 ### Architecture
-- `memory/sqlite.go` — factory: creates `memorysqlite.Service` with `extractor.NewExtractor`. Calls `models.Openai()`/`Anthropic()`.
+- `memory/sqlite.go` — factory: creates `memorysqlite.Service` in manual/agentic mode (no extractor). Exposes 5 tools via `WithToolEnabled(memory.DeleteToolName)` on top of `DefaultEnabledTools` (search, load, add, update). `memory_clear` is intentionally not exposed.
 - `global/agentCore.go` — `SqliteMemoryService *memorysqlite.Service` global
-- `bootstrap/Initializer.go` — `initSqliteMemoryService()` called in `Init()`. `initTeam()` adds `runner.WithMemoryService()` to Runner.
-- `bootstrap/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
+- `bootstrap/Initializer.go` — `initSqliteMemoryService()` called in `Init()`. No longer requires `config.Model` parameter (extractor removed).
+- `bootstrap/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load`/`memory_add`/`memory_update`/`memory_delete` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
+- `global/prompts/agents/captain.md` — `# Memory` section defines Captain's memory behavior: search-before-store, proactive storage, outdated correction, atomic/specific writing standards
 
 ### Team considerations
-- Auto extraction runs on the shared session — all sub-agent activities are captured
-- Captain is the sole memory consumer: preload injects memories into Captain's context, and memory tools are on Captain only
-- Sub-agents benefit indirectly — their work is extracted as memories, and Captain can reference past operations
+- Captain is the sole memory manager — all memory creation, update, and deletion happens through Captain's explicit tool calls
+- Sub-agents benefit indirectly — Captain can reference past operations and store useful patterns discovered during pentest
+- No auto-extraction means sub-agent tool outputs are NOT automatically stored; Captain decides what's worth remembering
+
+### Why no auto-extraction
+Auto-extraction was removed because of dual-writer conflicts between agent and background extractor:
+- Extractor's BM25 search is topic-matched (finds "related"), not contradiction-matched (finds "outdated") → fails to update superseded memories
+- When agent updates a memory (changing its content-hash ID), extractor references the old ID → "not found" → fallback to `AddMemory` → creates duplicate
+- Extractor `UpdateMemory` passes through `reconcileOps` unchecked (only Add ops are reconciled) → extractor can overwrite agent's updates unconditionally
+- No timestamp/version protection on `UpdateMemory` → last-write-wins without any guard
+
+Agent-driven mode avoids all of these by having a single writer who understands full conversation context.
 
 ### Gotchas
 - `initSqliteMemoryService()` MUST be called before `initTeam()` — team creation reads `SqliteMemoryService.Tools()`, nil service → panic
 - `stdlog.SetOutput(file)` in `redirectFrameworkLog()` redirects gse dictionary-loading chatter away from TUI
-- Default memory limit: 200
+- Default memory limit: 100000 (`memory/sqlite.go:WithMemoryLimit`)
+- `memory/sqlite.go` no longer imports `config`, `models`, `extractor`, or `model` — extractor model creation removed
 
 ## Context Management
 

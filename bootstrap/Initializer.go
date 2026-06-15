@@ -256,7 +256,7 @@ func initMemorySessionService() {
 }
 
 func initSqliteMemoryService() {
-	service, err := memory.NewSQLiteMemoryService((*global.Config_p).Model, filepath.Join(global.ConfigFolderPath, memoryDBFileName))
+	service, err := memory.NewSQLiteMemoryService(filepath.Join(global.ConfigFolderPath, memoryDBFileName))
 	if err != nil {
 		global.ShowErrorAndExit(global.Log, pretty.TErrorF("初始化sqlite记忆服务错误: %v", err))
 	}

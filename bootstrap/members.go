@@ -25,7 +25,7 @@ func initCaptain() *llmagent.LLMAgent {
 
 	tools := append(systemtools, operationtools...)
 	tools = append(tools, datetools...)
-	tools = append(tools, global.SqliteMemoryService.Tools()...) // 记忆工具：memory_search / memory_load
+	tools = append(tools, global.SqliteMemoryService.Tools()...) // 记忆工具：memory_search / memory_load / memory_add / memory_update / memory_delete（纯agent驱动，无自动提取）
 
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{

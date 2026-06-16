@@ -8,8 +8,10 @@ import (
 	"embed"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
+	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/model/tiktoken"
 	"trpc.group/trpc-go/trpc-agent-go/session/summary"
@@ -25,7 +27,7 @@ var (
 )
 
 const (
-	CheckTokenThresholdPercent float64 = 0.4
+	CheckTokenThresholdPercent float64 = 0.6
 	maxSummaryWords            int     = 5000
 )
 
@@ -58,6 +60,26 @@ func NewSummarizer(m config.Model) summary.SessionSummarizer {
 		summary.WithMaxSummaryWords(maxSummaryWords),     //设置摘要的最大长度，单位为词
 		summary.WithSystemPrompt(systemSummarizerPrompt), //设置系统提示词，指导模型如何进行摘要，默认为空，可以根据需要自定义
 		summary.WithPrompt(userSummarizerPrompt),         //设置用户提示词，指导模型如何根据会话内容生成摘要，默认为空，可以根据需要自定义
+		summary.WithSkipRecent(func(events []event.Event) int { //保留最后一轮完整对话
+			skip := 0
+			for i := len(events) - 1; i >= 0; i-- {
+				skip++
+				if events[i].Author == "user" {
+					return skip
+				}
+			}
+			return 0 // 没有user event则不跳过（极端情况）
+		}),
+		summary.WithToolResultFormatter(func(msg model.Message) string { //送入摘要前，将tool result进行简化，避免过长的内容导致摘要质量下降
+			content := strings.TrimSpace(msg.Content)
+			runes := []rune(content)
+			if len(runes) > 1000 {
+				head := string(runes[:500])
+				tail := string(runes[len(runes)-500:])
+				content = head + "\n...[output truncated]...\n" + tail
+			}
+			return fmt.Sprintf("[%s returned: %s]", msg.ToolName, content)
+		}),
 		summary.WithPostSummaryHook(func(s *summary.PostSummaryHookContext) error {
 			cleanSummary := reThink.ReplaceAllString(s.Summary, "") //将摘要内容中的<think>...</think>部分去掉
 			global.PrintToTui(global.AgentMessage, pretty.TColoredText(pretty.TColorGreen, fmt.Sprintf("\n->已生成摘要：\n%v\n", cleanSummary)), false)

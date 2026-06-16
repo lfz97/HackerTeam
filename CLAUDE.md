@@ -103,10 +103,14 @@ HackerTeam uses three complementary mechanisms to prevent context overflow:
 
 ### 1. Session Summarization (`session/summarizer.go` + `bootstrap/members.go`)
 - `WithAddSessionSummary(true)` on ALL 6 agents (Captain + 5 sub-agents) enables async summary injection
-- Summarizer triggers at `CheckTokenThreshold(0.4 * contextwindow)` OR `CheckTimeThreshold(10min)` via `WithChecksAny`
+- Summarizer triggers at `CheckTokenThreshold(0.6 * contextwindow)` OR `CheckTimeThreshold(10min)` via `WithChecksAny`
+- `WithSkipRecent` preserves the last complete interaction cycle (from last user message to tail) from being summarized — keeps current turn intact in prompt
+- `WithToolResultFormatter` truncates tool results to 1000 runes (head 500 + tail 500) before entering summary model input — especially valuable for sub-agents whose tool outputs (nmap, sqlmap) are 50K+ tokens. Only affects summary input; original events remain intact
+- `WithSyncSummaryIntraRun(true)` on ALL 6 agents — enables synchronous summary refresh between LLM loop iterations. Critical for sub-agents running long command chains (nmap scans, exploit attempts) where async summary may arrive too late
+- `WithSessionSummaryInjectionMode(SessionSummaryInjectionUser)` on ALL 6 agents — injects summary into user message instead of system message. Each agent has a long SOP-focused system prompt (职责边界, command execution rules, output format); keeping system area clean prevents summary from competing with SOP priority
 - Token counting uses `model/tiktoken` (BPE), configured via `summary.SetTokenCounter(counter)`
 - Summary model is the same as main model; for DeepSeek reasoning models, the token counter falls back to `cl100k_base` (within ~4-7% of DeepSeek's actual count per empirical testing)
-- **Team-specific risk**: sub-agent tool results (nmap, sqlmap, gobuster output) can be 50K+ tokens each. Team serial dispatch (5 sub-agents) can produce 1M+ tokens in a single `runner.Run()`. If the summarizer's first attempt fails (e.g. summary model itself exceeds context), session grows unbounded — check `HackerTeam.log` for "summary worker failed"
+- **Team-specific risk**: sub-agent tool results (nmap, sqlmap, gobuster output) can be 50K+ tokens each. Team serial dispatch (5 sub-agents) can produce 1M+ tokens in a single `runner.Run()`. If the summarizer's first attempt fails, session grows unbounded — check `HackerTeam.log` for "summary worker failed". With ToolResultFormatter truncating to 1000 runes, this risk is significantly reduced but not eliminated for the main conversation (Compaction handles that)
 - Post-summary hook strips `<think>...</think>` tags from summary text
 
 ### 2. Context Compaction (`bootstrap/members.go`)

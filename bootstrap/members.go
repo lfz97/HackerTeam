@@ -65,6 +65,7 @@ func initRecon() *llmagent.LLMAgent {
 			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                          //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
@@ -103,6 +104,7 @@ func initexploit() *llmagent.LLMAgent {
 			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                          //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
@@ -142,6 +144,7 @@ func initpostexploit() *llmagent.LLMAgent {
 			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                          //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
@@ -180,6 +183,7 @@ func initScanner() *llmagent.LLMAgent {
 			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                          //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
@@ -217,6 +221,7 @@ func initReproducer() *llmagent.LLMAgent {
 			Stream: (*global.Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                           // 启用上下文压缩注入
+		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                          //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断

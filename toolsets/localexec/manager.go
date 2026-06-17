@@ -27,19 +27,93 @@ func (m *Manager) Submit(opts SubmitOptions) string {
 
 // Start 启动任务
 func (m *Manager) Start(id string) error {
+
+	// Windows 不支持 PTY，降级使用普通 pipe
+	if runtime.GOOS == "windows" {
+		err := m.startCmdWithPipe(id)
+		return err
+	} else {
+		err := m.startCmdWithPty(id)
+		return err
+	}
+
+}
+
+func (m *Manager) startCmdWithPipe(id string) error {
 	job := m.get(id)
 	if job == nil {
 		return errors.New("job not found")
 	}
 	job.mu.Lock()
 	defer job.mu.Unlock()
+
 	if job.status != StatusPending {
 		return errors.New("job not in pending status")
 	}
-
 	cmd := buildCmd(job.SubmitOptions)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		job.status = StatusFailed
+		job.errStr = err.Error()
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		job.status = StatusFailed
+		job.errStr = err.Error()
+		return err
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		job.status = StatusFailed
+		job.errStr = err.Error()
+		return err
+	}
+	job.stdin = stdin
+	if err := cmd.Start(); err != nil {
+		job.status = StatusFailed
+		job.errStr = err.Error()
+		return err
+	}
+	job.cmd = cmd
+	job.pid = cmd.Process.Pid
+	job.status = StatusRunning
+	job.startedAt = time.Now()
+	go copyStream(stdout, &job.stdoutBuf)
+	go copyStream(stderr, &job.stderrBuf)
+	go func() {
+		err := cmd.Wait()
+		job.mu.Lock()
+		defer job.mu.Unlock()
+		job.endedAt = time.Now()
+		job.pid = 0
+		if err != nil {
+			job.status = StatusFailed
+			job.errStr = err.Error()
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				job.exitCode = exitErr.ExitCode()
+			}
+		} else {
+			job.status = StatusDone
+			job.exitCode = 0
+		}
+	}()
+	return nil
+}
 
-	// 用 PTY 替代普通 pipe，避免 ssh/sudo 等直接写 /dev/tty 破坏 TUI
+func (m *Manager) startCmdWithPty(id string) error {
+	job := m.get(id)
+	if job == nil {
+		return errors.New("job not found")
+	}
+	job.mu.Lock()
+	defer job.mu.Unlock()
+
+	if job.status != StatusPending {
+		return errors.New("job not in pending status")
+	}
+	cmd := buildCmd(job.SubmitOptions)
+	// Unix: 用 PTY 替代普通 pipe，避免 ssh/sudo 等直接写 /dev/tty 破坏 TUI
 	ptmx, err := pty.Start(cmd)
 	if err != nil {
 		job.status = StatusFailed

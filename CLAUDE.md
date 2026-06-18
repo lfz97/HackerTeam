@@ -10,6 +10,7 @@
 - `./build.sh` (Linux) / `.\build.ps1` (Windows) — native build → `release/`
 - `go run .` — run directly (auto-loads config from `<cwd>/.HackerTeam/`)
 - `go vet ./...` — static analysis (passes clean)
+- `go mod tidy` — sync dependencies after adding/removing imports
 - **CGO required** — `memory/sqlite` depends on `mattn/go-sqlite3`. Cross-compilation no longer supported; build natively on each platform.
 - Go module: `HackerTeam` (Go 1.26.1)
 
@@ -37,8 +38,8 @@
 - `bootstrap/` — Initializer (config, logging, session, memory), member assembly (6 agent factories), main dialog loop
 - `memory/` — `sqlite.go`: SQLite memory service factory with auto-extraction
 - `session/` — Agent runtime: summarizer, session service, prompt embedding (`prompt/*`)
-- `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), types (`model.go`)
-- `config/` — Config struct and YAML loading (`HackerTeam.yaml`)
+- `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), tool call/result matching buffer (`toolMsgBuffer.go`), types (`model.go`)
+- `config/` — Config struct, YAML template (`config.yaml` embedded via `//go:embed` in `yaml_template.go`)
 - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
 - `toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents)
 - `functionTools/` — Custom Go function tools for agents
@@ -46,6 +47,7 @@
 
 ## Dependencies
 - `trpc-agent-go` — main agent framework, currently from upstream `trpc.group/trpc-go/trpc-agent-go` (no fork/replace)
+- `glamour` v1.0.0 — Markdown → ANSI renderer (non-stream mode uses `glamour.Render` + `tview.TranslateANSI` for formatted markdown display)
 
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
@@ -65,6 +67,13 @@
 - `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed
 - `team.WithMemberToolStreamInner(true)` + `team.WithMemberToolInnerTextMode(team.InnerTextModeInclude)` — TUI shows sub-agent full transcript (text+tool calls+results); use `InnerTextModeExclude` to show only progress signals, hiding assistant text
 - **`models.Openai()` / `models.Anthropic()` are canonical model constructors** — `session/summarizer.go` and `setAgent()` use these two functions. They handle DeepSeek variant detection, reasoning backfill, and API auth. When creating a new model instance from config, call these instead of manually assembling options.
+- **ANSI → tview tag conversion required** — tview's `SetDynamicColors(true)` only supports its own color tag format (`[red]text[-]`). Standard ANSI escape sequences must go through `tview.TranslateANSI()` before writing to a TextView. Without this, ANSI codes appear as visible garbage.
+- **Tool response content must be skipped in content rendering** — Both stream and non-stream content paths check `Role != "tool"` to prevent tool JSON from leaking through the main content renderer.
+- **Multi-tool results handled in `runOnce.go`** — Framework merges parallel tool results into a single `tool.response` event with N Choices. `AgentRunOnce` detects `ObjectTypeToolResponse` and iterates ALL Choices.
+- **Glamour markdown rendering** — Non-stream body text is rendered via `glamour` (dark theme). `document.margin = 0` removes dark theme's left margin; `strings.TrimRight` strips trailing whitespace to prevent alignment artifacts before tool calls.
+- **`show_reasoning` config** — `config.Model.ShowReasoning` (`yaml:"show_reasoning"`) controls reasoning/thinking display. Default `false`. Affects both stream and non-stream paths.
+- **`message.go` refactored** — `printMessage` split into `renderStreamEvent`, `renderNonStreamEvent`, `renderToolCall`, `renderToolResult`. Tool call/result rendering uses shared `addToolCallMsg`/`addToolResultMsg` helpers in `toolMsgBuffer.go`.
+- **embedFS case sensitivity** — `//go:embed` + `ReadFile` paths are case-sensitive on Linux. Always match exact file name case between `go:embed` glob patterns and `ReadFile` calls.
 
 ## Agent-Driven Memory (SQLite)
 

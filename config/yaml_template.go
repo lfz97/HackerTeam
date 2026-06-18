@@ -1,16 +1,8 @@
 package config
 
-const Template string = `#用户配置
-user:
-  userid: "{USERID}"
+import (
+	_ "embed"
+)
 
-# 模型配置
-model:
-  model: "deepseek-reasoner"
-  baseurl: "https://api.deepseek.com"
-  apikey: "your-api-key"
-  apitype: "openai" # openai 或者 anthropic
-  contextwindow: 64000 # 上下文窗口大小，请参考模型文档设置，影响自动摘要功能的触发时机
-  stream: true # 是否开启流式输出，开启后可以实时看到模型的推理过程和工具调用信息
-
-`
+//go:embed config.yaml
+var Template string

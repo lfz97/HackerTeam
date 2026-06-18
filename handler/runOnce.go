@@ -17,6 +17,7 @@ type AgentError struct {
 }
 
 func AgentRunOnce(Ctx context.Context, userPrompt string) *AgentError {
+	toolMsgBuffer.toolMsgMap = map[string]*toolmsg{}
 	// 修改状态栏提示，显示正在运行中
 	statusBarCtx := context.Background()
 	statusBarCtx, cancel := context.WithCancel(statusBarCtx)
@@ -69,10 +70,20 @@ func AgentRunOnce(Ctx context.Context, userPrompt string) *AgentError {
 		default:
 		}
 		if event.Response != nil && len((*(*event).Response).Choices) > 0 {
+			response := (*event).Response
 
-			Choice := (*(*event).Response).Choices[0]
-			printMessage(Choice, &startReasoning, (*global.AgentRunner_p).Stream)
-			gatherContentMessage(&OutputPart, Choice, (*global.AgentRunner_p).Stream)
+			// 工具结果事件可能包含多个 Choice（框架将并行工具调用的结果合并到一个事件中），
+			// 需要遍历所有 Choice 而非只取 Choices[0]。
+			if response.Object == model.ObjectTypeToolResponse {
+				for _, Choice := range response.Choices {
+					printMessage(Choice, &startReasoning, (*global.AgentRunner_p).Stream)
+					gatherContentMessage(&OutputPart, Choice, (*global.AgentRunner_p).Stream)
+				}
+			} else {
+				Choice := response.Choices[0]
+				printMessage(Choice, &startReasoning, (*global.AgentRunner_p).Stream)
+				gatherContentMessage(&OutputPart, Choice, (*global.AgentRunner_p).Stream)
+			}
 
 		}
 		// event.IsRunnerCompletion()判断是否完成输出

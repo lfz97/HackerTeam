@@ -549,20 +549,25 @@ func TReasoningContent(text string) string {
 	return fmt.Sprintf("[yellow::d]%s[-:-:-]", text)
 }
 
-// ── 工具区块 ─────────────────────────────────
-
-// TToolCall TUI 工具调用
-func TToolCall(name string) string {
-	return fmt.Sprintf("\n[magenta::b]⚙ [-:-:-][cyan]%s[-]\n", name)
+// ── 正文区块 ─────────────────────────────────
+func TContentNoneStreamTag(text string) string {
+	return fmt.Sprintf("● %s", text)
 }
 
-// TToolArgs TUI 工具参数
+// ── 工具区块 ─────────────────────────────────
+
+// TToolCall TUI 工具调用（单行：工具名）
+func TToolCall(name string) string {
+	return fmt.Sprintf("\n[#C9966A]⮡ %s[-]", name)
+}
+
+// TToolArgs TUI 工具参数（跟在工具名后）
 func TToolArgs(args string) string {
 	displayArgs := args
 	if len(displayArgs) > 200 {
 		displayArgs = displayArgs[:200] + "..."
 	}
-	return fmt.Sprintf("[gray::d]    ├─ 参数: [-:-:-]%s\n", displayArgs)
+	return fmt.Sprintf(" [#8B7355]%s[-]", displayArgs)
 }
 
 // TToolResult TUI 工具结果
@@ -571,7 +576,7 @@ func TToolResult(text string) string {
 	if len(displayText) > 300 {
 		displayText = displayText[:300] + "..."
 	}
-	return fmt.Sprintf("[gray::d]    └─ 结果: [-:-:-]%s\n", displayText)
+	return fmt.Sprintf("\n[#8B7355]  %s[-]", displayText)
 }
 
 // ── 通用 ─────────────────────────────────────

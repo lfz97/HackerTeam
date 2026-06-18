@@ -579,6 +579,57 @@ func TToolResult(text string) string {
 	return fmt.Sprintf("\n[#8B7355]  %s[-]", displayText)
 }
 
+// TToolCompact 紧凑单行工具渲染：绿点 + 橙色工具名 + 灰色参数/结果概要
+// 格式: ● name  args → resultSummary
+func TToolCompact(name string, args []byte, result string) string {
+	// ── 参数压缩：去换行、合并空格、截断到 60 字符 ──
+	var compactArgs string
+	if len(args) > 0 {
+		s := strings.ReplaceAll(string(args), "\n", " ")
+		s = strings.ReplaceAll(s, "  ", " ")
+		s = strings.TrimSpace(s)
+		if len(s) > 60 {
+			s = s[:60] + "..."
+		}
+		if s != "" {
+			compactArgs = " " + s
+		}
+	}
+
+	// ── 结果概要：短文本直接显示，长文本只显示统计 ──
+	var resultSummary string
+	if result == "" {
+		resultSummary = "∅"
+	} else {
+		lines := strings.Count(result, "\n") + 1
+		chars := len(result)
+		if chars <= 60 && lines <= 1 {
+			resultSummary = strings.TrimSpace(result)
+		} else if lines > 1 {
+			resultSummary = fmt.Sprintf("%d lines, %s", lines, formatSize(chars))
+		} else {
+			resultSummary = formatSize(chars)
+		}
+	}
+
+	return fmt.Sprintf(
+		"\n[-:-:-]  [green]●[-] [%s]%s[-] [gray::d]%s → %s[-]",
+		TColorClaudeCodeOrange, name, compactArgs, resultSummary,
+	)
+}
+
+// formatSize 将字节数格式化为人类可读的大小
+func formatSize(n int) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%dB", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1fKB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1fMB", float64(n)/(1024*1024))
+	}
+}
+
 // ── 通用 ─────────────────────────────────────
 
 // TDivider TUI 分隔线

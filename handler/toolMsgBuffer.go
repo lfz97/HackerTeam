@@ -43,11 +43,11 @@ func addToolResultMsg(toolcallid string, content string) {
 	if msg_p != nil {
 		(*msg_p).Result = content
 
-		global.PrintToTui(global.AgentMessage, pretty.TToolCall((*msg_p).FunctionName), false)
-		if len((*msg_p).FunctionArguments) != 0 {
-			global.PrintToTui(global.AgentMessage, pretty.TToolArgs(string((*msg_p).FunctionArguments)), false)
-		}
-		global.PrintToTui(global.AgentMessage, pretty.TToolResult((*msg_p).Result), false)
+		global.PrintToTui(global.AgentMessage, pretty.TToolCompact(
+			(*msg_p).FunctionName,
+			(*msg_p).FunctionArguments,
+			(*msg_p).Result,
+		), false)
 
 	}
 }

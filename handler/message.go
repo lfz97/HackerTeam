@@ -86,7 +86,7 @@ func renderNonStreamEvent(Choice model.Choice) {
 	if strings.TrimSpace(Choice.Message.Content) != "" && Choice.Message.Role != "tool" {
 		out, _ := glamourRenderer.Render(pretty.TContentNoneStreamTag(Choice.Message.Content))
 		out = strings.TrimRight(out, "\n\r ")
-		global.PrintToTui(global.AgentMessage, tview.TranslateANSI(out), false)
+		global.PrintToTui(global.AgentMessage, tview.TranslateANSI(out)+"[-:-:-]", false)
 	}
 }
 

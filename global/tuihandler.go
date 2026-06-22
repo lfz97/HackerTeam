@@ -15,8 +15,10 @@ var app_p *tview.Application
 
 type View = *tview.TextView
 type TextArea = *tview.TextArea
+type Pages = *tview.Pages
 
 var (
+	pages Pages
 	//page config
 	bannerBar View
 	Log       View

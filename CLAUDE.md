@@ -54,7 +54,7 @@
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
 - Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer's folder is intentionally left empty, no pentest-tool skills)
 - Embedded skill template: `global/skillsTemplates/pentest-tools/SKILL.md.template` (via `//go:embed` in `global/agentCore.go`)
-- `/flush` must re-create skill repos and re-attach to agents
+- `/flush` automatically re-creates skill repos — each agent's `init*()` function calls `skill.NewFSRepository(...)` locally, and `NewRunner()` → `initTeam()` re-runs all factories. Unlike HyperBot's global SkillRepo singleton, this per-agent pattern has no cache staleness risk.
 
 ## Terminology
 - "Planner" in trpc-agent-go = `planner.Planner` interface (agent-level request/response hooks: `BuildPlanningInstruction` + `ProcessPlanningResponse`). Mounted via `llmagent.WithPlanner()`, NOT a tool. Builtin planner just sets `ReasoningEffort`/`ThinkingEnabled`/`ThinkingTokens` on model request — equivalent to manual config, no prompt injection. React planner injects `/*PLANNING*/`/`/*ACTION*/`/`/*FINAL_ANSWER*/` tags + prevents premature `Done=true` via response post-processing.

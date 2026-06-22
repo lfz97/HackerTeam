@@ -2,6 +2,7 @@ package global
 
 import (
 	"HackerTeam/utils/pretty"
+	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
@@ -22,7 +23,7 @@ var (
 	inputAreaBg tcell.Color = tcell.GetColor(pretty.TuiInputAreaBg) // 输入区背景色
 )
 
-func CreateConfigPage(pages *tview.Pages, initFn, startFn func()) tview.Primitive {
+func CreateConfigPage() tview.Primitive {
 	// Banner 区域
 	bannerBar = tview.NewTextView().
 		SetDynamicColors(true).
@@ -48,21 +49,10 @@ func CreateConfigPage(pages *tview.Pages, initFn, startFn func()) tview.Primitiv
 	ConfigPageFlex.AddItem(bannerBar, 10, 0, false)
 	ConfigPageFlex.AddItem(Log, 0, 1, false)
 
-	go func() {
-		//启动检测
-		initFn()
-		//如果Init都成功了，创建Agent页面
-		AgentPage := createAgentPage(startFn)
-		app_p.QueueUpdateDraw(func() {
-			//添加并切换到Agent页面
-			pages.AddPage("AgentPage", AgentPage, true, true)
-			pages.SwitchToPage("AgentPage")
-		})
-	}()
 	return ConfigPageFlex
 }
 
-func createAgentPage(f func()) tview.Primitive {
+func createAgentPage() tview.Primitive {
 
 	//设置标题状态栏
 	StatusBar = tview.NewTextView()
@@ -110,28 +100,39 @@ func createAgentPage(f func()) tview.Primitive {
 	MainFlex.AddItem(MiddleFlex_p, 0, 1, false) // 中间的sidebar+Agent消息区占剩余空间
 	MainFlex.AddItem(InputArea, 1, 0, true)     // 底部的输入区占2行
 
-	go func() {
-		f()
-	}()
-
 	return MainFlex
 }
 
-func TuiInit(initFn, startFn func()) {
+func Frontendinit() {
 	// 创建应用实例和页面容器
 	app_p = tview.NewApplication()
-	pages := tview.NewPages()
-	pages.AddPage("config", CreateConfigPage(pages, initFn, startFn), true, true) // 初始显示配置页
+	pages = tview.NewPages()
+	pages.AddPage("ConfigCheck", CreateConfigPage(), true, true) // 初始配置页，默认显示
+	pages.AddPage("AgentPage", createAgentPage(), true, true)    // Agent页面
 
-	//设置应用根组件并启动
+	//设置应用根组件
 	app_p.SetRoot(pages, true) // true = 全屏模式
 	app_p.EnableMouse(true)    //允许接收鼠标事件
 	app_p.EnablePaste(true)    //启用 bracketed paste，避免长文本粘贴时逐字符处理导致 CPU 飙升和界面卡死
 
 }
 
+func Backendinit(initFn, startFn func()) {
+	go func() {
+		app_p.QueueUpdateDraw(func() {
+			pages.SwitchToPage("ConfigCheck") // 确保初始化期间 ConfigCheck 在最前面
+		})
+		initFn()
+		// Init 成功后切换到 Agent 页面并开始对话循环
+		app_p.QueueUpdateDraw(func() {
+			pages.SwitchToPage("AgentPage")
+		})
+		startFn()
+	}()
+}
+
 func TuiRun() {
-	if err := app_p.Run(); err != nil {
-		panic(err)
+	if err := app_p.Run(); err != nil { // main goroutine 阻塞在事件循环
+		fmt.Printf("Error running application: %v\n", err)
 	}
 }

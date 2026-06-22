@@ -6,9 +6,9 @@ import (
 )
 
 func main() {
-	global.TuiInit(
-		func() { bootstrap.Init("HackerTeam") },
-		func() { bootstrap.AgentStart() },
-	)
+	global.Frontendinit()
+	global.Backendinit(func() { bootstrap.Init("HackerTeam") },
+		func() { bootstrap.AgentStart() })
+
 	global.TuiRun()
 }

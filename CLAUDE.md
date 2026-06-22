@@ -33,7 +33,7 @@
 ## Directory Map
 - `global/` — Shared state: `Agentrunner` struct, config pointer, session service, embedFS (`PromptFiles`/`ToolSkills`), prompt strings, TUI widget references
   - `global/backendCore.go` — Core domain state (config, runner, session, tools, embedded prompts)
-  - `global/tui.go` — TUI page construction: `TuiInit(initFn, startFn)`, `CreateConfigPage`, `createAgentPage`
+  - `global/tui.go` — TUI page construction + startup orchestration: `Frontendinit()`, `Backendinit(initFn, startFn)`, `TuiRun()`, `CreateConfigPage()`, `createAgentPage()`
   - `global/tuihandler.go` — TUI operation wrappers: `PrintToTui(view, content, clear)`, `LoadTextAreaWithCtrlEnter`, `SetAppFuncTriggerWithEsc`, `ShowErrorAndExit`, `ShowMsgAndExitNoTrigger`, etc.
 - `bootstrap/` — Initializer (config, logging, session, memory), member assembly (6 agent factories), main dialog loop
 - `memory/` — `sqlite.go`: SQLite memory service factory with auto-extraction

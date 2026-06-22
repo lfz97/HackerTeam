@@ -110,7 +110,7 @@ func Mkdir(ctx context.Context, req struct {
 		}
 	}
 	return map[string]string{
-		"CreatedDir": req.Path,
+		"created": req.Path,
 	}, nil
 }
 
@@ -135,8 +135,7 @@ func Copy(ctx context.Context, req struct {
 		return nil, fmt.Errorf("failed to copy: %w", err)
 	}
 	return map[string]string{
-		"Src": req.Src,
-		"Dst": req.Dst,
+		"copied": fmt.Sprintf("%s → %s", req.Src, req.Dst),
 	}, nil
 }
 
@@ -171,8 +170,7 @@ func MV(ctx context.Context, req struct {
 		return nil, fmt.Errorf("source was moved but could not be removed: %w", err)
 	}
 	return map[string]string{
-		"OldPath": req.OldPath,
-		"NewPath": req.NewPath,
+		"moved": fmt.Sprintf("%s → %s", req.OldPath, req.NewPath),
 	}, nil
 }
 

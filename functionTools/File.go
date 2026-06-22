@@ -46,9 +46,7 @@ func WriteFile(ctx context.Context, req struct {
 	}
 
 	return map[string]string{
-		"WritePath":   req.Path,
-		"WriteLength": strconv.Itoa(length),
-		"message":     "Success",
+		"bytes_written": strconv.Itoa(length),
 	}, nil
 }
 
@@ -96,61 +94,51 @@ func EditFile(ctx context.Context, req struct {
 	if req.Old == "" {
 		return nil, errors.New("`Old` cannot be empty")
 	}
-	contentBytes, err := os.ReadFile(req.Path)
+	oldBytes, err := os.ReadFile(req.Path)
 	if err != nil {
 		return nil, err
 	}
-	contentNow := string(contentBytes)
+	oldContent := string(oldBytes)
+
 	Indexes := []int{}
 	offset := 0
 	for {
-		idx := strings.Index(contentNow[offset:], req.Old)
+		idx := strings.Index(oldContent[offset:], req.Old)
 		if idx == -1 {
 			break
 		}
-		offset += idx //指针移动到匹配字符串的起始位置
+		offset += idx
 		Indexes = append(Indexes, offset)
-		offset += len(req.Old) //指针移动到匹配字符串的末尾位置，继续向后搜索下一个匹配字符串
-
+		offset += len(req.Old)
 	}
 	if len(Indexes) == 0 {
 		return nil, errors.New("oldContent not found in file")
 	}
-	matchLines := []int{}
-	for _, Index := range Indexes {
-		line := strings.Count(contentNow[:Index], "\n") + 1
-		matchLines = append(matchLines, line)
-	}
-	if !req.ReplaceAll {
-		if len(Indexes) > 1 {
-			return nil, errors.New("multiple matches found for oldContent, but replace_all is set to false")
-		}
-		err = os.WriteFile(req.Path, []byte(strings.ReplaceAll(contentNow, req.Old, req.New)), 0644) //仅替换唯一匹配
-		if err != nil {
-			return nil, err
-		}
-		return map[string]string{
-			"EditPath": req.Path,
-			"message":  "Success",
-			"EditLine": strconv.Itoa(matchLines[0]),
-		}, nil
-
-	} else {
-		err = os.WriteFile(req.Path, []byte(strings.ReplaceAll(contentNow, req.Old, req.New)), 0644)
-		if err != nil {
-			return nil, err
-		}
-		bytes, err := json.Marshal(matchLines)
-		if err != nil {
-			return nil, err
-		}
-		return map[string]string{
-			"EditPath":  req.Path,
-			"message":   "Success",
-			"EditLines": string(bytes),
-		}, nil
+	if !req.ReplaceAll && len(Indexes) > 1 {
+		return nil, errors.New("multiple matches found for oldContent, but replace_all is set to false")
 	}
 
+	newContent := strings.ReplaceAll(oldContent, req.Old, req.New)
+	err = os.WriteFile(req.Path, []byte(newContent), 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	// 生成 unified diff，方便 LLM 验证编辑结果
+	diff := difflib.UnifiedDiff{
+		A:        difflib.SplitLines(oldContent),
+		B:        difflib.SplitLines(newContent),
+		FromFile: req.Path,
+		ToFile:   req.Path,
+		Context:  3,
+	}
+	text, err := difflib.GetUnifiedDiffString(diff)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"diff": text,
+	}, nil
 }
 
 type matchInfo struct {
@@ -217,8 +205,7 @@ func DeleteFile(ctx context.Context, req struct {
 		return nil, err
 	}
 	return map[string]string{
-		"DeletePath": req.Path,
-		"message":    "Success",
+		"deleted": req.Path,
 	}, nil
 }
 

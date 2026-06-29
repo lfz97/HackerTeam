@@ -42,26 +42,33 @@ func PrintToTui(viewType View, content string, clear bool) {
 	})
 }
 
-func LoadTextAreaWithCtrlEnter(textArea TextArea) string {
+func LoadTextAreaWithEnter(textArea TextArea) string {
 	var ch chan string = make(chan string)
 	app_p.QueueUpdateDraw(func() {
 		app_p.SetFocus(textArea)
 
 		//注册一个输入捕获器，每次用户在输入框敲击键盘时都会触发
 		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			//当用户按下ctrl+enter时，获取输入内容，清空输入框，并发送信号继续执行后续逻辑
-			if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModCtrl { //按下Ctrl+Enter时触发输入获取和信号发送
-				//提交后注销输入捕获器，避免回复期间再次Ctrl+Enter向无人接收的channel发送导致UI阻塞
+			// Enter 提交输入
+			// ModNone = 0，无任何修饰键（Ctrl/Shift/Alt 均未按下），即裸按 Enter
+			// bracketed paste 保证粘贴里的 \n 走 PasteEvent 通道，不会产生 KeyEnter 事件
+			if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
+				//提交后注销输入捕获器，避免回复期间再次Enter向无人接收的channel发送导致UI阻塞
 				textArea.SetInputCapture(nil)
 
 				//获取输入文本
 				text := textArea.GetText()
 				textArea.SetText("", false)
 				ch <- text
-				return nil //ctrl+enter的事件不捕获
+				return nil //Enter事件不捕获
 			}
 
-			//传递事件，累积到捕获器内部
+			// Shift+Enter 插入换行（手动多行输入）
+			if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModShift {
+				return event
+			}
+
+			//传递事件给 TextArea 默认处理（插入字符、换行等）
 			return event
 		})
 	})
@@ -75,7 +82,7 @@ func SidebarUserInputTip() string {
 		pretty.TColoredText(pretty.TColorSkyBlue, "➤"), pretty.TColoredText(pretty.TColorSkyBlue, "/new"),
 		pretty.TColoredText(pretty.TColorSkyBlue, "➤"), pretty.TColoredText(pretty.TColorSkyBlue, "/exit"),
 		pretty.TColoredText(pretty.TColorSkyBlue, "➤"), pretty.TColoredText(pretty.TColorSkyBlue, "/flush"),
-		pretty.TColoredText(pretty.TColorSkyBlue, "⏎"), pretty.TColoredText(pretty.TColorSkyBlue, "Ctrl+Enter"),
+		pretty.TColoredText(pretty.TColorSkyBlue, "⏎"), pretty.TColoredText(pretty.TColorSkyBlue, "Enter"),
 	)
 	return coloredtip
 }
@@ -124,7 +131,7 @@ func SetAppFuncTriggerWithEsc(f func()) {
 	app_p.QueueUpdateDraw(func() {
 		app_p.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 			if event.Key() == tcell.KeyEscape {
-				f() // 取消 context
+				f() // 执行回调
 				return nil
 			}
 			return event // 其他按键正常传递

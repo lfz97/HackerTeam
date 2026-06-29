@@ -28,7 +28,7 @@ func AgentRunIteratively(Ctx context.Context, inputContext TurnResult) *TurnResu
 		if inputContext.Code == New || inputContext.Code == Continue || inputContext.Code == Int || inputContext.Code == Flush {
 			//更新侧边栏提示语，引导用户输入
 			global.PrintToTui(global.Sidebar, global.SidebarUserInputTip(), true)
-			userPrompt = global.LoadTextAreaWithCtrlEnter(global.InputArea) //启用输入框并将用户输入放进Channel
+			userPrompt = global.LoadTextAreaWithEnter(global.InputArea) //启用输入框并将用户输入放进Channel
 
 			{
 				checkprompt := strings.ReplaceAll(userPrompt, "\n", "")
@@ -73,9 +73,9 @@ func AgentRunIteratively(Ctx context.Context, inputContext TurnResult) *TurnResu
 		}
 	}
 
-	// 注册一个全局的输入捕获器，监听ESC键以取消后续agent的输出。
+	// 注册应用级输入捕获器，监听ESC键以取消后续agent的输出。
 	global.SetAppFuncTriggerWithEsc(cancel)
-	// 函数返回前清除全局捕获器，避免ESC事件被持续拦截
+	// 函数返回前清除应用级捕获器，避免ESC事件被持续拦截
 	defer global.ClearAppFuncTrigger()
 
 	// AgentRunOnce返回的消息包含本次对话输入输出的所有消息

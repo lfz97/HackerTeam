@@ -26,8 +26,6 @@ func AgentRunIteratively(Ctx context.Context, inputContext TurnResult) *TurnResu
 	for {
 		//如果是新对话、继续对话或中断后恢复，用户自行输入prompt
 		if inputContext.Code == New || inputContext.Code == Continue || inputContext.Code == Int || inputContext.Code == Flush {
-			//更新侧边栏提示语，引导用户输入
-			global.PrintToTui(global.Sidebar, global.SidebarUserInputTip(), true)
 			userPrompt = global.LoadTextAreaWithEnter(global.InputArea) //启用输入框并将用户输入放进Channel
 
 			{

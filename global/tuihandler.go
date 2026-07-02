@@ -26,8 +26,9 @@ var (
 	//page agent
 	StatusBar    View
 	AgentMessage View
-	Sidebar      View
 	InputArea    TextArea
+	InputHint    View
+	HelpList     *tview.List
 )
 
 var DefaultStatusBarTip string = pretty.TColoredText(pretty.TColorSkyBlue, "✦ « L'inspiration commence ici. » ✦")
@@ -49,7 +50,13 @@ func LoadTextAreaWithEnter(textArea TextArea) string {
 
 		//注册一个输入捕获器，每次用户在输入框敲击键盘时都会触发
 		textArea.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-			// Enter 提交输入
+			// Ctrl+K 切换帮助页
+		if event.Key() == tcell.KeyCtrlK {
+			ToggleHelpPage()
+			return nil
+		}
+
+		// Enter 提交输入
 			// ModNone = 0，无任何修饰键（Ctrl/Shift/Alt 均未按下），即裸按 Enter
 			// bracketed paste 保证粘贴里的 \n 走 PasteEvent 通道，不会产生 KeyEnter 事件
 			if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
@@ -75,16 +82,44 @@ func LoadTextAreaWithEnter(textArea TextArea) string {
 	return <-ch //等待channel直到获取到输入内容
 }
 
-// SidebarUserInputTip 返回侧边栏的用户输入提示信息
-func SidebarUserInputTip() string {
-	coloredtip := fmt.Sprintf(
-		"%s %s  [gray]新对话[-]\n%s %s  [gray]退出[-]\n%s %s [gray]刷新工具[-]\n%s %s [gray]发送[-]",
-		pretty.TColoredText(pretty.TColorSkyBlue, "➤"), pretty.TColoredText(pretty.TColorSkyBlue, "/new"),
-		pretty.TColoredText(pretty.TColorSkyBlue, "➤"), pretty.TColoredText(pretty.TColorSkyBlue, "/exit"),
-		pretty.TColoredText(pretty.TColorSkyBlue, "➤"), pretty.TColoredText(pretty.TColorSkyBlue, "/flush"),
-		pretty.TColoredText(pretty.TColorSkyBlue, "⏎"), pretty.TColoredText(pretty.TColorSkyBlue, "Enter"),
-	)
-	return coloredtip
+// SlashCommand 斜杠指令
+type SlashCommand struct {
+	Command     string
+	Description string
+}
+
+// DefaultSlashCommands 默认指令清单
+var DefaultSlashCommands = []SlashCommand{
+	{"/new", "开始新对话"},
+	{"/exit", "退出程序"},
+	{"/flush", "刷新工具"},
+}
+
+// ShowHelpPage 显示斜杠指令帮助页
+func ShowHelpPage() {
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	flex.SetBackgroundColor(bg)
+	flex.AddItem(HelpList, 0, 1, true)
+	app_p.SetRoot(flex, true)
+	helpPageVisible = true
+}
+
+// HideHelpPage 关闭帮助页，回到输入框
+func HideHelpPage() {
+	app_p.SetRoot(pages, true)
+	app_p.SetFocus(InputArea)
+	helpPageVisible = false
+}
+
+var helpPageVisible bool
+
+// ToggleHelpPage 切换帮助页显示/隐藏
+func ToggleHelpPage() {
+	if helpPageVisible {
+		HideHelpPage()
+	} else {
+		ShowHelpPage()
+	}
 }
 
 // DisplayScrollingTip 在指定的TextView中显示平滑滚动的提示信息

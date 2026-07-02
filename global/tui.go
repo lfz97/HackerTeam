@@ -66,9 +66,7 @@ func createAgentPage() tview.Primitive {
 		SetScrollable(true).    // 可滚动
 		SetWrap(true)
 
-	AgentMessage.SetBackgroundColor(bg)      // 设置背景颜色
-	AgentMessage.SetBorder(true)             // 设置边框
-	AgentMessage.SetBorderColor(borderColor) // 设置边框颜色
+	AgentMessage.SetBackgroundColor(bg) // 设置背景颜色
 
 	//设置底部输入区
 	InputArea = tview.NewTextArea().
@@ -79,26 +77,25 @@ func createAgentPage() tview.Primitive {
 		Background(inputAreaBg).                        // 输入区背景色
 		Foreground(tcell.GetColor(pretty.TuiMainText))) // 文字颜色
 
-	//设置左侧命令提示区
-	Sidebar = tview.NewTextView().
+	// 输入区右侧提示
+	InputHint = tview.NewTextView().
 		SetDynamicColors(true).
-		SetWrap(true)
-	Sidebar.SetBackgroundColor(SidebarBg)
-	Sidebar.SetBorder(true)
-	Sidebar.SetBorderColor(borderColor)
+		SetWrap(false).
+		SetTextAlign(tview.AlignRight)
+	InputHint.SetBackgroundColor(bg)
+	InputHint.SetText("[gray::d]Ctrl+K 帮助[-:-:-]")
 
-	//设置布局
-	//设置中间的sidebar+Agent消息区布局
-	MiddleFlex_p := tview.NewFlex()
-	MiddleFlex_p.AddItem(Sidebar, 20, 0, false)     // 左侧的命令提示区占20列
-	MiddleFlex_p.AddItem(AgentMessage, 0, 1, false) // 消息视图占剩余空间
+	InputRow := tview.NewFlex().SetDirection(tview.FlexColumn)
+	InputRow.SetBackgroundColor(bg)
+	InputRow.AddItem(InputArea, 0, 1, true)
+	InputRow.AddItem(InputHint, 15, 0, false)
 
 	//设置整体布局
 	MainFlex := tview.NewFlex().SetDirection(tview.FlexRow)
 	MainFlex.SetBackgroundColor(bg)
-	MainFlex.AddItem(StatusBar, 1, 0, false)    // 顶部的状态栏占2行
-	MainFlex.AddItem(MiddleFlex_p, 0, 1, false) // 中间的sidebar+Agent消息区占剩余空间
-	MainFlex.AddItem(InputArea, 1, 0, true)     // 底部的输入区占2行
+	MainFlex.AddItem(StatusBar, 1, 0, false)    // 顶部的状态栏占1行
+	MainFlex.AddItem(AgentMessage, 0, 1, false) // Agent消息区占剩余空间
+	MainFlex.AddItem(InputRow, 1, 0, true)      // 底部的输入区+提示
 
 	return MainFlex
 }
@@ -109,12 +106,42 @@ func Frontendinit() {
 	pages = tview.NewPages()
 	pages.AddPage("ConfigCheck", CreateConfigPage(), true, true) // 初始配置页，默认显示
 	pages.AddPage("AgentPage", createAgentPage(), true, true)    // Agent页面
+	InitHelpList() // 初始化帮助页（通过 SetRoot 切换，不放入 Pages）
 
 	//设置应用根组件
 	app_p.SetRoot(pages, true) // true = 全屏模式
 	app_p.EnableMouse(true)    //允许接收鼠标事件
 	app_p.EnablePaste(true)    //启用 bracketed paste，避免长文本粘贴时逐字符处理导致 CPU 飙升和界面卡死
 
+}
+
+// InitHelpList 初始化斜杠指令帮助页（List 组件，在 ShowHelpPage 中通过 SetRoot 全屏展示）
+func InitHelpList() {
+	HelpList = tview.NewList()
+	HelpList.SetBackgroundColor(bg)
+	HelpList.SetMainTextColor(tcell.GetColor(pretty.TuiMainText))
+	HelpList.SetSecondaryTextColor(tcell.GetColor(pretty.TuiSubText))
+	HelpList.SetSelectedBackgroundColor(tcell.GetColor("#2A3A5C"))
+	HelpList.SetBorder(true)
+	HelpList.SetBorderColor(borderColor)
+	HelpList.SetTitle(" 斜杠指令 — Ctrl+K / Esc 关闭 ")
+	HelpList.SetTitleAlign(tview.AlignLeft)
+
+	for _, cmd := range DefaultSlashCommands {
+		HelpList.AddItem(cmd.Command, cmd.Description, 0, nil)
+	}
+	HelpList.AddItem("Enter", "提交输入", 0, nil)
+	HelpList.AddItem("Shift+Enter", "插入换行", 0, nil)
+	HelpList.AddItem("ESC", "取消当前回复", 0, nil)
+	HelpList.AddItem("Ctrl+K", "切换此帮助页", 0, nil)
+
+	HelpList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlK {
+			HideHelpPage()
+			return nil
+		}
+		return event
+	})
 }
 
 func Backendinit(initFn, startFn func()) {

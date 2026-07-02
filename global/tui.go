@@ -137,7 +137,7 @@ func InitHelpList() {
 
 	HelpList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlK {
-			HideHelpPage()
+			ToggleHelpPage()
 			return nil
 		}
 		return event

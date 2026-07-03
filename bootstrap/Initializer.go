@@ -70,7 +70,7 @@ func Init(an string) {
 	LoadConfig()
 
 	//初始化内存会话服务
-	initMemorySessionService()
+	initInMemorySessionService()
 
 	//初始化sqlite记忆服务
 	initSqliteMemoryService()
@@ -251,8 +251,8 @@ func loadConfig() (*config.Config, error) {
 	return &YamlConfig, nil
 }
 
-func initMemorySessionService() {
-	global.SessionService = session.NewMemorySessionService((*global.Config_p).Model)
+func initInMemorySessionService() {
+	global.SessionService_p = session.NewMemorySessionService((*global.Config_p).Model)
 }
 
 func initSqliteMemoryService() {
@@ -279,7 +279,7 @@ func initTeam() runner.Runner {
 		team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
 	)
 	Runner := runner.NewRunner(global.Agentname, CaptainAgent,
-		runner.WithSessionService(global.SessionService),     // 使用内存会话服务，其中包含自动摘要功能
+		runner.WithSessionService(global.SessionService_p),     // 使用内存会话服务，其中包含自动摘要功能
 		runner.WithMemoryService(global.SqliteMemoryService), // 使用sqlite记忆服务
 	)
 	return Runner
@@ -308,7 +308,7 @@ func NewRunner() {
 func redirectFrameworkLog() {
 	logPath := filepath.Join(global.ConfigFolderPath, hackerTeamLogFile)
 	var err error
-	global.FrameworkLogFile, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	global.FrameworkLogFile_p, err = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return
 	}
@@ -327,7 +327,7 @@ func redirectFrameworkLog() {
 	}
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderCfg),
-		zapcore.AddSync(global.FrameworkLogFile),
+		zapcore.AddSync(global.FrameworkLogFile_p),
 		zapcore.DebugLevel,
 	)
 	fileLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
@@ -339,7 +339,7 @@ func redirectFrameworkLog() {
 	mcp.SetDefaultLogger(fileLogger)
 
 	//重定向标准库 log 到文件（避免 gse 等第三方库的日志污染终端）
-	if global.FrameworkLogFile != nil {
-		stdlog.SetOutput(global.FrameworkLogFile)
+	if global.FrameworkLogFile_p != nil {
+		stdlog.SetOutput(global.FrameworkLogFile_p)
 	}
 }

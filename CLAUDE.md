@@ -17,7 +17,7 @@
 ## Architecture
 - Multi-agent AI pentesting platform: Captain serially dispatches Recon → Scanner → Exploit (cross-validate) → PostExploit, plus Reproducer in two batches (Batch1: after Scanner+Exploit, Batch2: after PostExploit)
 - Each agent prompt must have a "职责边界" rule as the first constraint — explicitly list what this agent MUST NOT do and WHICH agent handles that; LLMs cross role boundaries unless explicitly forbidden (Recon may try sqlmap, Scanner may try to exploit). Forbidding tool NAMES is not enough — LLMs bypass "don't use sqlmap" by doing manual injection with the same payloads. Forbid concrete BEHAVIORS with exact examples (e.g. "NEVER append ' / OR 1=1 / UNION SELECT to URL params") so the LLM cannot self-rationalize. Do NOT add cross-boundary refusal logic on sub-agents — if Recon rejects and Scanner also rejects, tasks deadlock; enforce boundaries on Captain's dispatch side only, accept the risk of Captain hallucination.
-- Shared consensus system in `global/prompts/common/` (embedded via `//go:embed` in `global/agentCore.go`): `vuln_consensus.md` (vulnerability definition + severity rating by technical impact, no CVSS), `output_consensus.md` (output format, raw tool output preservation, vulnerability structured block format for Reproducer consumption)
+- Shared consensus system in `global/prompts/common/` (embedded via `//go:embed` in `global/AgentEngine.go`): `vuln_consensus.md` (vulnerability definition + severity rating by technical impact, no CVSS), `output_consensus.md` (output format, raw tool output preservation, vulnerability structured block format for Reproducer consumption)
 - TUI built with `rivo/tview` + `gdamore/tcell/v2`, PTY execution via `creack/pty`
 - **TUI refactored (v1.0.0)**: `tui/tui.go` + `tui/tip/tip.go` merged into `global/TUI.go` + `global/tuihandler.go`. `handler/` and `bootstrap/` no longer import `tcell` directly — all TUI operations go through `global.PrintToTui()`, `global.LoadTextAreaWithEnter()`, etc. Old widget vars (`App_p`, `AgentMessageView_p`, `Sidebar_p` etc.) renamed to `app_p`, `AgentMessage`, `InputArea`, etc. The `tui/` directory no longer exists.
 - **UI v1.1.0**: Sidebar removed; AgentPage layout is StatusBar + AgentMessage(no border, full flex) + InputRow(InputArea + `Ctrl+K 帮助` hint). Help page (`tview.Table`, two-column: command + description) shown via `app_p.SetRoot()` on Ctrl+K, dismissed with Esc/Ctrl+K, focus returns to InputArea.
@@ -26,21 +26,21 @@
 - Config auto-generated at first run: `<binary-dir>/.HackerTeam/HackerTeam.yaml`
 - TUI colors centralized in `utils/pretty/pretty.go` (TuiXxx constants)
 - `/new`, `/flush`, `/exit`, `ESC` — built-in TUI commands
-- Agent prompts embedded via `//go:embed` in `global/agentCore.go` (`PromptFiles`, `prompts/*` prefix in ReadFile) and `session/summarizer.go` (`promptFiles`, `prompt/*` prefix)
-- Adding a new shared consensus prompt pattern: 1) create `global/prompts/common/<name>.md`, 2) add variable in `global/agentCore.go` + load in `Initializer.go` (follow `VulnConsensusPrompt` pattern), 3) add `{{<NAME>}}` replacement in `assemblePrompt()` in `members.go`, 4) add `{{<NAME>}}` placeholder to each agent prompt `.md` file
+- Agent prompts embedded via `//go:embed` in `global/AgentEngine.go` (`PromptFiles`, `prompts/*` prefix in ReadFile) and `session/summarizer.go` (`promptFiles`, `prompt/*` prefix)
+- Adding a new shared consensus prompt pattern: 1) create `global/prompts/common/<name>.md`, 2) add variable in `global/AgentEngine.go` + load in `Initializer.go` (follow `VulnConsensusPrompt` pattern), 3) add `{{<NAME>}}` replacement in `assemblePrompt()` in `members.go`, 4) add `{{<NAME>}}` placeholder to each agent prompt `.md` file
 - `{{OUTPUTDIR}}` is the exception — NOT replaced by `assemblePrompt()`. It's resolved once in `env.md` via `configENVPrompt()` then injected into all agents through `{{ENV}}`. Agents infer the path from the "Output Directory" field shown in the environment block. Use `{{OUTPUTDIR}}` directly in prompt `.md` files, do NOT add Go-level replacement for it.
-- Adding a new agent: 1) create `global/prompts/agents/<name>.md` (include `{{ENV}}`, `{{COMMAND_EXECUTION}}`, `{{VULN_CONSENSUS}}`, `{{OUTPUT_CONSENSUS}}` as needed), 2) add `init<Name>()` in `members.go` (follow existing agent pattern), 3) add skill folder path var in `global/agentCore.go` + const in `Initializer.go`, 4) add folder to `checkSkillsFolder()` slice, 5) register agent in `initTeam()` team.New member list, 6) add agent definition + dispatch rules in Captain prompt (`captain.md`)
+- Adding a new agent: 1) create `global/prompts/agents/<name>.md` (include `{{ENV}}`, `{{COMMAND_EXECUTION}}`, `{{VULN_CONSENSUS}}`, `{{OUTPUT_CONSENSUS}}` as needed), 2) add `init<Name>()` in `members.go` (follow existing agent pattern), 3) add skill folder path var in `global/AgentEngine.go` + const in `Initializer.go`, 4) add folder to `checkSkillsFolder()` slice, 5) register agent in `initTeam()` team.New member list, 6) add agent definition + dispatch rules in Captain prompt (`captain.md`)
 
 ## Directory Map
 - `global/` — Shared state: `Agentrunner` struct, config pointer, session service, embedFS (`PromptFiles`/`ToolSkills`), prompt strings, TUI widget references
-  - `global/agentCore.go` — Core domain state: config, runner, session, embedded prompts (`PromptFiles`/`ToolSkills`); `AgentEngineRun(initFn, startFn)` — goroutine wrapper for init+start
+  - `global/AgentEngine.go` — Core domain state: config, runner, session, embedded prompts (`PromptFiles`/`ToolSkills`); `AgentEngineRun(initFn, startFn)` — goroutine wrapper for init+start
   - `global/TUI.go` — TUI page construction + startup orchestration: `agentPage()`, `InitHelpTable()`, `RefreshHelpTable()`, `PageCreate()`, `TuiRun()`
   - `global/tuihandler.go` — TUI operation wrappers: `PrintToTui(view, content, clear)`, `LoadTextAreaWithEnter`, `SetAppFuncTriggerWithEsc`, `ShowErrorAndExit`, `ShowMsgAndExitNoTrigger`, etc.
 - `bootstrap/` — Initializer (config, logging, session, memory), member assembly (6 agent factories), main dialog loop
 - `memory/` — `sqlite.go`: SQLite memory service factory with auto-extraction
 - `session/` — Agent runtime: summarizer, session service, prompt embedding (`prompt/*`)
-- `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), tool call/result matching buffer (`toolMsgBuffer.go`), types (`model.go`)
-- `config/` — Config struct, YAML template (`config.yaml` embedded via `//go:embed` in `yaml_template.go`)
+- `handler/` — TUI dialog loop (`runIteratively.go`), single-turn execution (`runOnce.go`), message rendering (`message.go`), tool call/result matching buffer (`toolMsg.go`), types (`model.go`)
+- `config/` — Config struct, YAML template (`config.yaml` embedded via `//go:embed` in `configTemplate.go`)
 - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
 - `toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents)
 - `functionTools/` — Custom Go function tools for agents
@@ -54,7 +54,7 @@
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
 - Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer's folder is intentionally left empty, no pentest-tool skills)
-- Embedded skill template: `global/skillsTemplates/pentest-tools/SKILL.md.template` (via `//go:embed` in `global/agentCore.go`)
+- Embedded skill template: `global/skillsTemplates/pentest-tools/SKILL.md.template` (via `//go:embed` in `global/AgentEngine.go`)
 - `/flush` automatically re-creates skill repos — each agent's `init*()` function calls `skill.NewFSRepository(...)` locally, and `NewRunner()` → `initTeam()` re-runs all factories. Unlike HyperBot's global SkillRepo singleton, this per-agent pattern has no cache staleness risk.
 
 ## Terminology
@@ -73,7 +73,7 @@
 - **Multi-tool results handled in `runOnce.go`** — Framework merges parallel tool results into a single `tool.response` event with N Choices. `AgentRunOnce` detects `ObjectTypeToolResponse` and iterates ALL Choices.
 - **Glamour markdown rendering** — Non-stream body text is rendered via `glamour` (dark theme). `document.margin = 0` removes dark theme's left margin; `strings.TrimRight` strips trailing whitespace to prevent alignment artifacts before tool calls. **Must append `[-:-:-]` after `TranslateANSI(out)`** — glamour's ANSI output may not end with a full reset sequence, leaving unclosed tview tags that leak into the next line (tool calls appear brighter/miscolored).
 - **`show_reasoning` config** — `config.Model.ShowReasoning` (`yaml:"show_reasoning"`) controls reasoning/thinking display. Default `false`. Affects both stream and non-stream paths.
-- **`message.go` refactored** — `printMessage` split into `renderStreamEvent`, `renderNonStreamEvent`, `renderToolCall`, `renderToolResult`. Tool call/result rendering uses shared `addToolCallMsg`/`addToolResultMsg` helpers in `toolMsgBuffer.go`. Compact single-line format via `pretty.TToolCompact` — green `●` + orange tool name + dim gray `args → result_summary`. No trailing `\n` (double-newline with next tool's leading `\n` causes alignment shift).
+- **`message.go` refactored** — `printMessage` split into `renderStreamEvent`, `renderNonStreamEvent`, `renderToolCall`, `renderToolResult`. Tool call/result rendering uses shared `addToolCallMsg`/`addToolResultMsg` helpers in `toolMsg.go`. Compact single-line format via `pretty.TToolCompact` — green `●` + orange tool name + dim gray `args → result_summary`. No trailing `\n` (double-newline with next tool's leading `\n` causes alignment shift).
 - **embedFS case sensitivity** — `//go:embed` + `ReadFile` paths are case-sensitive on Linux. Always match exact file name case between `go:embed` glob patterns and `ReadFile` calls.
 
 ## Agent-Driven Memory (SQLite)
@@ -82,7 +82,7 @@ Introduced in v1.2.0. Persistent long-term memory using SQLite with background L
 
 ### Architecture
 - `memory/sqlite.go` — factory: creates `memorysqlite.Service` in manual/agentic mode (no extractor). Exposes 5 tools via `WithToolEnabled(memory.DeleteToolName)` on top of `DefaultEnabledTools` (search, load, add, update). `memory_clear` is intentionally not exposed.
-- `global/agentCore.go` — `SqliteMemoryService *memorysqlite.Service` global
+- `global/AgentEngine.go` — `SqliteMemoryService *memorysqlite.Service` global
 - `bootstrap/Initializer.go` — `initSqliteMemoryService()` called in `Init()`. No longer requires `config.Model` parameter (extractor removed).
 - `bootstrap/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load`/`memory_add`/`memory_update`/`memory_delete` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
 - `global/prompts/agents/captain.md` — `# Memory` section defines Captain's memory behavior: search-before-store, proactive storage, outdated correction, atomic/specific writing standards

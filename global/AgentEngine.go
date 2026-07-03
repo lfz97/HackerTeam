@@ -23,9 +23,9 @@ var (
 	ConfigFolderPath     string                   //配置文件夹路径
 	HackerTeamConfigPath string                   //配置文件路径
 	AgentRunner_p        *Agentrunner             //Runner，全局唯一
-	SessionService       *inmemory.SessionService //会话服务，包含自动摘要功能
+	SessionService_p       *inmemory.SessionService //会话服务，包含自动摘要功能
 	SqliteMemoryService  *memorysqlite.Service    // sqlite记忆服务
-	FrameworkLogFile     *os.File                 // 保存日志文件句柄，防止被 GC 回收
+	FrameworkLogFile_p     *os.File                 // 保存日志文件句柄，防止被 GC 回收
 
 	//go:embed prompts/*
 	PromptFiles embed.FS //提示词嵌入FS

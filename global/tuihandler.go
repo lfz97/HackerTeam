@@ -19,16 +19,14 @@ type Pages = *tview.Pages
 
 var (
 	pages Pages
-	//page config
-	bannerBar View
-	Log       View
 
 	//page agent
 	StatusBar    View
 	AgentMessage View
 	InputArea    TextArea
 	InputHint    View
-	HelpList     *tview.List
+	HelpTable *tview.Table
+	helpItems []HelpItem = defaultHelpItems()
 )
 
 var DefaultStatusBarTip string = pretty.TColoredText(pretty.TColorSkyBlue, "✦ « L'inspiration commence ici. » ✦")
@@ -41,6 +39,24 @@ func PrintToTui(viewType View, content string, clear bool) {
 		fmt.Fprint(viewType, content)
 		viewType.ScrollToEnd()
 	})
+}
+
+// defaultHelpItems 返回内建默认指令清单（单一数据源）
+func defaultHelpItems() []HelpItem {
+	return []HelpItem{
+		{"/new", "开始新对话"},
+		{"/exit", "退出程序"},
+		{"/flush", "刷新工具"},
+	}
+}
+
+func AddHelpItems(helpitems []HelpItem) {
+	helpItems = append(helpItems, helpitems...)
+}
+
+// ResetHelpItems 清空后恢复到默认指令清单
+func ResetHelpItems() {
+	helpItems = defaultHelpItems()
 }
 
 func LoadTextAreaWithEnter(textArea TextArea) string {
@@ -82,19 +98,6 @@ func LoadTextAreaWithEnter(textArea TextArea) string {
 	return <-ch //等待channel直到获取到输入内容
 }
 
-// SlashCommand 斜杠指令
-type SlashCommand struct {
-	Command     string
-	Description string
-}
-
-// DefaultSlashCommands 默认指令清单
-var DefaultSlashCommands = []SlashCommand{
-	{"/new", "开始新对话"},
-	{"/exit", "退出程序"},
-	{"/flush", "刷新工具"},
-}
-
 var helpPageVisible bool
 
 // ToggleHelpPage 切换帮助页显示/隐藏
@@ -104,9 +107,10 @@ func ToggleHelpPage() {
 		app_p.SetFocus(InputArea)
 		helpPageVisible = false
 	} else {
+		RefreshHelpTable() // 每次打开时刷新
 		flex := tview.NewFlex().SetDirection(tview.FlexRow)
 		flex.SetBackgroundColor(bg)
-		flex.AddItem(HelpList, 0, 1, true)
+		flex.AddItem(HelpTable, 0, 1, true)
 		app_p.SetRoot(flex, true)
 		helpPageVisible = true
 	}

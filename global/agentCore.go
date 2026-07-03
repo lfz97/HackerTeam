@@ -43,6 +43,13 @@ var (
 )
 
 // 技能目录相关配置
+func AgentEngineRun(initFn, startFn func()) {
+	go func() {
+		initFn()
+		startFn()
+	}()
+}
+
 var (
 	ReconSkillsFolderPath       string
 	ExploitSkillsFolderPath     string

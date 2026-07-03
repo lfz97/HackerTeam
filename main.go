@@ -6,8 +6,8 @@ import (
 )
 
 func main() {
-	global.Frontendinit()
-	global.Backendinit(func() { bootstrap.Init("HackerTeam") },
+	global.PageCreate()
+	global.AgentEngineRun(func() { bootstrap.Init("HackerTeam") },
 		func() { bootstrap.AgentStart() })
 
 	global.TuiRun()

@@ -7,12 +7,12 @@ import (
 	"HackerTeam/session"
 	"HackerTeam/utils/pretty"
 	"fmt"
-	stdlog "log"
 	"github.com/google/uuid"
 	"github.com/otiai10/copy"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v2"
+	stdlog "log"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -148,7 +148,7 @@ func getcwd() {
 
 	exePath, err := os.Executable() // 获取当前可执行文件的路径
 	if err != nil {
-		global.ShowErrorAndExit(global.Log,pretty.TErrorF("获取可执行文件目录错误: %v,按任意键退出", err))
+		global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("获取可执行文件目录错误: %v,按任意键退出", err))
 	}
 	global.CWD = filepath.Dir(exePath) // 获取当前可执行文件的目录路径（不包含程序名）
 
@@ -163,14 +163,14 @@ func checkConfigFolder() {
 			//config 文件夹不存在，创建一个默认的 config 文件夹
 			err := os.MkdirAll(global.ConfigFolderPath, os.ModePerm)
 			if err != nil {
-				global.ShowErrorAndExit(global.Log,pretty.TErrorF("创建默认config文件夹错误：%v", err))
+				global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("创建默认config文件夹错误：%v", err))
 			}
-			global.ShowSuccess(global.Log,"检查到config文件夹不存在，已创建默认config文件夹")
+			global.ShowSuccess(global.AgentMessage, "检查到config文件夹不存在，已创建默认config文件夹")
 		} else {
-			global.ShowErrorAndExit(global.Log,pretty.TErrorF("检查config文件夹错误：%v", err))
+			global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("检查config文件夹错误：%v", err))
 		}
 	} else {
-		global.ShowSuccess(global.Log,"检查配置文件夹通过")
+		global.ShowSuccess(global.AgentMessage, "检查配置文件夹通过")
 	}
 
 }
@@ -185,21 +185,21 @@ func checkConfig() {
 			// 文件不存在，创建一个默认的 config.yaml
 			fd, err := os.OpenFile(global.HackerTeamConfigPath, os.O_RDWR|os.O_CREATE, 0644)
 			if err != nil {
-				global.ShowErrorAndExit(global.Log,pretty.TErrorF("创建默认配置文件错误：%v", err))
+				global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("创建默认配置文件错误：%v", err))
 			}
 			defer fd.Close()
 			//生成一个随机的用户ID，替换掉配置文件中的占位符
 			cfg := strings.ReplaceAll(config.Template, "{USERID}", uuid.New().String())
 			_, err = fd.WriteString(cfg)
 			if err != nil {
-				global.ShowErrorAndExit(global.Log,pretty.TErrorF("写入默认配置文件错误：%v,按任意键退出", err))
+				global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("写入默认配置文件错误：%v,按任意键退出", err))
 			}
-			global.ShowSuccessAndExit(global.Log,"检查到配置文件不存在，已创建默认配置文件。请根据实际情况修改配置文件后重新启动程序！")
+			global.ShowSuccessAndExit(global.AgentMessage, "检查到配置文件不存在，已创建默认配置文件。请根据实际情况修改配置文件后重新启动程序！")
 		} else {
-			global.ShowErrorAndExit(global.Log,pretty.TErrorF("检查配置文件错误：%v", err))
+			global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("检查配置文件错误：%v", err))
 		}
 	} else {
-		global.ShowSuccess(global.Log,"检查配置文件通过!")
+		global.ShowSuccess(global.AgentMessage, "检查配置文件通过!")
 	}
 
 }
@@ -220,18 +220,18 @@ func checkSkillsFolder() {
 					//skills 文件夹不存在，创建一个默认的 skills 文件夹
 					err := os.MkdirAll(folder, os.ModePerm)
 					if err != nil {
-						global.ShowErrorAndExit(global.Log,pretty.TErrorF("创建默认%s文件夹错误：%s", folder, err.Error()))
+						global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("创建默认%s文件夹错误：%s", folder, err.Error()))
 					}
 					err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(folder, "pentest-tools"), copy.Options{FS: global.ToolSkills})
 					if err != nil {
-						global.ShowErrorAndExit(global.Log,pretty.TErrorF("复制技能模板到%s文件夹错误：%s", folder, err.Error()))
+						global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("复制技能模板到%s文件夹错误：%s", folder, err.Error()))
 					}
-					global.ShowSuccess(global.Log,fmt.Sprintf("检查到%s文件夹不存在，已创建", folder))
+					global.ShowSuccess(global.AgentMessage, fmt.Sprintf("检查到%s文件夹不存在，已创建", folder))
 				} else {
-					global.ShowErrorAndExit(global.Log,pretty.TErrorF("检查%s文件夹错误：%s", folder, err.Error()))
+					global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("检查%s文件夹错误：%s", folder, err.Error()))
 				}
 			} else {
-				global.ShowSuccess(global.Log,fmt.Sprintf("检查%s文件夹通过", folder))
+				global.ShowSuccess(global.AgentMessage, fmt.Sprintf("检查%s文件夹通过", folder))
 			}
 		}
 	}([]string{global.ReconSkillsFolderPath, global.ExploitSkillsFolderPath, global.PostExploitSkillsFolderPath, global.ScannerSkillsFolderPath, global.ReproducerSkillsFolderPath})
@@ -258,7 +258,7 @@ func initMemorySessionService() {
 func initSqliteMemoryService() {
 	service, err := memory.NewSQLiteMemoryService((*global.Config_p).Model, filepath.Join(global.ConfigFolderPath, memoryDBFileName))
 	if err != nil {
-		global.ShowErrorAndExit(global.Log, pretty.TErrorF("初始化sqlite记忆服务错误: %v", err))
+		global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("初始化sqlite记忆服务错误: %v", err))
 	}
 	global.SqliteMemoryService = service
 }
@@ -289,7 +289,7 @@ func LoadConfig() {
 	//加载配置文件
 	config_p, err := loadConfig()
 	if err != nil {
-		global.ShowErrorAndExit(global.Log,pretty.TErrorF("加载配置文件错误: %v,按任意键退出", err))
+		global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("加载配置文件错误: %v,按任意键退出", err))
 	}
 	global.Config_p = config_p
 }
@@ -301,7 +301,7 @@ func NewRunner() {
 		Runner: runner,
 		Stream: (*global.Config_p).Model.Stream,
 	}
-	global.PrintToTui(global.Log, pretty.TReady(global.Agentname), false)
+	global.PrintToTui(global.AgentMessage, pretty.TReady(global.Agentname), true)
 }
 
 // redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 HackerTeam.log 文件-created by copilot

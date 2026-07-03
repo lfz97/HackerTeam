@@ -7,52 +7,15 @@ import (
 	"github.com/rivo/tview"
 )
 
-const banner string = `    //    / /                                  //   ) )
-   //___ / /         ___      ___      __     //___/ /   ___    __  ___
-  / ___   //   / / //   ) ) //___) ) //  ) ) / __  (   //   ) )  / /
- //    / ((___/ / //___/ / //       //      //    ) ) //   / /  / /
-//    / /    / / //       ((____   //      //____/ / ((___/ /  / /
-`
-
 // 定义颜色，配色统一来源于 pretty.TuiXxx 常量，确保界面风格统一且美观
 var (
 	bg          tcell.Color = tcell.GetColor(pretty.TuiBg)          // 整体背景色
-	SidebarBg   tcell.Color = tcell.GetColor(pretty.TuiPanelBg)     // 侧边栏背景色
 	borderColor tcell.Color = tcell.GetColor(pretty.TuiBorderColor) // 边框颜色
 	StatusBarBg tcell.Color = tcell.GetColor(pretty.TuiStatusBarBg) // 标题栏背景色
 	inputAreaBg tcell.Color = tcell.GetColor(pretty.TuiInputAreaBg) // 输入区背景色
 )
 
-func CreateConfigPage() tview.Primitive {
-	// Banner 区域
-	bannerBar = tview.NewTextView().
-		SetDynamicColors(true).
-		SetScrollable(false).
-		SetTextAlign(tview.AlignCenter).
-		SetText(pretty.TColoredText(pretty.TColorClaudeCodeOrange, banner))
-	bannerBar.SetBackgroundColor(bg)
-	bannerBar.SetBorder(true)
-	bannerBar.SetBorderColor(borderColor)
-
-	// 日志区域
-	Log = tview.NewTextView().
-		SetDynamicColors(true).
-		SetScrollable(true).
-		SetWrap(false)
-	Log.SetBackgroundColor(bg)
-	Log.SetBorder(true)
-	Log.SetBorderColor(borderColor)
-
-	// 垂直布局: Banner(10行) + 日志(剩余空间)
-	ConfigPageFlex := tview.NewFlex().SetDirection(tview.FlexRow)
-	ConfigPageFlex.SetBackgroundColor(bg)
-	ConfigPageFlex.AddItem(bannerBar, 10, 0, false)
-	ConfigPageFlex.AddItem(Log, 0, 1, false)
-
-	return ConfigPageFlex
-}
-
-func createAgentPage() tview.Primitive {
+func agentPage() tview.Primitive {
 
 	//设置标题状态栏
 	StatusBar = tview.NewTextView()
@@ -100,13 +63,12 @@ func createAgentPage() tview.Primitive {
 	return MainFlex
 }
 
-func Frontendinit() {
+func PageCreate() {
 	// 创建应用实例和页面容器
 	app_p = tview.NewApplication()
 	pages = tview.NewPages()
-	pages.AddPage("ConfigCheck", CreateConfigPage(), true, true) // 初始配置页，默认显示
-	pages.AddPage("AgentPage", createAgentPage(), true, true)    // Agent页面
-	InitHelpList() // 初始化帮助页（通过 SetRoot 切换，不放入 Pages）
+	pages.AddPage("AgentPage", agentPage(), true, true) // Agent页面
+	InitHelpTable()                                     // 初始化帮助页（通过 SetRoot 切换，不放入 Pages）
 
 	//设置应用根组件
 	app_p.SetRoot(pages, true) // true = 全屏模式
@@ -115,48 +77,60 @@ func Frontendinit() {
 
 }
 
-// InitHelpList 初始化斜杠指令帮助页（List 组件，在 ShowHelpPage 中通过 SetRoot 全屏展示）
-func InitHelpList() {
-	HelpList = tview.NewList()
-	HelpList.SetBackgroundColor(bg)
-	HelpList.SetMainTextColor(tcell.GetColor(pretty.TuiMainText))
-	HelpList.SetSecondaryTextColor(tcell.GetColor(pretty.TuiSubText))
-	HelpList.SetSelectedBackgroundColor(tcell.GetColor("#2A3A5C"))
-	HelpList.SetBorder(true)
-	HelpList.SetBorderColor(borderColor)
-	HelpList.SetTitle(" 斜杠指令 — Ctrl+K / Esc 关闭 ")
-	HelpList.SetTitleAlign(tview.AlignLeft)
+// InitHelpTable 初始化斜杠指令帮助页（Table 组件，在 ToggleHelpPage 中通过 SetRoot 全屏展示）
+// 左右两栏：左栏为指令名，右栏为功能描述
+type HelpItem struct {
+	Cmd  string
+	Desc string
+}
 
-	for _, cmd := range DefaultSlashCommands {
-		HelpList.AddItem(cmd.Command, cmd.Description, 0, nil)
-	}
-	HelpList.AddItem("Enter", "提交输入", 0, nil)
-	HelpList.AddItem("Shift+Enter", "插入换行", 0, nil)
-	HelpList.AddItem("ESC", "取消当前回复", 0, nil)
-	HelpList.AddItem("Ctrl+K", "切换此帮助页", 0, nil)
+func InitHelpTable() {
+	HelpTable = tview.NewTable()
+	HelpTable.SetBackgroundColor(bg)
+	HelpTable.SetBorder(true)
+	HelpTable.SetBorderColor(borderColor)
+	HelpTable.SetTitle(" 斜杠指令 — Ctrl+K / Esc 关闭 ")
+	HelpTable.SetTitleAlign(tview.AlignLeft)
+	HelpTable.SetSelectable(true, false) // 行可选，列不可选
 
-	HelpList.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	HelpTable.SetSelectedStyle(tcell.StyleDefault.
+		Background(tcell.GetColor("#2A3A5C")).
+		Foreground(tcell.GetColor(pretty.TuiMainText)))
+
+	HelpTable.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape || event.Key() == tcell.KeyCtrlK {
 			ToggleHelpPage()
 			return nil
 		}
 		return event
 	})
+
+	RefreshHelpTable()
 }
 
-func Backendinit(initFn, startFn func()) {
-	go func() {
-		app_p.QueueUpdateDraw(func() {
-			pages.SwitchToPage("ConfigCheck") // 确保初始化期间 ConfigCheck 在最前面
-		})
-		initFn()
-		// Init 成功后切换到 Agent 页面并开始对话循环
-		app_p.QueueUpdateDraw(func() {
-			pages.SwitchToPage("AgentPage")
-		})
-		startFn()
-	}()
+// RefreshHelpTable 根据当前 helpItems 重建 Table 行数据
+func RefreshHelpTable() {
+	HelpTable.Clear()
+
+	mainColor := tcell.GetColor(pretty.TuiMainText)
+	subColor := tcell.GetColor(pretty.TuiSubText)
+
+	for index, item := range helpItems {
+		cmdCell := tview.NewTableCell(item.Cmd).
+			SetTextColor(mainColor).
+			SetAlign(tview.AlignLeft).
+			SetExpansion(0)
+
+		descCell := tview.NewTableCell(item.Desc).
+			SetTextColor(subColor).
+			SetAlign(tview.AlignLeft).
+			SetExpansion(1)
+
+		HelpTable.SetCell(index, 0, cmdCell)
+		HelpTable.SetCell(index, 1, descCell)
+	}
 }
+
 
 func TuiRun() {
 	if err := app_p.Run(); err != nil { // main goroutine 阻塞在事件循环

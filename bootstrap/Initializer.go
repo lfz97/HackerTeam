@@ -169,8 +169,6 @@ func checkConfigFolder() {
 		} else {
 			global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("检查config文件夹错误：%v", err))
 		}
-	} else {
-		global.ShowSuccess(global.AgentMessage, "检查配置文件夹通过")
 	}
 
 }
@@ -198,8 +196,6 @@ func checkConfig() {
 		} else {
 			global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("检查配置文件错误：%v", err))
 		}
-	} else {
-		global.ShowSuccess(global.AgentMessage, "检查配置文件通过!")
 	}
 
 }
@@ -230,8 +226,6 @@ func checkSkillsFolder() {
 				} else {
 					global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("检查%s文件夹错误：%s", folder, err.Error()))
 				}
-			} else {
-				global.ShowSuccess(global.AgentMessage, fmt.Sprintf("检查%s文件夹通过", folder))
 			}
 		}
 	}([]string{global.ReconSkillsFolderPath, global.ExploitSkillsFolderPath, global.PostExploitSkillsFolderPath, global.ScannerSkillsFolderPath, global.ReproducerSkillsFolderPath})
@@ -301,7 +295,6 @@ func NewRunner() {
 		Runner: runner,
 		Stream: (*global.Config_p).Model.Stream,
 	}
-	global.PrintToTui(global.AgentMessage, pretty.TReady(global.Agentname), true)
 }
 
 // redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 HackerTeam.log 文件-created by copilot

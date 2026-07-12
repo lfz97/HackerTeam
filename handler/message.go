@@ -5,7 +5,7 @@ import (
 	"HackerTeam/utils/pretty"
 	"strings"
 
-	"github.com/charmbracelet/glamour"
+	"charm.land/glamour/v2"
 	"github.com/rivo/tview"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -16,7 +16,7 @@ func newGlamourRenderer() *glamour.TermRenderer {
 		w = 80
 	}
 	r, _ := glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dark"),
+		glamour.WithStandardStyle("dracula"),
 		glamour.WithWordWrap(w),
 		glamour.WithStylesFromJSONBytes([]byte(`{
 			"document": {

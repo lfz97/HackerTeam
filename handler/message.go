@@ -10,23 +10,21 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
-// glamourRenderer 基于 dark 主题的自定义渲染器，补上了表格边框（dark 主题默认 table 样式为空，无边框）。
-var glamourRenderer *glamour.TermRenderer
-
-func init() {
-	glamourRenderer, _ = glamour.NewTermRenderer(
+func newGlamourRenderer() *glamour.TermRenderer {
+	_, _, w, _ := global.AgentMessage.GetInnerRect()
+	if w < 40 {
+		w = 80
+	}
+	r, _ := glamour.NewTermRenderer(
 		glamour.WithStandardStyle("dark"),
+		glamour.WithWordWrap(w),
 		glamour.WithStylesFromJSONBytes([]byte(`{
 			"document": {
 				"margin": 0
-			},
-			"table": {
-				"center_separator": "┼",
-				"column_separator": "│",
-				"row_separator": "─"
 			}
 		}`)),
 	)
+	return r
 }
 
 func printMessage(Choice model.Choice, startReasoning *bool, stream bool) {
@@ -84,7 +82,7 @@ func renderNonStreamEvent(Choice model.Choice) {
 	}
 	// 正文内容 - 使用 glamour 渲染 markdown，TranslateANSI 转为 tview 颜色标签
 	if strings.TrimSpace(Choice.Message.Content) != "" && Choice.Message.Role != "tool" {
-		out, _ := glamourRenderer.Render(pretty.TContentNoneStreamTag(Choice.Message.Content))
+		out, _ := newGlamourRenderer().Render(pretty.TContentNoneStreamTag(Choice.Message.Content))
 		out = strings.TrimRight(out, "\n\r ")
 		global.PrintToTui(global.AgentMessage, tview.TranslateANSI(out)+"[-:-:-]", false)
 	}

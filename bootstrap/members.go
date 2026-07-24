@@ -1,6 +1,7 @@
 package bootstrap
 
 import (
+	"HackerTeam/config"
 	"HackerTeam/functionTools"
 	"HackerTeam/global"
 	"HackerTeam/models"
@@ -41,7 +42,7 @@ func initCaptain() *llmagent.LLMAgent {
 		llmagent.WithGlobalInstruction(captainPrompt),                    // 系统提示词
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
-	agent_p := setAgent("Captain", opts)
+	agent_p := setAgent("Captain", (*global.Config_p).Model, opts)
 	return agent_p
 
 }
@@ -81,7 +82,7 @@ func initRecon() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Recon", opts)
+	agent_p := setAgent("Recon", (*global.Config_p).Model, opts)
 	return agent_p
 }
 
@@ -120,7 +121,7 @@ func initexploit() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Exploit", opts)
+	agent_p := setAgent("Exploit", (*global.Config_p).Model, opts)
 	return agent_p
 
 }
@@ -160,7 +161,7 @@ func initpostexploit() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("PostExploit", opts)
+	agent_p := setAgent("PostExploit", (*global.Config_p).Model, opts)
 	return agent_p
 }
 
@@ -199,7 +200,7 @@ func initScanner() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Scanner", opts)
+	agent_p := setAgent("Scanner", (*global.Config_p).Model, opts)
 	return agent_p
 }
 
@@ -235,24 +236,20 @@ func initReproducer() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Reproducer", opts)
+	agent_p := setAgent("Reproducer", (*global.Config_p).Model, opts)
 	return agent_p
 }
 
-func setAgent(agentName string, opts []llmagent.Option) *llmagent.LLMAgent {
-	if (*global.Config_p).Model.APIType == "openai" {
-		openaimodel := models.Openai((*global.Config_p).Model.Model,
-			(*global.Config_p).Model.BaseURL,
-			(*global.Config_p).Model.APIKey)
+func setAgent(agentName string, m config.Model, opts []llmagent.Option) *llmagent.LLMAgent {
+	if m.APIType == "openai" {
+		openaimodel := models.Openai(m.Model, m.BaseURL, m.APIKey)
 		opts = append(opts, llmagent.WithModel(openaimodel))
 		Agent_p := llmagent.New(agentName, opts...)
 		return Agent_p
 
-	} else if (*global.Config_p).Model.APIType == "anthropic" {
+	} else if m.APIType == "anthropic" {
 
-		Anthropicagent := models.Anthropic(
-			(*global.Config_p).Model,
-		)
+		Anthropicagent := models.Anthropic(m)
 		opts = append(opts, llmagent.WithModel(Anthropicagent))
 		Agent_p := llmagent.New(agentName, opts...)
 		return Agent_p

@@ -2,7 +2,6 @@ package memory
 
 import (
 	"HackerTeam/config"
-	"HackerTeam/global"
 	"HackerTeam/models"
 	"database/sql"
 	"fmt"
@@ -23,7 +22,7 @@ func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Servic
 		extractorModel = models.Openai(m.Model, m.BaseURL, m.APIKey)
 	} else if m.APIType == "anthropic" {
 		extractorModel = models.Anthropic(
-			(*global.Config_p).Model,
+			m,
 		)
 	}
 

@@ -48,7 +48,9 @@ func NewSummarizer(m config.Model) summary.SessionSummarizer {
 	if m.APIType == "openai" {
 		summarizerModel = models.Openai(m.Model, m.BaseURL, m.APIKey)
 	} else if m.APIType == "anthropic" {
-		summarizerModel = models.Anthropic(m.Model, m.BaseURL, m.APIKey)
+		summarizerModel = models.Anthropic(
+			(*global.Config_p).Model,
+		)
 	}
 	// ── 创建 summarizer阈值 ───────────────
 	sum := summary.NewSummarizer(

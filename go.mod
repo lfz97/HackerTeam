@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	charm.land/glamour/v2 v2.0.1
+	github.com/anthropics/anthropic-sdk-go v1.37.0
 	github.com/creack/pty v1.1.24
 	github.com/gdamore/tcell/v2 v2.13.9
 	github.com/google/uuid v1.6.0
@@ -23,7 +24,6 @@ require (
 require (
 	charm.land/lipgloss/v2 v2.0.4 // indirect
 	github.com/alecthomas/chroma/v2 v2.20.0 // indirect
-	github.com/anthropics/anthropic-sdk-go v1.37.0 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bmatcuk/doublestar/v4 v4.9.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect

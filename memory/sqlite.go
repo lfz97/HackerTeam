@@ -2,6 +2,7 @@ package memory
 
 import (
 	"HackerTeam/config"
+	"HackerTeam/global"
 	"HackerTeam/models"
 	"database/sql"
 	"fmt"
@@ -21,7 +22,9 @@ func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Servic
 	if m.APIType == "openai" {
 		extractorModel = models.Openai(m.Model, m.BaseURL, m.APIKey)
 	} else if m.APIType == "anthropic" {
-		extractorModel = models.Anthropic(m.Model, m.BaseURL, m.APIKey)
+		extractorModel = models.Anthropic(
+			(*global.Config_p).Model,
+		)
 	}
 
 	dsn := dbPath + "?_busy_timeout=5000"

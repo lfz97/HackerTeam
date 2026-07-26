@@ -17,15 +17,13 @@ func AgentRunIteratively(Ctx context.Context, inputContext TurnResult) *TurnResu
 		global.PrintToTui(global.AgentMessage, pretty.TNewConversation(), false)
 	} else if inputContext.Code == Error {
 		global.PrintToTui(global.AgentMessage, pretty.TErrorF("对话发生错误: %s", inputContext.Reason), false)
-	} else if inputContext.Code == Flush {
-		global.PrintToTui(global.AgentMessage, pretty.TSuccess("工具已刷新，请继续对话"), false)
 	} else if inputContext.Code == Int { //对话因中断信号而中断,不输出提示语
 	}
 
 	var userPrompt string
 	for {
 		//如果是新对话、继续对话或中断后恢复，用户自行输入prompt
-		if inputContext.Code == New || inputContext.Code == Continue || inputContext.Code == Int || inputContext.Code == Flush {
+		if inputContext.Code == New || inputContext.Code == Continue || inputContext.Code == Int {
 			userPrompt = global.LoadTextAreaWithEnter(global.InputArea) //启用输入框并将用户输入放进Channel
 
 			{
@@ -43,13 +41,6 @@ func AgentRunIteratively(Ctx context.Context, inputContext TurnResult) *TurnResu
 					return &TurnResult{
 						Code:   New,
 						Reason: "用户主动开始新对话",
-					}
-
-				} else if checkprompt == "/flush" {
-					global.PrintToTui(global.AgentMessage, pretty.TColoredText(pretty.TColorLightGreen, fmt.Sprintf("\n%s%s\n", pretty.SymbolBullet, checkprompt)), false)
-					return &TurnResult{
-						Code:   Flush,
-						Reason: "用户主动刷新工具",
 					}
 
 				} else if checkprompt == "" {

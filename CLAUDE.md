@@ -48,7 +48,7 @@
 
 ## Dependencies
 - `trpc-agent-go` — main agent framework, currently from upstream `trpc.group/trpc-go/trpc-agent-go` (no fork/replace)
-- `glamour` v1.0.0 — Markdown → ANSI renderer (non-stream mode uses `glamour.Render` + `tview.TranslateANSI` for formatted markdown display)
+- `glamour` v2.0.1 (`charm.land/glamour/v2`) — Markdown → ANSI renderer (Dracula theme, non-stream mode uses `glamour.Render` + `tview.TranslateANSI` for formatted markdown display)
 
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
@@ -71,41 +71,32 @@
 - **ANSI → tview tag conversion required** — tview's `SetDynamicColors(true)` only supports its own color tag format (`[red]text[-]`). Standard ANSI escape sequences must go through `tview.TranslateANSI()` before writing to a TextView. Without this, ANSI codes appear as visible garbage.
 - **Tool response content must be skipped in content rendering** — Both stream and non-stream content paths check `Role != "tool"` to prevent tool JSON from leaking through the main content renderer.
 - **Multi-tool results handled in `runOnce.go`** — Framework merges parallel tool results into a single `tool.response` event with N Choices. `AgentRunOnce` detects `ObjectTypeToolResponse` and iterates ALL Choices.
-- **Glamour markdown rendering** — Non-stream body text is rendered via `glamour` (dark theme). `document.margin = 0` removes dark theme's left margin; `strings.TrimRight` strips trailing whitespace to prevent alignment artifacts before tool calls. **Must append `[-:-:-]` after `TranslateANSI(out)`** — glamour's ANSI output may not end with a full reset sequence, leaving unclosed tview tags that leak into the next line (tool calls appear brighter/miscolored).
+- **Glamour markdown rendering** — Non-stream body text is rendered via `glamour` (dracula theme). `document.margin = 0` removes dracula theme's left margin; `strings.TrimRight` strips trailing whitespace to prevent alignment artifacts before tool calls. **Must append `[-:-:-]` after `TranslateANSI(out)`** — glamour's ANSI output may not end with a full reset sequence, leaving unclosed tview tags that leak into the next line (tool calls appear brighter/miscolored).
 - **`show_reasoning` config** — `config.Model.ShowReasoning` (`yaml:"show_reasoning"`) controls reasoning/thinking display. Default `false`. Affects both stream and non-stream paths.
 - **`message.go` refactored** — `printMessage` split into `renderStreamEvent`, `renderNonStreamEvent`, `renderToolCall`, `renderToolResult`. Tool call/result rendering uses shared `addToolCallMsg`/`addToolResultMsg` helpers in `toolMsg.go`. Compact single-line format via `pretty.TToolCompact` — green `●` + orange tool name + dim gray `args → result_summary`. No trailing `\n` (double-newline with next tool's leading `\n` causes alignment shift).
 - **embedFS case sensitivity** — `//go:embed` + `ReadFile` paths are case-sensitive on Linux. Always match exact file name case between `go:embed` glob patterns and `ReadFile` calls.
 
-## Agent-Driven Memory (SQLite)
+## Auto-Extraction Memory (SQLite)
 
-Introduced in v1.2.0. Persistent long-term memory using SQLite with background LLM extraction.
+Persistent long-term memory using SQLite, with background LLM-based extraction after each turn. Captain is the sole memory manager — sub-agents do NOT get memory tools.
 
 ### Architecture
-- `memory/sqlite.go` — factory: creates `memorysqlite.Service` in manual/agentic mode (no extractor). Exposes 5 tools via `WithToolEnabled(memory.DeleteToolName)` on top of `DefaultEnabledTools` (search, load, add, update). `memory_clear` is intentionally not exposed.
+- `memory/sqlite.go` — factory: creates `memorysqlite.Service` with `extractor.NewExtractor(model)` + `WithExtractor(ext)`. Exposes `memory_search`, `memory_load`, `memory_add`, `memory_update` via `WithAutoMemoryExposedTools`. `memory_delete` and `memory_clear` are not exposed to agents.
 - `global/AgentEngine.go` — `SqliteMemoryService *memorysqlite.Service` global
-- `bootstrap/Initializer.go` — `initSqliteMemoryService()` called in `Init()`. No longer requires `config.Model` parameter (extractor removed).
-- `bootstrap/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load`/`memory_add`/`memory_update`/`memory_delete` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
+- `bootstrap/Initializer.go` — `initSqliteMemoryService()` creates extractor model from config (via `models.Openai()` / `models.Anthropic()`), passes to `NewSQLiteMemoryService(m, dbPath)`. Called after `LoadConfig()`, before `initTeam()`.
+- `bootstrap/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load`/`memory_add`/`memory_update` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
 - `global/prompts/agents/captain.md` — `# Memory` section defines Captain's memory behavior: search-before-store, proactive storage, outdated correction, atomic/specific writing standards
 
 ### Team considerations
 - Captain is the sole memory manager — all memory creation, update, and deletion happens through Captain's explicit tool calls
 - Sub-agents benefit indirectly — Captain can reference past operations and store useful patterns discovered during pentest
-- No auto-extraction means sub-agent tool outputs are NOT automatically stored; Captain decides what's worth remembering
-
-### Why no auto-extraction
-Auto-extraction was removed because of dual-writer conflicts between agent and background extractor:
-- Extractor's BM25 search is topic-matched (finds "related"), not contradiction-matched (finds "outdated") → fails to update superseded memories
-- When agent updates a memory (changing its content-hash ID), extractor references the old ID → "not found" → fallback to `AddMemory` → creates duplicate
-- Extractor `UpdateMemory` passes through `reconcileOps` unchecked (only Add ops are reconciled) → extractor can overwrite agent's updates unconditionally
-- No timestamp/version protection on `UpdateMemory` → last-write-wins without any guard
-
-Agent-driven mode avoids all of these by having a single writer who understands full conversation context.
+- Auto-extraction runs after each turn via the framework's `EnqueueAutoMemoryJob`, but Captain can also manually manage memories
 
 ### Gotchas
 - `initSqliteMemoryService()` MUST be called before `initTeam()` — team creation reads `SqliteMemoryService.Tools()`, nil service → panic
 - `stdlog.SetOutput(file)` in `redirectFrameworkLog()` redirects gse dictionary-loading chatter away from TUI
 - Default memory limit: 100000 (`memory/sqlite.go:WithMemoryLimit`)
-- `memory/sqlite.go` no longer imports `config`, `models`, `extractor`, or `model` — extractor model creation removed
+- Extractor model is the same as main model (same API endpoint/credentials)
 
 ## Context Management
 

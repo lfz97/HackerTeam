@@ -6,8 +6,7 @@ import (
 	"HackerTeam/global"
 	"HackerTeam/models"
 	"HackerTeam/toolsets/localexec"
-	"HackerTeam/utils/pretty"
-
+	"errors"
 	"strings"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
@@ -17,7 +16,7 @@ import (
 )
 
 // 创建队长agent，负责任务规划、分配和总结，队长只挂载文件目录及文件读写工具
-func initCaptain() *llmagent.LLMAgent {
+func initCaptain() (*llmagent.LLMAgent, error) {
 	captainPrompt := assemblePrompt("prompts/agents/captain.md")
 
 	systemtools := functionTools.GetFileSystemTools()
@@ -42,13 +41,13 @@ func initCaptain() *llmagent.LLMAgent {
 		llmagent.WithGlobalInstruction(captainPrompt),                    // 系统提示词
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
-	agent_p := setAgent("Captain", (*global.Config_p).Model, opts)
-	return agent_p
+	agent_p, err := setAgent("Captain", (*global.Config_p).Model, opts)
+	return agent_p, err
 
 }
 
 // 侦察agent，负责信息收集和环境侦察，挂载相关技能库和工具
-func initRecon() *llmagent.LLMAgent {
+func initRecon() (*llmagent.LLMAgent, error) {
 
 	reconPrompt := assemblePrompt("prompts/agents/recon.md")
 	repo, _ := skill.NewFSRepository(global.ReconSkillsFolderPath)
@@ -82,12 +81,12 @@ func initRecon() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Recon", (*global.Config_p).Model, opts)
-	return agent_p
+	agent_p, err := setAgent("Recon", (*global.Config_p).Model, opts)
+	return agent_p, err
 }
 
 // 渗透agent，负责漏洞利用和权限提升，挂载相关技能库和工具
-func initexploit() *llmagent.LLMAgent {
+func initexploit() (*llmagent.LLMAgent, error) {
 
 	exploitPrompt := assemblePrompt("prompts/agents/exploit.md")
 	repo, _ := skill.NewFSRepository(global.ExploitSkillsFolderPath)
@@ -121,13 +120,13 @@ func initexploit() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Exploit", (*global.Config_p).Model, opts)
-	return agent_p
+	agent_p, err := setAgent("Exploit", (*global.Config_p).Model, opts)
+	return agent_p, err
 
 }
 
 // 后渗透agent，负责权限维持、横向移动和痕迹清除，挂载相关技能库和工具
-func initpostexploit() *llmagent.LLMAgent {
+func initpostexploit() (*llmagent.LLMAgent, error) {
 
 	postexploitPrompt := assemblePrompt("prompts/agents/post_exploit.md")
 	repo, _ := skill.NewFSRepository(global.PostExploitSkillsFolderPath)
@@ -161,12 +160,12 @@ func initpostexploit() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("PostExploit", (*global.Config_p).Model, opts)
-	return agent_p
+	agent_p, err := setAgent("PostExploit", (*global.Config_p).Model, opts)
+	return agent_p, err
 }
 
 // 扫描agent，负责漏洞扫描和安全评估，挂载相关技能库和工具
-func initScanner() *llmagent.LLMAgent {
+func initScanner() (*llmagent.LLMAgent, error) {
 
 	scannerPrompt := assemblePrompt("prompts/agents/scanner.md")
 	repo, _ := skill.NewFSRepository(global.ScannerSkillsFolderPath)
@@ -200,12 +199,12 @@ func initScanner() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Scanner", (*global.Config_p).Model, opts)
-	return agent_p
+	agent_p, err := setAgent("Scanner", (*global.Config_p).Model, opts)
+	return agent_p, err
 }
 
 // 复现agent，负责漏洞复现和验证，挂载相关技能库和工具
-func initReproducer() *llmagent.LLMAgent {
+func initReproducer() (*llmagent.LLMAgent, error) {
 	reproducerPrompt := assemblePrompt("prompts/agents/reproducer.md")
 	repo, _ := skill.NewFSRepository(global.ReproducerSkillsFolderPath)
 
@@ -236,27 +235,26 @@ func initReproducer() *llmagent.LLMAgent {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p := setAgent("Reproducer", (*global.Config_p).Model, opts)
-	return agent_p
+	agent_p, err := setAgent("Reproducer", (*global.Config_p).Model, opts)
+	return agent_p, err
 }
 
-func setAgent(agentName string, m config.Model, opts []llmagent.Option) *llmagent.LLMAgent {
+func setAgent(agentName string, m config.Model, opts []llmagent.Option) (*llmagent.LLMAgent, error) {
 	if m.APIType == "openai" {
 		openaimodel := models.Openai(m.Model, m.BaseURL, m.APIKey)
 		opts = append(opts, llmagent.WithModel(openaimodel))
 		Agent_p := llmagent.New(agentName, opts...)
-		return Agent_p
+		return Agent_p, nil
 
 	} else if m.APIType == "anthropic" {
 
 		Anthropicagent := models.Anthropic(m)
 		opts = append(opts, llmagent.WithModel(Anthropicagent))
 		Agent_p := llmagent.New(agentName, opts...)
-		return Agent_p
+		return Agent_p, nil
 
 	} else {
-		pretty.ErrorWithExit("不支持的API类型，请检查配置文件中的 Model.APIType 字段")
-		return nil
+		return nil, errors.New("不支持的API类型，请检查配置文件中的 Model.APIType 字段")
 	}
 }
 

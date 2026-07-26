@@ -6,6 +6,7 @@ import (
 	"HackerTeam/memory"
 	"HackerTeam/session"
 	"HackerTeam/utils/pretty"
+	"context"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/otiai10/copy"
@@ -19,7 +20,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	"trpc.group/trpc-go/trpc-agent-go/agent"
+	ag "trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/team"
@@ -48,6 +49,14 @@ const (
 func Init(an string) {
 	global.Agentname = an
 
+	preCheckLoad()
+
+	//初始化AgentRunner
+	NewRunner()
+}
+
+func preCheckLoad() {
+
 	//获取Agent可执行文件所在的目录路径
 	getcwd()
 
@@ -74,9 +83,11 @@ func Init(an string) {
 
 	//初始化sqlite记忆服务
 	initSqliteMemoryService()
+}
 
-	//初始化AgentRunner
-	NewRunner()
+// 每次runner执行时重新加载以下Module
+func reload() {
+	LoadConfig() //加载配置文件（后续parseToolsetsFromConfig等会读取新配置）
 }
 
 // 配置系统提示词，替换其中的占位符
@@ -257,26 +268,53 @@ func initSqliteMemoryService() {
 	global.SqliteMemoryService = service
 }
 
-func initTeam() runner.Runner {
-	CaptainAgent := initCaptain()
-	exploitAgent := initexploit()
-	postexploitAgent := initpostexploit()
-	reconAgent := initRecon()
-	scannerAgent := initScanner()
-	reproducerAgent := initReproducer()
+func NewRunner() {
+	Runner := runner.NewRunnerWithAgentFactory(
+		global.Agentname,
+		global.Agentname,
+		func(ctx context.Context, ro ag.RunOptions) (ag.Agent, error) {
+			reload()
+			captain, err := initCaptain()
+			if err != nil {
+				return nil, err
+			}
+			exploit, err := initexploit()
+			if err != nil {
+				return nil, err
+			}
+			postexploit, err := initpostexploit()
+			if err != nil {
+				return nil, err
+			}
+			recon, err := initRecon()
+			if err != nil {
+				return nil, err
+			}
+			scanner, err := initScanner()
+			if err != nil {
+				return nil, err
+			}
+			reproducer, err := initReproducer()
+			if err != nil {
+				return nil, err
+			}
 
-	team.New(
-		CaptainAgent,
-		[]agent.Agent{exploitAgent, postexploitAgent, reconAgent, scannerAgent, reproducerAgent},
-		team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
-		team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
-		team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
+			team.New(
+				captain,
+				[]ag.Agent{exploit, postexploit, recon, scanner, reproducer},
+				team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
+				team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
+				team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
+			)
+			return captain, nil
+		},
+		runner.WithSessionService(global.SessionService_p),
+		runner.WithMemoryService(global.SqliteMemoryService),
 	)
-	Runner := runner.NewRunner(global.Agentname, CaptainAgent,
-		runner.WithSessionService(global.SessionService_p),     // 使用内存会话服务，其中包含自动摘要功能
-		runner.WithMemoryService(global.SqliteMemoryService), // 使用sqlite记忆服务
-	)
-	return Runner
+	global.AgentRunner_p = &global.Agentrunner{
+		Runner: Runner,
+		Stream: (*global.Config_p).Model.Stream,
+	}
 }
 
 func LoadConfig() {
@@ -286,15 +324,6 @@ func LoadConfig() {
 		global.ShowErrorAndExit(global.AgentMessage, pretty.TErrorF("加载配置文件错误: %v,按任意键退出", err))
 	}
 	global.Config_p = config_p
-}
-
-// 解析加载完成的配置文件，内部创建Team agent，并生成一个runner
-func NewRunner() {
-	runner := initTeam()
-	global.AgentRunner_p = &global.Agentrunner{
-		Runner: runner,
-		Stream: (*global.Config_p).Model.Stream,
-	}
 }
 
 // redirectFrameworkLog 将框架的日志输出从 stdout 重定向到可执行文件同目录下的 HackerTeam.log 文件-created by copilot

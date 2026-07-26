@@ -46,7 +46,6 @@ func defaultHelpItems() []HelpItem {
 	return []HelpItem{
 		{"/new", "开始新对话"},
 		{"/exit", "退出程序"},
-		{"/flush", "刷新工具"},
 	}
 }
 

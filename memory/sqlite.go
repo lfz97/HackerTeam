@@ -5,6 +5,7 @@ import (
 	"HackerTeam/models"
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"trpc.group/trpc-go/trpc-agent-go/memory"
@@ -39,6 +40,7 @@ func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Servic
 		memorysqlite.WithMemoryLimit(100000),
 		memorysqlite.WithExtractor(ext),
 		memorysqlite.WithAutoMemoryExposedTools([]string{memory.AddToolName, memory.UpdateToolName}...), // 为 agent 额外暴露添加和更新工具，允许手动补充记忆
+		memorysqlite.WithMemoryJobTimeout(600*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sqlite memory service: %w", err)

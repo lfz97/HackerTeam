@@ -13,7 +13,7 @@ func NewMemorySessionService(m config.Model) *inmemory.SessionService {
 		inmemory.WithSummarizer(NewSummarizer(m)),
 		inmemory.WithAsyncSummaryNum(2),
 		inmemory.WithSummaryQueueSize(100),
-		inmemory.WithSummaryJobTimeout(60*time.Second),
+		inmemory.WithSummaryJobTimeout(600*time.Second),
 	)
 	return MemSessionService
 }

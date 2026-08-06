@@ -612,6 +612,7 @@ func TToolCompact(name string, args []byte, result string) string {
 		}
 	}
 
+	// 绿点 + 橙色工具名 + 灰色参数/箭头/结果
 	return fmt.Sprintf(
 		"\n[-:-:-]  [green]●[-] [%s]%s[-] [gray::d]%s → %s[-]",
 		TColorClaudeCodeOrange, name, compactArgs, resultSummary,

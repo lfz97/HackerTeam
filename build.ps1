@@ -12,7 +12,7 @@ if (-not (Test-Path $OutputDir)) {
 }
 
 $env:CGO_ENABLED = "1"
-go build -ldflags $LDFLAGS -o "$OutputDir/HackerTeam.exe"
+go build -ldflags $LDFLAGS -o "$OutputDir/HackerTeam.exe" ./cmd
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 Write-Host "构建完成: $OutputDir/HackerTeam.exe" -ForegroundColor Green

@@ -7,7 +7,7 @@ LDFLAGS := -s -w
 
 all:
 	mkdir -p $(OUTPUT_DIR)
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/HackerTeam
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT_DIR)/HackerTeam ./cmd
 
 clean:
 	rm -rf $(OUTPUT_DIR)/*

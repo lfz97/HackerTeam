@@ -1,12 +1,12 @@
 package tui
 
 import (
+	"HackerTeam/utils/pretty"
 	"charm.land/glamour/v2"
 	"context"
 	"fmt"
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	"HackerTeam/utils/pretty"
 	"strings"
 	"time"
 )
@@ -219,7 +219,7 @@ func (t *Tui) NewGlamourRenderer() *glamour.TermRenderer {
 		w = 80
 	}
 	r, _ := glamour.NewTermRenderer(
-		glamour.WithStandardStyle("dracula"),
+		glamour.WithStandardStyle("dark"),
 		glamour.WithWordWrap(w),
 		glamour.WithStylesFromJSONBytes([]byte(`{
 			"document": {

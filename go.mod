@@ -8,6 +8,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/google/uuid v1.6.0
+	github.com/mackerelio/go-osstat v0.2.8
 	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/otiai10/copy v1.14.1
 	github.com/pmezard/go-difflib v1.0.0

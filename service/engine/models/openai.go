@@ -10,6 +10,10 @@ func Openai(Model string, BaseUrl string, APIkey string) *openai.Model {
 	opts := []openai.Option{
 		openai.WithBaseURL(BaseUrl),
 		openai.WithAPIKey(APIkey),
+		// 关闭 system 前置重排：状态栏是动态 system（每次调用内容变化），
+		// 重排会把变化部分挪进前缀、破坏自动前缀缓存（实测：尾部95%命中 vs 头部0）。
+		// 框架默认对通用 OpenAI 变体开启、DeepSeek 变体默认关闭；显式关闭以统一行为并保住尾部形态。
+		openai.WithOptimizeForCache(false),
 	}
 
 	if strings.Contains(Model, "deepseek") {

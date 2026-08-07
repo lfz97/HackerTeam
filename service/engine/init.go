@@ -107,7 +107,7 @@ func (e *Engine) configENVPrompt() {
 	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{NAME}}", (*e).Agentname)
 
 	//当前日期
-	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
+	//(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
 
 	//当前时区
 	zone, _ := time.Now().Zone()
@@ -135,7 +135,7 @@ func (e *Engine) configENVPrompt() {
 	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{HOSTNAME}}", hostName)
 
 	//运行目录
-	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{CWD}}", (*e).CWD)
+	//(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{CWD}}", (*e).CWD)
 
 	//配置目录
 	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{CONFIGPATH}}", (*e).ConfigFolderPath)
@@ -143,7 +143,7 @@ func (e *Engine) configENVPrompt() {
 	//配置文件
 	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{HackerTeamConfig}}", hackerTeamConfig)
 	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{HackerTeamLogFile}}", hackerTeamLogFile)
-	(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{OperationRecord}}", operationRecord)
+	//(*e).EnvPrompt = strings.ReplaceAll((*e).EnvPrompt, "{{OperationRecord}}", operationRecord)
 
 	//输出目录
 	now := time.Now().Format("20060102150405")

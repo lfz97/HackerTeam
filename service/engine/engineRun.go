@@ -40,7 +40,11 @@ func (e *Engine) agentRunIteratively(Ctx context.Context, inputContext turnResul
 	for {
 		//如果是新对话、继续对话或中断后恢复，用户自行输入prompt
 		if inputContext.Code == New || inputContext.Code == Continue || inputContext.Code == Int {
-			userPrompt = (*e).tui.ReadInputAreaPromptWithEnter() //启用输入框并将用户输入放进Channel
+			(*e).tui.ReadInputAreaPromptWithEnter() //启用输入框并将用户输入放进Channel
+			select {
+			case userPrompt = <-(*e).tui.InputChannel():
+
+			}
 
 			{
 				checkprompt := strings.ReplaceAll(userPrompt, "\n", "")

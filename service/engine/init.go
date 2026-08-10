@@ -33,7 +33,8 @@ type tuiService interface {
 	AddHelpItems(items []map[string]string)
 	ClearAppFuncTrigger()
 	PrintToMsgView(content string, clear bool)
-	ReadInputAreaPromptWithEnter() string
+	ReadInputAreaPromptWithEnter()
+	InputChannel() chan string
 	ResetHelpItems()
 	SetAppFuncTriggerWithEsc(f func())
 	ShowErrorInMsgViewAndExit(errmsg string)

@@ -23,6 +23,7 @@ var (
 type Tui struct {
 	app       *tview.Application
 	appLayout *layout
+	InputChan chan string
 }
 
 type layout struct {
@@ -52,8 +53,7 @@ func (t *Tui) PrintToMsgView(content string, clear bool) {
 	})
 }
 
-func (t *Tui) ReadInputAreaPromptWithEnter() string {
-	var ch chan string = make(chan string)
+func (t *Tui) ReadInputAreaPromptWithEnter() {
 	(*t).app.QueueUpdateDraw(func() {
 		(*t).app.SetFocus((*(*t).appLayout).inputArea)
 
@@ -69,13 +69,18 @@ func (t *Tui) ReadInputAreaPromptWithEnter() string {
 			// ModNone = 0，无任何修饰键（Ctrl/Shift/Alt 均未按下），即裸按 Enter
 			// bracketed paste 保证粘贴里的 \n 走 PasteEvent 通道，不会产生 KeyEnter 事件
 			if event.Key() == tcell.KeyEnter && event.Modifiers() == tcell.ModNone {
-				//提交后注销输入捕获器，避免回复期间再次Enter向无人接收的channel发送导致UI阻塞
-				(*(*t).appLayout).inputArea.SetInputCapture(nil)
 
 				//获取输入文本
 				text := (*(*t).appLayout).inputArea.GetText()
-				(*(*t).appLayout).inputArea.SetText("", false)
-				ch <- text
+				// 发送输入文本到 InputChan。default 分支：对端（引擎循环）未在监听时
+				// （如自动 turn 期间）不投递，避免 unbuffered send 阻塞 tview 事件循环
+				// 导致 UI 卡死。注意：只有投递成功才清空输入框，default 分支保留文本，
+				// 用户输入不丢失。
+				select {
+				case (*t).InputChan <- text:
+					(*(*t).appLayout).inputArea.SetText("", false)
+				default:
+				}
 				return nil //Enter事件不捕获
 			}
 
@@ -88,7 +93,11 @@ func (t *Tui) ReadInputAreaPromptWithEnter() string {
 			return event
 		})
 	})
-	return <-ch //等待channel直到获取到输入内容
+
+}
+
+func (t *Tui) InputChannel() chan string {
+	return (*t).InputChan
 }
 
 func (t *Tui) StatusBarScrollingTip(ctx context.Context, tip string, TColor string) {
@@ -312,6 +321,7 @@ func GetTuiService() *Tui {
 				helpPageVisible: false,
 			},
 		},
+		InputChan: make(chan string),
 	}
 
 	(*(*(*tui).appLayout).helpTable).h.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {

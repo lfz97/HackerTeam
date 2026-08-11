@@ -35,7 +35,8 @@ func (e *Engine) initCaptain() (*llmagent.LLMAgent, error) {
 
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*(*e).Config_p).Model.Stream,
+			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
+			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
 		llmagent.WithTools(tools),                                        // 队长挂载文件系统工具、文件操作工具、日期工具和记忆工具
 		llmagent.WithAddSessionSummary(true),                             // 启用上下文压缩注入
@@ -68,7 +69,8 @@ func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*(*e).Config_p).Model.Stream,
+			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
+			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
@@ -107,7 +109,8 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*(*e).Config_p).Model.Stream,
+			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
+			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
@@ -147,7 +150,8 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*(*e).Config_p).Model.Stream,
+			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
+			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
@@ -186,7 +190,8 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*(*e).Config_p).Model.Stream,
+			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
+			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
@@ -224,7 +229,8 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 	toolsets := []tool.ToolSet{}
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
-			Stream: (*(*e).Config_p).Model.Stream,
+			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
+			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
 		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级

@@ -14,6 +14,7 @@ type Model struct {
 	AnthropicAuthHeaderTransfer bool   `yaml:"anthropicAuthHeaderTransfer"`
 	Stream                      bool   `yaml:"stream"`
 	ContextWindow               int    `yaml:"contextwindow"`
+	MaxTokens                   int    `yaml:"maxtokens"` // 每次请求的最大生成 token 数，默认 32000
 	ShowReasoning               bool   `yaml:"show_reasoning"`
 }
 
@@ -36,6 +37,9 @@ func LoadConfig(path string) (*Config, error) {
 	err = yaml.Unmarshal(yamlFile, &YamlConfig)
 	if err != nil {
 		return nil, fmt.Errorf("解析配置文件错误：%v", err)
+	}
+	if YamlConfig.Model.MaxTokens == 0 { // maxtokens 未配置时使用默认值 32000
+		YamlConfig.Model.MaxTokens = 32000
 	}
 	return &YamlConfig, nil
 }

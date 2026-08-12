@@ -368,7 +368,7 @@ model:
   apitype: "openai"                     # "openai" 或 "anthropic"
   contextwindow: 64000
   stream: true
-  maxtokens: 32000                      # 每次请求的最大生成 token 数，默认 32000
+  maxtokens: 12800                      # 每次请求的最大生成 token 数，默认 12800
 ```
 
 | `apitype` | 适用提供商 |

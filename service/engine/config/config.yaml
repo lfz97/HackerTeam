@@ -11,7 +11,7 @@ model:
   anthropicAuthHeaderTransfer: false # 如果true，那么通过Authorization: Bearer认证，如果为false，通过X-Api-Key认证
   contextwindow: 64000 # 上下文窗口大小，请参考模型文档设置，影响自动摘要功能的触发时机
   stream: true # 是否开启流式输出，开启后可以实时看到模型的推理过程和工具调用信息
-  maxtokens: 32000 # 每次请求的最大生成 token 数，默认 32000
+  maxtokens: 12800 # 每次请求的最大生成 token 数，默认 12800
   show_reasoning: false   # 显示推理内容，默认 false（不显示）
 
 # MCP server 配置（可选）。启用的 server 会挂载给全部 agent（含队长），实例跨 agent 共享。

@@ -3,8 +3,6 @@ package engine
 import (
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/models"
-	"HackerTeam/service/engine/tools/functions"
-	"HackerTeam/service/engine/tools/toolsets/localexec"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,20 +23,23 @@ import (
 func (e *Engine) initCaptain() (*llmagent.LLMAgent, error) {
 	captainPrompt := e.assemblePrompt("prompts/agents/captain.md")
 
-	systemtools := functionTools.GetFileSystemTools()
-	operationtools := functionTools.GetFileOperationsTools()
-	datetools := functionTools.GetDateTools()
-
-	tools := append(systemtools, operationtools...)
-	tools = append(tools, datetools...)
+	// 内置工具清单常驻（启动时建一次），拷入私有slice再追加记忆工具，避免与Engine共享列表产生append别名
+	tools := make([]tool.Tool, 0, len((*e).builtinTools)+4)
+	tools = append(tools, (*e).builtinTools...)
 	tools = append(tools, (*e).SqliteMemoryService.Tools()...) // 记忆工具：memory_search / memory_load / memory_add / memory_update / memory_delete（纯agent驱动，无自动提取）
+
+	// 配置文件声明的MCP工具集：挂载给全部agent（含队长），每轮run自动刷新
+	toolsets := make([]tool.ToolSet, 0, len((*e).mcpToolsets))
+	toolsets = append(toolsets, (*e).mcpToolsets...)
 
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
 			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
-		llmagent.WithTools(tools),                                        // 队长挂载文件系统工具、文件操作工具、日期工具和记忆工具
+		llmagent.WithTools(tools),              // 队长挂载内置文件/日期工具 + 记忆工具
+		llmagent.WithToolSets(toolsets),         // 配置文件声明的MCP工具集
+		llmagent.WithRefreshToolSetsOnRun(true), // 每次run刷新MCP工具列表
 		llmagent.WithAddSessionSummary(true),                             // 启用上下文压缩注入
 		llmagent.WithSyncSummaryIntraRun(true),                           //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                       // 启用 tool result 压缩（Pass 1+2）
@@ -59,14 +60,14 @@ func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
 	reconPrompt := e.assemblePrompt("prompts/agents/recon.md")
 	repo, _ := skill.NewFSRepository((*e).ReconSkillsFolderPath)
 
-	systemtools := functionTools.GetFileSystemTools()
-	operationtools := functionTools.GetFileOperationsTools()
-	datetools := functionTools.GetDateTools()
+	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
+	tools := make([]tool.Tool, 0, len((*e).builtinTools))
+	tools = append(tools, (*e).builtinTools...)
 
-	tools := append(systemtools, operationtools...)
-	tools = append(tools, datetools...)
-
-	toolsets := []tool.ToolSet{}
+	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
+	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
+	toolsets = append(toolsets, (*e).builtinToolsets["Recon"])
+	toolsets = append(toolsets, (*e).mcpToolsets...)
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
@@ -80,7 +81,7 @@ func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithGlobalInstruction(reconPrompt),
 		llmagent.WithTools(tools),
-		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())), //侦察员挂载LocalExec工具集，包含本地命令执行工具
+		llmagent.WithToolSets(toolsets), // 本角色常驻localexec + 配置文件MCP工具集
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
 		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
@@ -99,14 +100,14 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 	exploitPrompt := e.assemblePrompt("prompts/agents/exploit.md")
 	repo, _ := skill.NewFSRepository((*e).ExploitSkillsFolderPath)
 
-	systemtools := functionTools.GetFileSystemTools()
-	operationtools := functionTools.GetFileOperationsTools()
-	datetools := functionTools.GetDateTools()
+	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
+	tools := make([]tool.Tool, 0, len((*e).builtinTools))
+	tools = append(tools, (*e).builtinTools...)
 
-	tools := append(systemtools, operationtools...)
-	tools = append(tools, datetools...)
-
-	toolsets := []tool.ToolSet{}
+	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
+	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
+	toolsets = append(toolsets, (*e).builtinToolsets["Exploit"])
+	toolsets = append(toolsets, (*e).mcpToolsets...)
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
@@ -120,7 +121,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithGlobalInstruction(exploitPrompt),                                  // 系统提示词
 		llmagent.WithTools(tools),
-		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithToolSets(toolsets),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
 		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
@@ -140,14 +141,14 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 	postexploitPrompt := e.assemblePrompt("prompts/agents/post_exploit.md")
 	repo, _ := skill.NewFSRepository((*e).PostExploitSkillsFolderPath)
 
-	systemtools := functionTools.GetFileSystemTools()
-	operationtools := functionTools.GetFileOperationsTools()
-	datetools := functionTools.GetDateTools()
+	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
+	tools := make([]tool.Tool, 0, len((*e).builtinTools))
+	tools = append(tools, (*e).builtinTools...)
 
-	tools := append(systemtools, operationtools...)
-	tools = append(tools, datetools...)
-
-	toolsets := []tool.ToolSet{}
+	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
+	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
+	toolsets = append(toolsets, (*e).builtinToolsets["PostExploit"])
+	toolsets = append(toolsets, (*e).mcpToolsets...)
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
@@ -160,7 +161,7 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithGlobalInstruction(postexploitPrompt),                              // 系统提示词
-		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -180,14 +181,14 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 	scannerPrompt := e.assemblePrompt("prompts/agents/scanner.md")
 	repo, _ := skill.NewFSRepository((*e).ScannerSkillsFolderPath)
 
-	systemtools := functionTools.GetFileSystemTools()
-	operationtools := functionTools.GetFileOperationsTools()
-	datetools := functionTools.GetDateTools()
+	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
+	tools := make([]tool.Tool, 0, len((*e).builtinTools))
+	tools = append(tools, (*e).builtinTools...)
 
-	tools := append(systemtools, operationtools...)
-	tools = append(tools, datetools...)
-
-	toolsets := []tool.ToolSet{}
+	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
+	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
+	toolsets = append(toolsets, (*e).builtinToolsets["Scanner"])
+	toolsets = append(toolsets, (*e).mcpToolsets...)
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
@@ -200,7 +201,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithGlobalInstruction(scannerPrompt),                                  // 系统提示词
-		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkillsLoadedContentInToolResults(true),
@@ -219,14 +220,14 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 	reproducerPrompt := e.assemblePrompt("prompts/agents/reproducer.md")
 	repo, _ := skill.NewFSRepository((*e).ReproducerSkillsFolderPath)
 
-	systemtools := functionTools.GetFileSystemTools()
-	operationtools := functionTools.GetFileOperationsTools()
-	datetools := functionTools.GetDateTools()
+	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
+	tools := make([]tool.Tool, 0, len((*e).builtinTools))
+	tools = append(tools, (*e).builtinTools...)
 
-	tools := append(systemtools, operationtools...)
-	tools = append(tools, datetools...)
-
-	toolsets := []tool.ToolSet{}
+	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
+	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
+	toolsets = append(toolsets, (*e).builtinToolsets["Reproducer"])
+	toolsets = append(toolsets, (*e).mcpToolsets...)
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
@@ -239,7 +240,7 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithGlobalInstruction(reproducerPrompt),                               // 系统提示词
-		llmagent.WithToolSets(append(toolsets, localexec.LocalExec())),
+		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
 		llmagent.WithSkills(repo),

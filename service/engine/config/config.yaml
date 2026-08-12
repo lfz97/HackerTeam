@@ -13,3 +13,21 @@ model:
   stream: true # 是否开启流式输出，开启后可以实时看到模型的推理过程和工具调用信息
   maxtokens: 32000 # 每次请求的最大生成 token 数，默认 32000
   show_reasoning: false   # 显示推理内容，默认 false（不显示）
+
+# MCP server 配置（可选）。启用的 server 会挂载给全部 agent（含队长），实例跨 agent 共享。
+# http_mcp：SSE / streamable_http 传输
+#http_mcp:
+#  - enabled: true
+#    name: "example_http"      # 必须唯一，决定工具前缀 {name}_{toolName}
+#    type: "streamable_http"   # sse 或 streamable_http
+#    endpoint: "http://127.0.0.1:8080/mcp"
+#    headers: {}
+#    description: "示例 HTTP MCP server"
+
+# stdin_mcp：stdio 传输（每个 server 全进程一个子进程，懒连接）
+#stdin_mcp:
+#  - enabled: true
+#    name: "example_stdio"     # 必须唯一，决定工具前缀 {name}_{toolName}
+#    command: "uvx"
+#    args: ["mcp-server-fetch"]
+#    description: "示例 stdio MCP server"

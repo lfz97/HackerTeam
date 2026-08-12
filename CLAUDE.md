@@ -23,8 +23,9 @@
 - Agent framework: `trpc.group/trpc-go/trpc-agent-go`, MCP: `trpc.group/trpc-go/trpc-mcp-go`
 - LLM backends: OpenAI-compatible API or Anthropic native SDK
 - Config auto-generated at first run: `<binary-dir>/.HackerTeam/HackerTeam.yaml`
+- MCP servers declared in config: `http_mcp`（sse/streamable_http）与 `stdin_mcp`（stdio）两个列表，`enabled` 开关控制；`name` 必须唯一（决定工具前缀 `{name}_{toolName}`，缺省时分配 `mcp_N` 默认名）；启用的 server 挂载给全部 agent（含 Captain），同一实例跨 agent 共享
 - TUI colors centralized in `utils/pretty/pretty.go` (TuiXxx constants)
-- `/new`, `/exit`, `ESC` — built-in TUI commands（`/flush` 已移除，每次 run 自动重建配置/技能/工具）
+- `/new`, `/exit`, `ESC` — built-in TUI commands（`/flush` 已移除；每轮 run 重建配置/技能/MCP工具集，内置工具与工具集（localexec）常驻、跨轮复用）
 - Agent prompts embedded via `//go:embed prompts/*` in `service/engine/engineCore.go` (`PromptFiles`) and `service/engine/session/summarizer.go` (`promptFiles`, `prompt/*` prefix)
 - Adding a new shared consensus prompt pattern: 1) create `service/engine/prompts/common/<name>.md`, 2) add field in `Engine` struct (`service/engine/engineCore.go`) + load in `configENVPrompt()` in `init.go` (follow `VulnConsensusPrompt` pattern), 3) add `{{<NAME>}}` replacement in `assemblePrompt()` in `members.go`, 4) add `{{<NAME>}}` placeholder to each agent prompt `.md` file
 - `{{OUTPUTDIR}}` is the exception — NOT replaced by `assemblePrompt()`. It's resolved once in `env.md` via `configENVPrompt()` then injected into all agents through `{{ENV}}`. Agents infer the path from the "Output Directory" field shown in the environment block. Use `{{OUTPUTDIR}}` directly in prompt `.md` files, do NOT add Go-level replacement for it.
@@ -35,18 +36,19 @@
 - `boot/boot.go` — startup orchestration: `GetTuiService()` → `go { GetEngineService → AgentStart }` → `tui.Run()`
 - `service/engine/` — Engine core (refactored from `global/` + `bootstrap/` + `handler/` + `config/` + `models/` + `session/` + `memory/` + `functionTools/` + `toolsets/`)
   - `engineCore.go` — `Engine` struct (all state: config pointer, runner, session, memory, 5 skill folder paths, prompt strings), `PromptFiles`/`ToolSkills` embedFS (`//go:embed prompts/*` + `skillsTemplates/*`), `GetEngineService()`, `AgentStart()` main dialog loop, `randomStartID()`
-  - `init.go` — `preCheckLoad()` init sequence (config/skills/log/session/memory), `configENVPrompt()` (env.md + 3 shared prompt placeholders), `checkSkillsFolder()` (5 role skill dirs + template copy), `newRunner()` (agent factory: 6 agent factories + `team.New`), `redirectFrameworkLog()`; `tuiService` interface definition
+  - `init.go` — `preCheckLoad()` init sequence (config/skills/log/session/memory/内置工具与工具集), `configENVPrompt()` (env.md + 3 shared prompt placeholders), `checkSkillsFolder()` (5 role skill dirs + template copy), `newRunner()` (agent factory: 6 agent factories + `team.New`), `redirectFrameworkLog()`; `initBuiltinTools()`/`initBuiltinToolsets()` (内置工具/工具集启动时建一次，跨轮常驻), `loadMCPFromConfig()`/`refreshMCPFromConfig()` (MCP工具集每轮run Close+重建); `tuiService` interface definition
   - `members.go` — 6 agent factories (`initCaptain`/`initRecon`/`initexploit`/`initpostexploit`/`initScanner`/`initReproducer`), `setAgent()` (model selection by APIType), `assemblePrompt()`
   - `engineRun.go` — dialog loop + single-turn execution (`agentRunIteratively`/`agentRunOnce`), turn types, merged from old `handler/runIteratively.go` + `runOnce.go` + `model.go` + `bootstrap/Bootstrap.go`
   - `messageRender.go` — message rendering (`renderStreamEvent`/`renderNonStreamEvent`/`renderToolCall`/`renderToolResult`), tool call/result buffer (`toolMsgBuffer`), merged from old `handler/message.go` + `toolMsg.go`
-  - `config/` — `config.go` (Config struct + `LoadConfig`), `template.go` (YAML template via `//go:embed`)
+  - `config/` — `config.go` (Config struct + `LoadConfig`), `mcp.go` (HttpMCP/StdinMCP 配置结构体), `template.go` (YAML template via `//go:embed`，含 `http_mcp`/`stdin_mcp` 示例段)
   - `memory/sqlite.go` — SQLite memory service factory with auto-extraction
   - `session/` — summarizer, session service, prompt embedding (`prompt/*`)
   - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
   - `prompts/agents/` + `prompts/common/` — role prompts + shared consensus prompts (embedded)
   - `skillsTemplates/` — embedded pentest-tools skill template
   - `tools/functions/` — Custom Go function tools for agents
-  - `tools/toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents)
+  - `tools/toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents；`Close()` 先 kill 未结束命令再清注册表)
+  - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、10s timeout)
 - `service/tui/` — `tui.go` (TUI widgets, `GetTuiService`, `Run`, `Show*InMsgViewAndExit`), `Internal.go` (help table toggle, `PrintToMsgView` wrappers)
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
 
@@ -71,7 +73,10 @@
 - Captain dispatches agents **serially** (Recon → Scanner → Exploit → PostExploit → Reproducer in two batches), not in parallel — `WithEnableParallelTools` is disabled; parallel dispatch causes framework-level issues when skill + localexec toolsets coexist
 - `HistoryScope` is **NOT** set to Isolated — the framework default is `HistoryScopeParentBranch`, meaning sub-agents inherit Captain's conversation branch history. Code does not override this default.
 - `LocalExec.submit_command` executes immediately (submit+start merged into one async call) — agents MUST poll `get_status` before `get_output`; `start_command` tool no longer exists
-- `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed
+- `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed。**实例启动时建一次（`initBuiltinToolsets()`，每个执行角色一个），跨轮复用不重建**——上一轮 run 提交的长任务下一轮仍可 `get_status`/`get_output` 续查；`Close()` 会先 kill 所有未结束命令再清空注册表
+- **Toolset 生命周期二分：常驻 vs 每轮刷新** — `builtinTools`（15 件文件/日期工具）与 `builtinToolsets`（每角色 localexec）启动时创建，每轮 run 挂到新建的 agent 上，不刷新；`mcpToolsets` 每轮 run 在 `reload()` 里 Close 上一轮实例→按最新配置重建（配置改动下轮即生效）。框架**不会**调用 `ToolSet.Close()`（所有权在调用方），退出回收在 `AgentStart` 的 Exit 分支显式执行
+- **MCP 共享实例 = 每 server 全进程一个子进程** — stdio 传输点对点，框架不去重：每个 `NewMCPToolSet` 实例各起一个子进程且无人回收。HackerTeam 的做法是同一实例共享挂载给全部 6 个 agent（`WithToolSets` 不转移所有权，合法），配合每轮 Close+重建与退出 Close，进程数恒定为"启用的 server 数"
+- **挂载组装禁止 append 到共享列表** — 给 agent 挂工具/工具集时一律 `make`+`append` 拷入私有 slice，共享清单（`builtinTools` 等）只作 append 的来源。以共享 slice 为目的地的 `append` 在 cap 有余量时会原地写底层数组，造成跨轮/跨 agent 别名改写（无报错、race detector 不报）
 - `team.WithMemberToolStreamInner(true)` + `team.WithMemberToolInnerTextMode(team.InnerTextModeInclude)` — TUI shows sub-agent full transcript (text+tool calls+results); use `InnerTextModeExclude` to show only progress signals, hiding assistant text
 - **`models.Openai()` / `models.Anthropic()` are canonical model constructors** — `service/engine/session/summarizer.go` and `setAgent()` use these two functions. They handle DeepSeek variant detection, reasoning backfill, and API auth. When creating a new model instance from config, call these instead of manually assembling options.
 - **ANSI → tview tag conversion required** — tview's `SetDynamicColors(true)` only supports its own color tag format (`[red]text[-]`). Standard ANSI escape sequences must go through `tview.TranslateANSI()` before writing to a TextView. Without this, ANSI codes appear as visible garbage.

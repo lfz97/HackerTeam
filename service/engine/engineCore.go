@@ -12,6 +12,7 @@ import (
 	memorysqlite "trpc.group/trpc-go/trpc-agent-go/memory/sqlite"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
 )
 
 type Agentrunner struct {
@@ -40,6 +41,10 @@ type Engine struct {
 
 	SessionId string
 	RequestId string
+
+	builtinTools    []tool.Tool             // 内置function工具清单（文件系统/文件操作/日期），启动时确定，跨轮常驻不刷新
+	builtinToolsets map[string]tool.ToolSet // 内置工具集（每个执行角色一个常驻localexec实例），启动时确定，跨轮常驻，jobs可跨轮续查
+	mcpToolsets     []tool.ToolSet          // 配置文件声明的MCP工具集，每轮run自动Close重建，共享挂载给全部agent
 
 	ReconSkillsFolderPath       string
 	ExploitSkillsFolderPath     string
@@ -76,6 +81,12 @@ func (e *Engine) AgentStart() {
 		if (*EndTurn_p).Code == Exit { //用户主动结束对话，退出程序
 			//关闭AgentRunner，释放资源
 			(*(*e).AgentRunner_p).Runner.Close()
+			for _, ts := range (*e).mcpToolsets {
+				ts.Close() //关闭MCP连接，释放stdio子进程
+			}
+			for _, ts := range (*e).builtinToolsets {
+				ts.Close() //localexec：kill残留运行命令并清空注册表
+			}
 			(*e).tui.ShowMsgAndExitNoTrigger(pretty.TExit("对话已结束，感谢使用！后会有期！"))
 
 		} else if (*EndTurn_p).Code == New { //用户开始新对话，重置SessionId, RequestId，更新MsgContext为新对话的初始状态

@@ -4,6 +4,9 @@ import (
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/memory"
 	"HackerTeam/service/engine/session"
+"HackerTeam/service/engine/tools/functions"
+"HackerTeam/service/engine/tools/toolsets"
+"HackerTeam/service/engine/tools/toolsets/localexec"
 	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
@@ -23,6 +26,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/team"
+"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-mcp-go"
 
 	"charm.land/glamour/v2"
@@ -93,11 +97,71 @@ func (e *Engine) preCheckLoad() {
 
 	//初始化sqlite记忆服务
 	e.initSqliteMemoryService()
+
+	//初始化内置工具和工具集（启动时建一次，跨轮常驻，不随每轮run重建）
+	e.initBuiltinTools()
+	e.initBuiltinToolsets()
 }
 
 // 每次runner执行时重新加载以下Module
 func (e *Engine) reload() {
-	e.LoadConfig() //加载配置文件（后续agent工厂每次重建工具和技能）
+	e.LoadConfig() //加载配置文件（agent工厂每次重建技能和提示词）
+	e.refreshMCPFromConfig() //刷新MCP工具集：Close上一轮的连接/子进程，按最新配置重建
+}
+
+// initBuiltinTools 内置function工具清单（文件系统/文件操作/日期）：
+// 启动时建一次，跨轮常驻。纯函数工具无状态，统一归入"内置"生命周期，不随每轮run重建。
+func (e *Engine) initBuiltinTools() {
+	tools := []tool.Tool{}
+	tools = append(tools, functionTools.GetFileSystemTools()...)
+	tools = append(tools, functionTools.GetFileOperationsTools()...)
+	tools = append(tools, functionTools.GetDateTools()...)
+	(*e).builtinTools = tools
+}
+
+// initBuiltinToolsets 内置工具集：每个需要执行命令的角色一个常驻 localexec 实例。
+// Manager 保持 per-agent（各角色作业命名空间隔离），实例跨轮复用——
+// 上一轮 run 提交的长任务在下一轮仍可通过 get_status/get_output 续查。
+func (e *Engine) initBuiltinToolsets() {
+	(*e).builtinToolsets = map[string]tool.ToolSet{}
+	for _, role := range []string{"Recon", "Scanner", "Exploit", "PostExploit", "Reproducer"} {
+		(*e).builtinToolsets[role] = localexec.LocalExec()
+	}
+}
+
+// loadMCPFromConfig 从配置文件创建启用的 MCP ToolSet，追加到 mcpToolsets。
+// 未配置 Name 的 server 分配默认名，避免工具前缀冲突。
+func (e *Engine) loadMCPFromConfig() {
+	idx := 0
+	for _, mcpConfig := range (*(*e).Config_p).HttpMcp {
+		if mcpConfig.Enabled == true {
+			if mcpConfig.Name == "" {
+				mcpConfig.Name = fmt.Sprintf("mcp_%d", idx)
+			}
+			(*e).mcpToolsets = append((*e).mcpToolsets, toolsets.HttpMCP(mcpConfig))
+			idx++
+		}
+	}
+	for _, stdinMcpConfig := range (*(*e).Config_p).StdinMcp {
+		if stdinMcpConfig.Enabled == true {
+			if stdinMcpConfig.Name == "" {
+				stdinMcpConfig.Name = fmt.Sprintf("mcp_%d", idx)
+			}
+			(*e).mcpToolsets = append((*e).mcpToolsets, toolsets.StdinMCP(stdinMcpConfig))
+			idx++
+		}
+	}
+}
+
+// refreshMCPFromConfig 每轮run刷新MCP工具集：先Close上一轮的实例（释放stdio子进程与连接），
+// 再按最新配置重建。MCP实例跨agent共享——同一指针挂给全部agent，
+// 每个server全进程只有一个子进程。内置工具/工具集不在此刷新（启动时建立，跨轮常驻）。
+func (e *Engine) refreshMCPFromConfig() {
+	for _, ts := range (*e).mcpToolsets {
+		ts.Close()
+	}
+	(*e).mcpToolsets = []tool.ToolSet{}
+	e.loadMCPFromConfig()
 }
 
 // 配置环境提示词，替换其中的占位符

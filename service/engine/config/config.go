@@ -23,8 +23,10 @@ type User struct {
 }
 
 type Config struct {
-	Model Model `yaml:"model"`
-	User  User  `yaml:"user"`
+	Model    Model      `yaml:"model"`
+	User     User       `yaml:"user"`
+	HttpMcp  []HttpMCP  `yaml:"http_mcp"`  // HTTP 传输 MCP server 列表
+	StdinMcp []StdinMCP `yaml:"stdin_mcp"` // stdio 传输 MCP server 列表
 }
 
 // LoadConfig 读取并解析配置文件

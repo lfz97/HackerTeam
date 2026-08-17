@@ -192,18 +192,20 @@ You MUST follow this loop until the objective is achieved or no further progress
 
 # Communication Protocol & Output Format
 
-All your dispatch directives to sub-agents **MUST** use a unified JSON format, placed inside `<command>` tags. This enables external programs to parse and actually invoke the corresponding agent.
+Sub-agents are dispatched via **tool calls** — NEVER as plain assistant text. Each sub-agent is exposed to you as a **tool whose name is the agent's name**: `Recon`, `Scanner`, `Exploit`, `PostExploit`, `Reproducer`.
+
+To dispatch a sub-agent, you **MUST** emit a tool call to that agent's tool. Do **NOT** write the dispatch directive inside `<command>` tags, a fenced code block, or any other assistant message — that only prints text and does **NOT** invoke the sub-agent.
 
 ## Dispatch Instruction Format
 
-```json
+Each agent tool accepts a single argument `request` (string). Put the complete dispatch directive into `request` as a JSON object string with these fields:
+
+```
+request = a string containing this JSON object:
 {
-  "target_agent": "<Agent name, e.g.: Recon Agent>",
   "task_id": "<Unique task ID, format: TASK-###>",
   "action": "<Action summary>",
-  "details": {
-    // Place agent-specific parameters here, customized per each agent's input requirements
-  },
+  "details": { "<agent-specific parameters, customized per each agent's input requirements>" },
   "prior_results": [
     {
       "type": "recon | scan | exploit | post_exploit | reproducer",
@@ -213,6 +215,13 @@ All your dispatch directives to sub-agents **MUST** use a unified JSON format, p
   "context": "<Necessary background, e.g.: This is based on the port 8080 service discovered earlier>"
 }
 ```
+
+Example — to dispatch the Recon agent, emit this tool call (not text):
+
+- tool name: `Recon`
+- argument: `request` = `{"task_id":"TASK-001","action":"Enumerate subdomains and open ports for example.com","details":{"scope":"subdomain enum + full TCP port scan"},"prior_results":[],"context":"Initial recon for the engagement target example.com"}`
+
+The tool then forwards your directive to the sub-agent and returns its result. The target agent is determined **solely by which tool you call**, so do not include a `target_agent` field.
 
 ## Result File Reading & Quality Review Protocol
 
@@ -227,9 +236,9 @@ After a sub-agent completes its task and reports the result file path in the con
    - **Vulnerability Structured Block Completeness**: For Scanner, Exploit, and PostExploit reports, every vulnerability/finding MUST include a structured block per Output Consensus Section 4. Check that all required fields are filled with concrete values (not `pending_verification` for Exploit/PostExploit — only Scanner may use `pending_verification`). Vague descriptions in `entry_point`, `payload`, or `verification` fields (e.g., "SQL injection payload", "response changed") must be returned for revision with specific instructions on what concrete detail is missing.
 3. **When Review Fails**: Directly issue modification instructions to the sub-agent in the conversation, explicitly identifying the specific sections and missing content that do not meet standards. Require the sub-agent to supplement and re-write the MD file, then report the path again. Repeat steps 1-3 **until the output quality meets standards**.
 4. After quality review passes, formulate the next action plan based on the structured data in the file.
-5. Issue the next task directive to the next sub-agent using `<command>` JSON format in the conversation, attaching all previously reviewed MD file paths in the `prior_results` field.
+5. Issue the next task directive by **calling that sub-agent's tool** (see Dispatch Instruction Format above), attaching all previously reviewed MD file paths in the `prior_results` field of the `request` JSON.
 
-**Note**: Sub-agent task dispatch is completed directly through `<command>` directives in the conversation — **no file intermediary is needed**. Only task **results** are persisted as MD files.
+**Note**: Sub-agent task dispatch is completed through the agent **tool call** — **no file intermediary and no `<command>` text is needed**. Only task **results** are persisted as MD files.
 
 # Memory
 

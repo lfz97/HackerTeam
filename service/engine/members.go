@@ -11,8 +11,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/mackerelio/go-osstat/memory"
 	"strconv"
+
+	"github.com/mackerelio/go-osstat/memory"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
@@ -37,9 +38,9 @@ func (e *Engine) initCaptain() (*llmagent.LLMAgent, error) {
 			MaxTokens: &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
 			Stream:    (*(*e).Config_p).Model.Stream,
 		}),
-		llmagent.WithTools(tools),              // 队长挂载内置文件/日期工具 + 记忆工具
-		llmagent.WithToolSets(toolsets),         // 配置文件声明的MCP工具集
-		llmagent.WithRefreshToolSetsOnRun(true), // 每次run刷新MCP工具列表
+		llmagent.WithTools(tools),                                        // 队长挂载内置文件/日期工具 + 记忆工具
+		llmagent.WithToolSets(toolsets),                                  // 配置文件声明的MCP工具集
+		llmagent.WithRefreshToolSetsOnRun(true),                          // 每次run刷新MCP工具列表
 		llmagent.WithAddSessionSummary(true),                             // 启用上下文压缩注入
 		llmagent.WithSyncSummaryIntraRun(true),                           //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                       // 启用 tool result 压缩（Pass 1+2）
@@ -121,7 +122,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Exploit Agent — hands-on exploitation and security tasks. Use to verify and exploit vulnerabilities (web, auth, network services, payload delivery, defense evasion) to gain a foothold. Also the default for direct single-agent tasks: CTF challenges, command/script execution, or any task needing tool/network interaction. When Recon/Scanner reports exist, pass them in prior_results; they are OPTIONAL for standalone tasks (e.g. CTF). Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(exploitPrompt),                                  // 系统提示词
+		llmagent.WithGlobalInstruction(exploitPrompt), // 系统提示词
 		llmagent.WithTools(tools),
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -163,7 +164,7 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("PostExploit Agent — post-exploitation from an existing foothold/session. Use for privilege escalation, credential theft, internal recon, lateral movement, persistence, data exfiltration, trace cleanup. Provide current session/privilege info in the task. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(postexploitPrompt),                              // 系统提示词
+		llmagent.WithGlobalInstruction(postexploitPrompt), // 系统提示词
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -204,7 +205,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Scanner Agent — automated vulnerability scanning ONLY (breadth over accuracy). Use for nuclei, sqlmap (--batch), nikto, directory brute-forcing, weak-credential checks, tech/WAF identification. Does NOT verify, rate severity, or exploit. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(scannerPrompt),                                  // 系统提示词
+		llmagent.WithGlobalInstruction(scannerPrompt), // 系统提示词
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -244,7 +245,7 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Reproducer Agent — generates standalone Python PoC/Exploit scripts from vulnerability findings. Provide prior agents' MD report paths in prior_results so it can extract vulnerability data. Never attacks targets. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(reproducerPrompt),                               // 系统提示词
+		llmagent.WithGlobalInstruction(reproducerPrompt), // 系统提示词
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
 		llmagent.WithRefreshToolSetsOnRun(true),
@@ -261,7 +262,7 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 func setAgent(agentName string, m config.Model, opts []llmagent.Option) (*llmagent.LLMAgent, error) {
 	opts = append(opts, setBeforeModelStatusCallback()) //设置beforeModel状态栏
 	if m.APIType == "openai" {
-		openaimodel := models.Openai(m.Model, m.BaseURL, m.APIKey)
+		openaimodel := models.Openai(m)
 		opts = append(opts, llmagent.WithModel(openaimodel))
 		Agent_p := llmagent.New(agentName, opts...)
 		return Agent_p, nil

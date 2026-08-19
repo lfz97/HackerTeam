@@ -2,8 +2,9 @@ package config
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v2"
 	"os"
+
+	"gopkg.in/yaml.v2"
 )
 
 type Model struct {
@@ -16,6 +17,7 @@ type Model struct {
 	ContextWindow               int    `yaml:"contextwindow"`
 	MaxTokens                   int    `yaml:"maxtokens"` // 每次请求的最大生成 token 数，默认 12800
 	ShowReasoning               bool   `yaml:"show_reasoning"`
+	HttpTimeout                 int    `yaml:"httptimeout"`
 }
 
 type User struct {

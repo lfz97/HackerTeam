@@ -1,15 +1,16 @@
 package session
 
 import (
-	"embed"
-	"fmt"
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/models"
 	"HackerTeam/utils/pretty"
+	"embed"
+	"fmt"
 	"regexp"
 	"time"
 
 	"strings"
+
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/model/tiktoken"
@@ -45,7 +46,7 @@ func NewSummarizer(m config.Model, tui tuiService) summary.SessionSummarizer {
 	var summarizerModel model.Model
 
 	if m.APIType == "openai" {
-		summarizerModel = models.Openai(m.Model, m.BaseURL, m.APIKey)
+		summarizerModel = models.Openai(m)
 	} else if m.APIType == "anthropic" {
 		summarizerModel = models.Anthropic(m)
 	}

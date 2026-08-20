@@ -328,6 +328,8 @@ trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0 h1:Xb5/BLdIhS0FPEdqDdtq5M
 trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0/go.mod h1:0DTbqSROnJ5JDSBLHy+b+EeXcB46BnjDkL3i89/DtYA=
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.0 h1:4drB5DMghgBHovoSzcDYRVGGOVfBcYnVokqX3WyJaKA=
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.0/go.mod h1:4OHwKEDQ9SEROfx/oBYO8XuGojoLqTTy4oSz6Ea4JEM=
+trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.1-0.20260820131707-cdaece75b478 h1:Bc+vInTRks7k7Vg11sLRjDdZpOct61vB7gHNwuLZy68=
+trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.1-0.20260820131707-cdaece75b478/go.mod h1:4OHwKEDQ9SEROfx/oBYO8XuGojoLqTTy4oSz6Ea4JEM=
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.2 h1:UaVoCJlY3WJ/yQRjrHBJmdYXp/mbc/PXtK36C6NteAE=
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.2/go.mod h1:4OHwKEDQ9SEROfx/oBYO8XuGojoLqTTy4oSz6Ea4JEM=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.11.0 h1:LcPJfT3j1hW6x1sCAX6sBEqDQ+PpUzpl4+MupqIkgqM=

@@ -98,7 +98,7 @@ bootstrap/prompts/common/
 ├── ScannerSkills/
 ├── ExploitSkills/
 ├── PostExploitSkills/
-├── ReproducerSkills/        ← Reproducer 专用（默认为空，不加载 pentest-tools）
+├── ReproducerSkills/        ← Reproducer 专用（仅 pentest-tools 模板，无 hacktricks 知识）
 └── output/                  ← 任务报告与原始输出
     └── poc_scripts/         ← Reproducer 生成的 Python 复现脚本
 ```
@@ -111,7 +111,7 @@ bootstrap/prompts/common/
 
 - Skill 注入到 Agent 的系统提示词，**工具本身仍通过 LocalExec 调用**，无需编写适配代码
 - 在 `SKILL.md` 中描述工具用法、参数和输出格式，Agent 即可正确使用该工具
-- 自由增删 Skill 文件后执行 `/flush` 即可热更新，无需重启
+- 增删 Skill 文件后下一轮对话自动生效（每轮 run 重建配置/技能/MCP 工具集，无需 `/flush` 或重启）
 
 ### 预置模板
 
@@ -137,6 +137,22 @@ description: >-
 使用时将 `SKILL.md.template` 重命名为 `SKILL.md` 即生效。
 
 > Agent 只会「知道」你写进 SKILL.md 的工具 —— 未配置的工具即使已安装也无法被正确调用。
+
+### 预置红队知识
+
+首次运行时，各 Agent 的 Skill 目录除 `pentest-tools` 模板外，还会自动生成按角色分发的 HackTricks 蒸馏知识（`hacktricks-*`），开箱即用：
+
+| 角色 | 预置 Skill |
+|---|---|
+| **Recon** | `hacktricks-recon-methodology`（外部资产发现、子域名枚举、被动情报、nmap/masscan 用法、WiFi 侦察） |
+| **Scanner** | `hacktricks-service-scanning`（各服务指纹与爆破、Web 技术栈、AD/Windows 服务） |
+| **Exploit** | `hacktricks-web-exploitation`（SQLi/XSS/反序列化/文件上传/SSRF 等 12 类攻击手法） |
+| **PostExploit** | `hacktricks-privesc-postex`（Linux/Windows 提权、AD、横向移动、隧道、持久化） |
+| **Reproducer** | 无（只复现不测试） |
+
+- 知识以 `SKILL.md` + `references/` 形式注入，references 仅按需读取，不占每轮提示词
+- 增删改直接在 `.HackerTeam/<Role>Skills/` 下对应目录操作，下一轮对话生效
+- 删除某目录不会影响其他角色（各角色预设相互独立）
 
 ### 配置示例
 
@@ -381,8 +397,9 @@ model:
 | 命令 | 功能 |
 |------|------|
 | `/new` | 开始新会话 |
-| `/flush` | 热重载配置、Skill 和 MCP 工具（无需重启） |
 | `/exit` 或 `ESC` | 退出 |
+
+> 配置/Skill/MCP 工具集在每轮对话自动重载，无需手动刷新（旧版 `/flush` 已移除）。
 
 ---
 

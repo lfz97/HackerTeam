@@ -296,6 +296,7 @@ func (e *Engine) checkSkillsFolder() {
 	(*e).ReproducerSkillsFolderPath = filepath.Join((*e).ConfigFolderPath, reproducerSkillsFolder)
 
 	// 角色目录 → skillsTemplates 下的预设目录（按角色分发各自的红队知识 skill）
+	// Reproducer 无预设（只复现不测试），presetName 为空，仅创建空目录
 	presetFolders := []struct {
 		roleFolder string
 		presetName string
@@ -304,24 +305,26 @@ func (e *Engine) checkSkillsFolder() {
 		{(*e).ScannerSkillsFolderPath, "Scanner"},
 		{(*e).ExploitSkillsFolderPath, "Exploit"},
 		{(*e).PostExploitSkillsFolderPath, "PostExploit"},
-		{(*e).ReproducerSkillsFolderPath, "Reproducer"},
+		{(*e).ReproducerSkillsFolderPath, ""},
 	}
 	for _, pf := range presetFolders {
 		_, err := os.Stat(pf.roleFolder)
 		if err != nil {
 			if os.IsNotExist(err) {
-				//skills 文件夹不存在，复制该角色预设的 skills 文件夹
+				//skills 文件夹不存在，创建该角色的 skills 文件夹
 				err := os.MkdirAll(pf.roleFolder, os.ModePerm)
 				if err != nil {
 					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("创建默认%s文件夹错误：%s", pf.roleFolder, err.Error()))
 				}
-				err = copy.Copy("skillsTemplates/"+pf.presetName, pf.roleFolder, copy.Options{FS: ToolSkills})
-				if err != nil {
-					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("复制技能模板到%s文件夹错误：%s", pf.roleFolder, err.Error()))
-				}
-				// embedFS 源文件只读(0444)，复制后修正权限保证 skill 可编辑
-				if err := makeSkillsWritable(pf.roleFolder); err != nil {
-					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("修正%s文件夹权限错误：%s", pf.roleFolder, err.Error()))
+				if pf.presetName != "" {
+					err = copy.Copy("skillsTemplates/"+pf.presetName, pf.roleFolder, copy.Options{FS: ToolSkills})
+					if err != nil {
+						(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("复制技能模板到%s文件夹错误：%s", pf.roleFolder, err.Error()))
+					}
+					// embedFS 源文件只读(0444)，复制后修正权限保证 skill 可编辑
+					if err := makeSkillsWritable(pf.roleFolder); err != nil {
+						(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("修正%s文件夹权限错误：%s", pf.roleFolder, err.Error()))
+					}
 				}
 				(*e).tui.ShowSuccessInMsgView(fmt.Sprintf("检查到%s文件夹不存在，已创建", pf.roleFolder))
 			} else {

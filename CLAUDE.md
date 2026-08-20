@@ -47,7 +47,7 @@
   - `session/` — summarizer, session service, prompt embedding (`prompt/*`)
   - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
   - `prompts/agents/` + `prompts/common/` — role prompts + shared consensus prompts (embedded)
-  - `skillsTemplates/` — embedded per-role skill presets（`Recon/` `Scanner/` `Exploit/` `PostExploit/` `Reproducer/`，各含 pentest-tools 模板 + hacktricks 红队知识）
+  - `skillsTemplates/` — embedded per-role skill presets（`Recon/` `Scanner/` `Exploit/` `PostExploit/`，各含 pentest-tools 模板 + hacktricks 红队知识；Reproducer 无预设）
   - `tools/functions/` — Custom Go function tools for agents
   - `tools/toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents；`Close()` 先 kill 未结束命令再清注册表)
   - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、10s timeout)
@@ -63,8 +63,8 @@
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
-- Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer 只挂 pentest-tools 模板，无 hacktricks 知识)
-- Embedded skill presets: `service/engine/skillsTemplates/<Role>/` 按角色分发（`checkSkillsFolder()` 在角色目录不存在时整目录复制对应预设，embedFS 复制后经 `makeSkillsWritable()` 修正只读权限；预设含 hacktricks-* 蒸馏知识 + pentest-tools 占位模板（`SKILL.md.template`，复制后由用户自行改名 SKILL.md 并填写工具清单））
+- Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer 目录保持为空，无任何预设 skill，只复现不测试)
+- Embedded skill presets: `service/engine/skillsTemplates/<Role>/` 按角色分发（`checkSkillsFolder()` 在角色目录不存在时创建目录并整目录复制对应预设，embedFS 复制后经 `makeSkillsWritable()` 修正只读权限；预设含 hacktricks-* 蒸馏知识 + pentest-tools 占位模板（`SKILL.md.template`，复制后由用户自行改名 SKILL.md 并填写工具清单）；Reproducer 的 presetName 为空，只创建空目录）
 - Skill repos re-created automatically on every run — each agent's `init*()` function calls `skill.NewFSRepository(...)` locally, and the `newRunner()` factory re-runs all 6 factories each run (no `/flush` needed). Unlike HyperBot's global SkillRepo singleton, this per-agent pattern has no cache staleness risk.
 
 ## Terminology

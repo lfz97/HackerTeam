@@ -379,20 +379,48 @@ wsl
 **3. 修改配置**，填入 API Key 后再次运行：
 
 ```yaml
+# 用户配置（首次运行自动生成 UUID）
+user:
+  userid: "{USERID}"
+
+# 模型配置
 model:
   model: "deepseek-reasoner"            # 模型名称
   baseurl: "https://api.deepseek.com"   # OpenAI 兼容端点，或 https://api.anthropic.com
   apikey: "YOUR_API_KEY"
   apitype: "openai"                     # "openai" 或 "anthropic"
-  contextwindow: 64000
-  stream: true
+  anthropicAuthHeaderTransfer: false    # true = 走 Authorization: Bearer 认证；false = 走 X-Api-Key（代理/网关需要 Bearer 时开启）
+  contextwindow: 128000                 # 上下文窗口大小，请参考模型文档设置，影响自动摘要触发时机
+  stream: true                          # 流式输出，开启后可实时看到推理过程和工具调用
   maxtokens: 12800                      # 每次请求的最大生成 token 数，默认 12800
+  httptimeout: 600                      # HTTP 请求超时，单位/秒
+  show_reasoning: false                 # 是否显示推理内容，默认 false（不显示）
+
+# MCP server 配置（可选）。启用的 server 挂载给全部 agent（含队长），实例跨 agent 共享
+# http_mcp：SSE / streamable_http 传输
+#http_mcp:
+#  - enabled: true
+#    name: "example_http"      # 必须唯一，决定工具前缀 {name}_{toolName}
+#    type: "streamable_http"   # sse 或 streamable_http
+#    endpoint: "http://127.0.0.1:8080/mcp"
+#    headers: {}
+#    description: "示例 HTTP MCP server"
+
+# stdin_mcp：stdio 传输（每个 server 全进程一个子进程，懒连接）
+#stdin_mcp:
+#  - enabled: true
+#    name: "example_stdio"     # 必须唯一，决定工具前缀 {name}_{toolName}
+#    command: "uvx"
+#    args: ["mcp-server-fetch"]
+#    description: "示例 stdio MCP server"
 ```
 
 | `apitype` | 适用提供商 |
 |-----------|------------|
 | `openai` | OpenAI、DeepSeek、Ollama、vLLM 及任意兼容 API |
 | `anthropic` | Anthropic Claude 系列（使用原生 SDK） |
+
+> 完整字段以首次运行自动生成的 `.HackerTeam/HackerTeam.yaml` 为准（含注释）。
 
 ### TUI 内置命令
 

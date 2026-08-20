@@ -14,6 +14,7 @@ import (
 	"github.com/otiai10/copy"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"io/fs"
 	stdlog "log"
 	"os"
 	"os/user"
@@ -294,28 +295,55 @@ func (e *Engine) checkSkillsFolder() {
 	(*e).ScannerSkillsFolderPath = filepath.Join((*e).ConfigFolderPath, scannerSkillsFolder)
 	(*e).ReproducerSkillsFolderPath = filepath.Join((*e).ConfigFolderPath, reproducerSkillsFolder)
 
-	func(skillsFolders []string) {
-		for _, folder := range skillsFolders {
-			_, err := os.Stat(folder)
-			if err != nil {
-				if os.IsNotExist(err) {
-					//skills 文件夹不存在，创建一个默认的 skills 文件夹
-					err := os.MkdirAll(folder, os.ModePerm)
-					if err != nil {
-						(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("创建默认%s文件夹错误：%s", folder, err.Error()))
-					}
-					err = copy.Copy("skillsTemplates/pentest-tools", filepath.Join(folder, "pentest-tools"), copy.Options{FS: ToolSkills})
-					if err != nil {
-						(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("复制技能模板到%s文件夹错误：%s", folder, err.Error()))
-					}
-					(*e).tui.ShowSuccessInMsgView(fmt.Sprintf("检查到%s文件夹不存在，已创建", folder))
-				} else {
-					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("检查%s文件夹错误：%s", folder, err.Error()))
+	// 角色目录 → skillsTemplates 下的预设目录（按角色分发各自的红队知识 skill）
+	presetFolders := []struct {
+		roleFolder string
+		presetName string
+	}{
+		{(*e).ReconSkillsFolderPath, "Recon"},
+		{(*e).ScannerSkillsFolderPath, "Scanner"},
+		{(*e).ExploitSkillsFolderPath, "Exploit"},
+		{(*e).PostExploitSkillsFolderPath, "PostExploit"},
+		{(*e).ReproducerSkillsFolderPath, "Reproducer"},
+	}
+	for _, pf := range presetFolders {
+		_, err := os.Stat(pf.roleFolder)
+		if err != nil {
+			if os.IsNotExist(err) {
+				//skills 文件夹不存在，复制该角色预设的 skills 文件夹
+				err := os.MkdirAll(pf.roleFolder, os.ModePerm)
+				if err != nil {
+					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("创建默认%s文件夹错误：%s", pf.roleFolder, err.Error()))
 				}
+				err = copy.Copy("skillsTemplates/"+pf.presetName, pf.roleFolder, copy.Options{FS: ToolSkills})
+				if err != nil {
+					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("复制技能模板到%s文件夹错误：%s", pf.roleFolder, err.Error()))
+				}
+				// embedFS 源文件只读(0444)，复制后修正权限保证 skill 可编辑
+				if err := makeSkillsWritable(pf.roleFolder); err != nil {
+					(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("修正%s文件夹权限错误：%s", pf.roleFolder, err.Error()))
+				}
+				(*e).tui.ShowSuccessInMsgView(fmt.Sprintf("检查到%s文件夹不存在，已创建", pf.roleFolder))
+			} else {
+				(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("检查%s文件夹错误：%s", pf.roleFolder, err.Error()))
 			}
 		}
-	}([]string{(*e).ReconSkillsFolderPath, (*e).ExploitSkillsFolderPath, (*e).PostExploitSkillsFolderPath, (*e).ScannerSkillsFolderPath, (*e).ReproducerSkillsFolderPath})
+	}
 
+}
+
+// makeSkillsWritable 修正 embedFS 复制出的只读权限(0444/0555)，保证 skill 文件与目录可编辑。
+// otiai10/copy 对目录的 chmod 是异步 defer 执行的，复制返回后显式遍历修正更可靠。
+func makeSkillsWritable(root string) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return os.Chmod(path, 0o755)
+		}
+		return os.Chmod(path, 0o644)
+	})
 }
 
 func (e *Engine) initInMemorySessionService() {

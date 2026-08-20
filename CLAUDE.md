@@ -38,7 +38,7 @@
 - `boot/boot.go` — startup orchestration: `GetTuiService()` → `go { GetEngineService → AgentStart }` → `tui.Run()`
 - `service/engine/` — Engine core (refactored from `global/` + `bootstrap/` + `handler/` + `config/` + `models/` + `session/` + `memory/` + `functionTools/` + `toolsets/`)
   - `engineCore.go` — `Engine` struct (all state: config pointer, runner, session, memory, 5 skill folder paths, prompt strings), `PromptFiles`/`ToolSkills` embedFS (`//go:embed prompts/*` + `skillsTemplates/*`), `GetEngineService()`, `AgentStart()` main dialog loop, `randomStartID()`
-  - `init.go` — `preCheckLoad()` init sequence (config/skills/log/session/memory/内置工具与工具集), `configENVPrompt()` (env.md + 3 shared prompt placeholders), `checkSkillsFolder()` (5 role skill dirs + template copy), `newRunner()` (agent factory: 6 agent factories + `team.New`), `redirectFrameworkLog()`; `initBuiltinTools()`/`initBuiltinToolsets()` (内置工具/工具集启动时建一次，跨轮常驻), `loadMCPFromConfig()`/`refreshMCPFromConfig()` (MCP工具集每轮run Close+重建); `tuiService` interface definition
+  - `init.go` — `preCheckLoad()` init sequence (config/skills/log/session/memory/内置工具与工具集), `configENVPrompt()` (env.md + 3 shared prompt placeholders), `checkSkillsFolder()` (5 role skill dirs + per-role preset copy via `makeSkillsWritable()`), `newRunner()` (agent factory: 6 agent factories + `team.New`), `redirectFrameworkLog()`; `initBuiltinTools()`/`initBuiltinToolsets()` (内置工具/工具集启动时建一次，跨轮常驻), `loadMCPFromConfig()`/`refreshMCPFromConfig()` (MCP工具集每轮run Close+重建); `tuiService` interface definition
   - `members.go` — 6 agent factories (`initCaptain`/`initRecon`/`initexploit`/`initpostexploit`/`initScanner`/`initReproducer`), `setAgent()` (model selection by APIType), `assemblePrompt()`
   - `engineRun.go` — dialog loop + single-turn execution (`agentRunIteratively`/`agentRunOnce`), turn types, merged from old `handler/runIteratively.go` + `runOnce.go` + `model.go` + `bootstrap/Bootstrap.go`
   - `messageRender.go` — message rendering (`renderStreamEvent`/`renderNonStreamEvent`/`renderToolCall`/`renderToolResult`), tool call/result buffer (`toolMsgBuffer`), merged from old `handler/message.go` + `toolMsg.go`
@@ -47,7 +47,7 @@
   - `session/` — summarizer, session service, prompt embedding (`prompt/*`)
   - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
   - `prompts/agents/` + `prompts/common/` — role prompts + shared consensus prompts (embedded)
-  - `skillsTemplates/` — embedded pentest-tools skill template
+  - `skillsTemplates/` — embedded per-role skill presets（`Recon/` `Scanner/` `Exploit/` `PostExploit/` `Reproducer/`，各含角色特化的 pentest-tools + hacktricks 红队知识；Recon 另含 quake-api）
   - `tools/functions/` — Custom Go function tools for agents
   - `tools/toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents；`Close()` 先 kill 未结束命令再清注册表)
   - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、10s timeout)
@@ -63,8 +63,8 @@
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
-- Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer's folder is intentionally left empty, no pentest-tool skills)
-- Embedded skill template: `service/engine/skillsTemplates/pentest-tools/SKILL.md.template` (via `//go:embed skillsTemplates/*` in `service/engine/engineCore.go`)
+- Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer 只挂角色特化 pentest-tools，无 hacktricks 知识)
+- Embedded skill presets: `service/engine/skillsTemplates/<Role>/` 按角色分发（`checkSkillsFolder()` 在角色目录不存在时整目录复制对应预设，embedFS 复制后经 `makeSkillsWritable()` 修正只读权限；预设含角色特化 pentest-tools/SKILL.md + hacktricks-* 蒸馏知识 + Recon 的 quake-api（无凭据文件，凭据放运行时目录））
 - Skill repos re-created automatically on every run — each agent's `init*()` function calls `skill.NewFSRepository(...)` locally, and the `newRunner()` factory re-runs all 6 factories each run (no `/flush` needed). Unlike HyperBot's global SkillRepo singleton, this per-agent pattern has no cache staleness risk.
 
 ## Terminology

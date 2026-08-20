@@ -154,6 +154,8 @@ description: >-
 - 增删改直接在 `.HackerTeam/<Role>Skills/` 下对应目录操作，下一轮对话生效
 - 删除某目录不会影响其他角色（各角色预设相互独立）
 
+> **版权说明**：`hacktricks-*` skill 为 [HackTricks](https://book.hacktricks.xyz)（作者 Carlos Polop）知识的方法论蒸馏与改编，references 内容裁剪自原站对应章节。遵循 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可分发，使用时保留本署名。
+
 ### 配置示例
 
 以下为各 Agent 的 SKILL.md 实际配置示例，按职责分配工具：

@@ -64,7 +64,7 @@
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
 - Each agent gets its own skill subdirectory: `.HackerTeam/<Role>Skills/` (ReconSkills, ScannerSkills, ExploitSkills, PostExploitSkills, ReproducerSkills — Reproducer 预置 poc-scripting（复现脚本编写模式），无 pentest-tools/hacktricks 知识)
-- Embedded skill presets: `service/engine/skillsTemplates/<Role>/` 按角色分发（`checkSkillsFolder()` 在角色目录不存在时创建目录并整目录复制对应预设，embedFS 复制后经 `makeSkillsWritable()` 修正只读权限；预设含 hacktricks-* 蒸馏知识 + pentest-tools 占位模板（`SKILL.md.template`，复制后由用户自行改名 SKILL.md 并填写工具清单）；Reproducer 预置 poc-scripting（SQLi/RCE/SSTI/SSRF/XSS/协议客户端等复现脚本模式））
+- Embedded skill presets: `service/engine/skillsTemplates/<Role>/` 按角色分发（`checkSkillsFolder()` 在角色目录不存在时创建目录并整目录复制对应预设，embedFS 复制后经 `makeSkillsWritable()` 修正只读权限；预设含 hacktricks-* 蒸馏知识（CC BY 4.0，README 有署名，新增内容同样来自 HackTricks 时保持署名）+ pentest-tools 占位模板（`SKILL.md.template`，复制后由用户自行改名 SKILL.md 并填写工具清单）；Reproducer 预置 poc-scripting（SQLi/RCE/SSTI/SSRF/XSS/协议客户端等复现脚本模式））
 - Skill repos re-created automatically on every run — each agent's `init*()` function calls `skill.NewFSRepository(...)` locally, and the `newRunner()` factory re-runs all 6 factories each run (no `/flush` needed). Unlike HyperBot's global SkillRepo singleton, this per-agent pattern has no cache staleness risk.
 
 ## Terminology

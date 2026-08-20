@@ -98,7 +98,7 @@ bootstrap/prompts/common/
 ├── ScannerSkills/
 ├── ExploitSkills/
 ├── PostExploitSkills/
-├── ReproducerSkills/        ← Reproducer 专用（保持空目录，无预设 skill）
+├── ReproducerSkills/        ← Reproducer 专用（预置 poc-scripting 复现脚本知识）
 └── output/                  ← 任务报告与原始输出
     └── poc_scripts/         ← Reproducer 生成的 Python 复现脚本
 ```
@@ -115,7 +115,7 @@ bootstrap/prompts/common/
 
 ### 预置模板
 
-首次运行时，除 Reproducer 外每个 Agent 的 Skill 目录下会自动生成 `pentest-tools/SKILL.md.template`（`.template` 后缀防止被框架自动加载，Reproducer 目录保持为空），内容如下：
+首次运行时，除 Reproducer 外每个 Agent 的 Skill 目录下会自动生成 `pentest-tools/SKILL.md.template`（`.template` 后缀防止被框架自动加载；Reproducer 生成的是 `poc-scripting` 复现脚本知识，无 pentest-tools），内容如下：
 
 ```markdown
 ---
@@ -148,7 +148,7 @@ description: >-
 | **Scanner** | `hacktricks-service-scanning`（各服务指纹与爆破、Web 技术栈、AD/Windows 服务） |
 | **Exploit** | `hacktricks-web-exploitation`（SQLi/XSS/反序列化/文件上传/SSRF 等 12 类攻击手法） |
 | **PostExploit** | `hacktricks-privesc-postex`（Linux/Windows 提权、AD、横向移动、隧道、持久化） |
-| **Reproducer** | 无（目录保持为空，只复现不测试） |
+| **Reproducer** | `poc-scripting`（复现脚本编写模式：SQLi/RCE/SSTI/SSRF/XSS/文件上传/协议客户端，含 verification 签名判断与 PoC 安全规范） |
 
 - 知识以 `SKILL.md` + `references/` 形式注入，references 仅按需读取，不占每轮提示词
 - 增删改直接在 `.HackerTeam/<Role>Skills/` 下对应目录操作，下一轮对话生效

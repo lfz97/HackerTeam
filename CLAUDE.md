@@ -55,9 +55,9 @@
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
 
 ## Dependencies
-- `trpc-agent-go` v1.11.0 — main agent framework, currently from upstream `trpc.group/trpc-go/trpc-agent-go` (no fork/replace)
-- `trpc-mcp-go` v0.0.17 — MCP SDK（仅用于日志重定向，无 MCP 工具集）
-- `tcell/v2` v2.13.10、`anthropic-sdk-go` v1.61.0
+- `trpc-agent-go` v1.11.1-0.20260820131707-cdaece75b478 — main agent framework (no fork/replace; pseudo-version containing #2501 fix)
+- `trpc-mcp-go` v0.0.18 — MCP SDK（仅用于日志重定向，无 MCP 工具集）
+- `tcell/v2` v2.13.10、`anthropic-sdk-go` v1.66.0
 - `glamour` v2.0.1 (`charm.land/glamour/v2`) — Markdown → ANSI renderer (Dracula theme, non-stream mode uses `glamour.Render` + `tview.TranslateANSI` for formatted markdown display)
 
 ## Skill System
@@ -91,6 +91,7 @@
 - **embedFS case sensitivity** — `//go:embed` + `ReadFile` paths are case-sensitive on Linux. Always match exact file name case between `go:embed` glob patterns and `ReadFile` calls.
 - **Agent status bar (BeforeModel callback)** — `setBeforeModelStatusCallback()`（`service/engine/members.go`）在每次 LLM 调用时向请求**末尾** append 一条 system 状态栏（TIMENOW/CWD/MEMORY）。三条不可违反的设计约束：① 必须 append 到**尾部**而非 prepend——状态栏内容每次调用都变，放头部会破坏服务端自动前缀缓存（实测：尾部 95-99% 命中 vs 头部 0）；② 必须配套 `openai.WithOptimizeForCache(false)`（`service/engine/models/openai.go`）——否则框架的 `optimizeMessagesForCache` 会把尾部 system 重排到头部，缓存收益失效；③ `{{DATE}}`/`{{CWD}}` 占位符已从 `env.md`/`init.go` 移除（与状态栏重叠）。状态栏不进 session（仅存在于当次请求副本），不污染摘要/压缩。详见 `docs/agent-time-awareness-callbacks.md`
 - **Input multiplexing (InputChan)** — Tui 字段 `InputChan`（**unbuffered**），`ReadInputAreaPromptWithEnter()` 只注册捕获（非阻塞返回），引擎循环用 `select { case userPrompt = <-tui.InputChannel(): }` 读取（`service/engine/engineRun.go`）。三条约束：① 发送用 select-default——对端（引擎）未监听时不投递且**不清空输入框**（`SetText("")` 只在投递成功时执行），unbuffered send 永不阻塞 tview 事件循环、用户输入永不丢失；② **捕获常驻**——Enter 提交后不注销捕获（旧 `SetInputCapture(nil)` 已删除），agent 运行期间 Enter 被捕获消费（不换行不投递，Shift+Enter 仍可换行、Ctrl+K 帮助仍可用）；③ select 是扩展点——计划任务结果回传（schedule agent）将在 select 上加 TriggerCh 分支 + 前置 DrainPending 检查，勿改回阻塞式 `ReadInputAreaPromptWithEnter() string`。
+- **`model/anthropic` 是独立子模块，须与根模块分开升级** — go.mod 里 `trpc.group/trpc-go/trpc-agent-go/model/anthropic` 单独锁版本，升级根模块不会带上子模块修复。2026-08 踩坑：根模块升到修复 commit、子模块仍锁 v1.11.2（不含 #2501 修复），无参 MCP 工具序列化为 `"properties":null`，DeepSeek anthropic 端点报 400。现锁 `v1.11.1-0.20260820131707-cdaece75b478`；官方发布新 tag 后升回正式版
 
 ## Auto-Extraction Memory (SQLite)
 

@@ -4,16 +4,12 @@ import (
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/memory"
 	"HackerTeam/service/engine/session"
-"HackerTeam/service/engine/tools/functions"
-"HackerTeam/service/engine/tools/toolsets"
-"HackerTeam/service/engine/tools/toolsets/localexec"
+	functionTools "HackerTeam/service/engine/tools/functions"
+	"HackerTeam/service/engine/tools/toolsets"
+	"HackerTeam/service/engine/tools/toolsets/localexec"
 	"HackerTeam/utils/pretty"
 	"context"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/otiai10/copy"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"io/fs"
 	stdlog "log"
 	"os"
@@ -23,14 +19,19 @@ import (
 	"strings"
 	"time"
 
-	ag "trpc.group/trpc-go/trpc-agent-go/agent"
-	"trpc.group/trpc-go/trpc-agent-go/log"
-	"trpc.group/trpc-go/trpc-agent-go/runner"
-	"trpc.group/trpc-go/trpc-agent-go/team"
-"trpc.group/trpc-go/trpc-agent-go/tool"
-	"trpc.group/trpc-go/trpc-mcp-go"
+	"github.com/google/uuid"
+	"github.com/otiai10/copy"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"charm.land/glamour/v2"
+	ag "trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	"trpc.group/trpc-go/trpc-agent-go/log"
+	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/tool"
+	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
+	mcp "trpc.group/trpc-go/trpc-mcp-go"
 )
 
 // tuiService 定义 Engine 层对 TUI 的最小依赖接口
@@ -106,7 +107,7 @@ func (e *Engine) preCheckLoad() {
 
 // 每次runner执行时重新加载以下Module
 func (e *Engine) reload() {
-	e.LoadConfig() //加载配置文件（agent工厂每次重建技能和提示词）
+	e.LoadConfig()           //加载配置文件（agent工厂每次重建技能和提示词）
 	e.refreshMCPFromConfig() //刷新MCP工具集：Close上一轮的连接/子进程，按最新配置重建
 }
 
@@ -367,10 +368,6 @@ func (e *Engine) newRunner() {
 		(*e).Agentname,
 		func(ctx context.Context, ro ag.RunOptions) (ag.Agent, error) {
 			e.reload()
-			captain, err := e.initCaptain()
-			if err != nil {
-				return nil, err
-			}
 			exploit, err := e.initexploit()
 			if err != nil {
 				return nil, err
@@ -392,13 +389,34 @@ func (e *Engine) newRunner() {
 				return nil, err
 			}
 
-			team.New(
-				captain,
-				[]ag.Agent{exploit, postexploit, recon, scanner, reproducer},
-				team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
-				team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
-				team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
-			)
+			subagents := []*llmagent.LLMAgent{exploit, postexploit, recon, scanner, reproducer}
+			subagentTools := []tool.Tool{}
+			for _, agent := range subagents {
+				subagentTools = append(subagentTools, agenttool.NewTool(
+					agent,
+					agenttool.WithStreamInner(true), // 开启：把子 Agent 的流式事件转发给父流程
+					agenttool.WithInnerTextMode(agenttool.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
+					agenttool.WithDescription(agent.Info().Description),
+					agenttool.WithPersistentHistory(),                          //在 HistoryScopeIsolated 下使用稳定的子 FilterKey，让子 Agent 能在同一个 session 内跨多次 AgentTool 调用读取自己的历史（而不是每次都从“全新子 key”开始）
+					agenttool.WithHistoryScope(agenttool.HistoryScopeIsolated), //子调用使用独立 FilterKey，通常只读取本次工具参数，不继承父历史
+				))
+			}
+
+			captain, err := e.initCaptain(subagentTools)
+			if err != nil {
+				return nil, err
+			}
+
+			/*
+				team.New(
+					captain,
+					[]ag.Agent{exploit, postexploit, recon, scanner, reproducer},
+					team.WithDescription("A hacker team with one captain and three members, responsible for penetration testing tasks."),
+					team.WithMemberToolStreamInner(true),                        //子agent的内部事件透传到父流程(TUI)
+					team.WithMemberToolInnerTextMode(team.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
+				)
+			*/
+
 			return captain, nil
 		},
 		runner.WithSessionService((*e).SessionService_p),

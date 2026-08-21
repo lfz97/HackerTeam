@@ -21,14 +21,14 @@ import (
 )
 
 // 创建队长agent，负责任务规划、分配和总结，队长只挂载文件目录及文件读写工具
-func (e *Engine) initCaptain() (*llmagent.LLMAgent, error) {
+func (e *Engine) initCaptain(subagentTools []tool.Tool) (*llmagent.LLMAgent, error) {
 	captainPrompt := e.assemblePrompt("prompts/agents/captain.md")
 
 	// 内置工具清单常驻（启动时建一次），拷入私有slice再追加记忆工具，避免与Engine共享列表产生append别名
 	tools := make([]tool.Tool, 0, len((*e).builtinTools)+4)
 	tools = append(tools, (*e).builtinTools...)
 	tools = append(tools, (*e).SqliteMemoryService.Tools()...) // 记忆工具：memory_search / memory_load / memory_add / memory_update / memory_delete（纯agent驱动，无自动提取）
-
+	tools = append(tools, subagentTools...)
 	// 配置文件声明的MCP工具集：挂载给全部agent（含队长），每轮run自动刷新
 	toolsets := make([]tool.ToolSet, 0, len((*e).mcpToolsets))
 	toolsets = append(toolsets, (*e).mcpToolsets...)

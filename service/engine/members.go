@@ -18,10 +18,88 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/model"
 	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 )
 
+type agentName string
+
+var (
+	captain     agentName = "Captain"
+	recon       agentName = "Recon"
+	exploit     agentName = "Exploit"
+	postexploit agentName = "PostExploit"
+	scanner     agentName = "Scanner"
+	reproducer  agentName = "Reproducer"
+)
+
+func (e *Engine) InitTeam() (*llmagent.LLMAgent, error) {
+	exploit, err := e.initexploit()
+	if err != nil {
+		return nil, err
+	}
+	postexploit, err := e.initpostexploit()
+	if err != nil {
+		return nil, err
+	}
+	recon, err := e.initRecon()
+	if err != nil {
+		return nil, err
+	}
+	scanner, err := e.initScanner()
+	if err != nil {
+		return nil, err
+	}
+	reproducer, err := e.initReproducer()
+	if err != nil {
+		return nil, err
+	}
+
+	subagents := []*llmagent.LLMAgent{exploit, postexploit, recon, scanner, reproducer}
+	subagentTools := []tool.Tool{}
+	for _, agent := range subagents {
+		subagentTools = append(subagentTools, agenttool.NewTool(
+			agent,
+			agenttool.WithStreamInner(true), // 开启：把子 Agent 的流式事件转发给父流程
+			agenttool.WithInnerTextMode(agenttool.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
+			agenttool.WithDescription(agent.Info().Description),
+			agenttool.WithPersistentHistory(),                          //在 HistoryScopeIsolated 下使用稳定的子 FilterKey，让子 Agent 能在同一个 session 内跨多次 AgentTool 调用读取自己的历史（而不是每次都从“全新子 key”开始）
+			agenttool.WithHistoryScope(agenttool.HistoryScopeIsolated), //子调用使用独立 FilterKey，通常只读取本次工具参数，不继承父历史
+		))
+	}
+	toolCallbacks := tool.NewCallbacks().RegisterAfterTool(afterToolCallback)
+	captain, err := e.initCaptain(subagentTools, toolCallbacks)
+	if err != nil {
+		return nil, err
+	}
+	return captain, nil
+}
+
+func afterToolCallback(ctx context.Context, args *tool.AfterToolArgs) (*tool.AfterToolResult, error) {
+	if args.ToolName == string(recon) || args.ToolName == string(exploit) || args.ToolName == string(postexploit) || args.ToolName == string(scanner) || args.ToolName == string(reproducer) {
+		if args.Error != nil {
+			return nil, nil // 真失败放行：框架沿用原始 result+err 走原有错误路径
+		}
+
+		if args.Result == nil {
+			return &tool.AfterToolResult{
+				CustomResult: fmt.Sprintf("[AGENT %s returned EMPTY RESPONSE - likely a model "+"generation failure (empty content, no toolcalls). Task NOT completed. "+"This is usually transient: re-dispatch the SAME request up to 2 more times. "+"If it fails repeatedly, switch approach or report failure explicitly.]", args.ToolName),
+			}, nil
+		}
+		s, ok := args.Result.(string)
+		if ok {
+			if strings.TrimSpace(s) == "" {
+				return &tool.AfterToolResult{
+					CustomResult: fmt.Sprintf("[AGENT %s returned EMPTY RESPONSE - likely a model "+"generation failure (empty content, no toolcalls). Task NOT completed. "+"This is usually transient: re-dispatch the SAME request up to 2 more times. "+"If it fails repeatedly, switch approach or report failure explicitly.]", args.ToolName),
+				}, nil
+			}
+		}
+	}
+
+	return nil, nil
+}
+
 // 创建队长agent，负责任务规划、分配和总结，队长只挂载文件目录及文件读写工具
-func (e *Engine) initCaptain(subagentTools []tool.Tool) (*llmagent.LLMAgent, error) {
+func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Callbacks) (*llmagent.LLMAgent, error) {
 	captainPrompt := e.assemblePrompt("prompts/agents/captain.md")
 
 	// 内置工具清单常驻（启动时建一次），拷入私有slice再追加记忆工具，避免与Engine共享列表产生append别名
@@ -48,9 +126,10 @@ func (e *Engine) initCaptain(subagentTools []tool.Tool) (*llmagent.LLMAgent, err
 		llmagent.WithEnableOnDemandSession(true),                         // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithPreloadMemory(10),                                   // 预加载记忆到上下文中
 		llmagent.WithGlobalInstruction(captainPrompt),                    // 系统提示词
+		llmagent.WithToolCallbacks(toolCallbacks),
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
-	agent_p, err := setAgent("Captain", (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(captain, (*(*e).Config_p).Model, opts)
 	return agent_p, err
 
 }
@@ -92,7 +171,7 @@ func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent("Recon", (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(recon, (*(*e).Config_p).Model, opts)
 	return agent_p, err
 }
 
@@ -133,7 +212,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent("Exploit", (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(exploit, (*(*e).Config_p).Model, opts)
 	return agent_p, err
 
 }
@@ -175,7 +254,7 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent("PostExploit", (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(postexploit, (*(*e).Config_p).Model, opts)
 	return agent_p, err
 }
 
@@ -216,7 +295,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent("Scanner", (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(scanner, (*(*e).Config_p).Model, opts)
 	return agent_p, err
 }
 
@@ -254,24 +333,24 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent("Reproducer", (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(reproducer, (*(*e).Config_p).Model, opts)
 	return agent_p, err
 }
 
 // setAgent 根据 APIType 创建对应模型的 agent（无状态，包级函数）
-func setAgent(agentName string, m config.Model, opts []llmagent.Option) (*llmagent.LLMAgent, error) {
+func setAgent(agentName agentName, m config.Model, opts []llmagent.Option) (*llmagent.LLMAgent, error) {
 	opts = append(opts, setBeforeModelStatusCallback()) //设置beforeModel状态栏
 	if m.APIType == "openai" {
 		openaimodel := models.Openai(m)
 		opts = append(opts, llmagent.WithModel(openaimodel))
-		Agent_p := llmagent.New(agentName, opts...)
+		Agent_p := llmagent.New(string(agentName), opts...)
 		return Agent_p, nil
 
 	} else if m.APIType == "anthropic" {
 
 		Anthropicagent := models.Anthropic(m)
 		opts = append(opts, llmagent.WithModel(Anthropicagent))
-		Agent_p := llmagent.New(agentName, opts...)
+		Agent_p := llmagent.New(string(agentName), opts...)
 		return Agent_p, nil
 
 	} else {

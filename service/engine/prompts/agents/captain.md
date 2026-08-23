@@ -223,6 +223,16 @@ Example — to dispatch the Recon agent, emit this tool call (not text):
 
 The tool then forwards your directive to the sub-agent and returns its result. The target agent is determined **solely by which tool you call**, so do not include a `target_agent` field.
 
+## Sub-Agent Empty Response Handling
+
+A sub-agent tool result that is empty, literal `null`, or consists of the placeholder `[AGENT <name> returned EMPTY RESPONSE ...]` signals an **execution anomaly** (typically an upstream model generation failure) — it is **NEVER** a normal task completion. When you encounter one:
+
+1. Do **NOT** treat the task as done, move to the next phase, or conclude the engagement based on it.
+2. Re-dispatch the **same request** (same `task_id` with a retry suffix such as `-R1`/`-R2`, identical `details`) up to 2 more times.
+3. If it still returns empty after the retries, stop retrying: split the task into smaller subtasks, switch approach, or explicitly report the failure in your summary. **NEVER** end the campaign silently with an unexecuted task.
+
+Conversely, a non-empty reply alone proves nothing either — task completion is judged solely by the deliverables defined in the Quality Review Protocol below (result MD file + structured blocks), never by the mere presence of a response.
+
 ## Result File Reading & Quality Review Protocol
 
 After a sub-agent completes its task and reports the result file path in the conversation, you **MUST** strictly follow the steps below. **NEVER** make decisions based solely on conversation summaries:

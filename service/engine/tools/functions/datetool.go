@@ -3,9 +3,12 @@ package functionTools
 import (
 	"context"
 	"time"
+
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
+
+const dateToolName string = "DateNow"
 
 func DateNow(ctx context.Context, req struct {
 }) (map[string]string, error) {
@@ -18,7 +21,7 @@ func DateNow(ctx context.Context, req struct {
 func GetDateTools() []tool.Tool {
 	dtool := function.NewFunctionTool(
 		DateNow,
-		function.WithName("date_now"),
+		function.WithName(dateToolName),
 		function.WithDescription("获取当前日期和时间，格式为YYYY-MM-DD HH:MM:SS"),
 	)
 	return []tool.Tool{dtool}

@@ -1,7 +1,7 @@
 ## Environment
 - Repo lives on WSL2-mounted NTFS (`/mnt/d/`) — run `git config --global --add safe.directory "/mnt/d/code/my/HackerTeam"` before any git commands (use the actual checkout path if it moves again)
 - `git` commands via Bash tool fail with "dubious ownership" without the safe.directory fix above
-- `.go` files use CRLF line endings (Windows), `.md` files use LF — `Edit` tool fails on CRLF files, use `python3 -c "..."` via Bash instead
+- `.go` files 多为 CRLF（Windows），但较新的文件是 LF（如 `tools/functions/jsonmapper.go`）；`.md` 文件 LF。CRLF 文件 `Edit` 工具会失败→用 `python3 -c "..."` via Bash；Python 编辑须按文件探测行尾（`splitlines(keepends=True)` + 检测 `\r\n`），勿假设全 CRLF
 - `sed -i` fails with "Operation not permitted" on NTFS — write to `/tmp` and `cp` back, or use Python for in-place edits
 - CRLF-safe edit for `.go` files: `python3 -c "import pathlib; p=pathlib.Path('file.go'); c=p.read_text(); c=c.replace('OLD','NEW'); p.write_text(c)"`
 
@@ -41,15 +41,16 @@
   - `init.go` — `preCheckLoad()` init sequence (config/skills/log/session/memory/内置工具与工具集), `configENVPrompt()` (env.md + 3 shared prompt placeholders), `checkSkillsFolder()` (5 role skill dirs + per-role preset copy via `makeSkillsWritable()`), `newRunner()` (agent factory: 6 agent factories + `team.New`), `redirectFrameworkLog()`; `initBuiltinTools()`/`initBuiltinToolsets()` (内置工具/工具集启动时建一次，跨轮常驻), `loadMCPFromConfig()`/`refreshMCPFromConfig()` (MCP工具集每轮run Close+重建); `tuiService` interface definition
   - `members.go` — 6 agent factories (`initCaptain`/`initRecon`/`initexploit`/`initpostexploit`/`initScanner`/`initReproducer`), `setAgent()` (model selection by APIType), `assemblePrompt()`
   - `engineRun.go` — dialog loop + single-turn execution (`agentRunIteratively`/`agentRunOnce`), turn types, merged from old `handler/runIteratively.go` + `runOnce.go` + `model.go` + `bootstrap/Bootstrap.go`
-  - `messageRender.go` — message rendering (`renderStreamEvent`/`renderNonStreamEvent`/`renderToolCall`/`renderToolResult`), tool call/result buffer (`toolMsgBuffer`), merged from old `handler/message.go` + `toolMsg.go`
+  - `messagerender/` — message rendering subpackage（`MessageRender.RenderResponse` 每 choice 调一次 → stream/non-stream 事件渲染 + 工具消息 gather/render）；`messageRender.go` + `toolmessagebuffer.go`。由 `engineRun.go` 事件循环调用
   - `config/` — `config.go` (Config struct + `LoadConfig`), `config.yaml` (checked-in sample user config), `mcp.go` (HttpMCP/StdinMCP 配置结构体), `template.go` (YAML template via `//go:embed`，含 `http_mcp`/`stdin_mcp` 示例段)
   - `memory/sqlite.go` — SQLite memory service factory with auto-extraction
   - `session/` — summarizer, session service, prompt embedding (`prompt/*`)
   - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
   - `prompts/agents/` + `prompts/common/` — role prompts + shared consensus prompts (embedded)
   - `skillsTemplates/` — embedded per-role skill presets（`Recon/` `Scanner/` `Exploit/` `PostExploit/`，各含 pentest-tools 模板 + hacktricks 红队知识；`Reproducer/` 预置 poc-scripting 复现脚本模式）
-  - `tools/functions/` — Custom Go function tools for agents
-  - `tools/toolsets/localexec/` — LocalExec toolset (command execution subsystem for all agents；`Close()` 先 kill 未结束命令再清注册表)
+  - `tools/functions/` — Custom Go function tools（`jsonmapper.go`：`Mappers` 接口 + `InjectMapper` 注册本包工具的渲染字段表，工具名用常量）
+  - `tools/parammapper.go` — `ParamMapper{Name,In,Out}` + `Mappers` 具体切片 + `GetParamMapper()`（聚合各工具包的 `InjectMapper`）
+  - `tools/toolsets/localexec/` — LocalExec toolset（command execution subsystem；`Close()` 先 kill 未结束命令再清注册表；`mapper.go` 自注册同形 `Mappers` 接口 + `InjectMapper`，工具名常量、带前缀名构造）
   - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、10s timeout)
 - `service/tui/` — `tui.go` (TUI widgets, `GetTuiService`, `Run`, `Show*InMsgViewAndExit`), `Internal.go` (help table toggle, `PrintToMsgView` wrappers)
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
@@ -59,6 +60,7 @@
 - `trpc-mcp-go` v0.0.18 — MCP SDK（仅用于日志重定向，无 MCP 工具集）
 - `tcell/v2` v2.13.10、`anthropic-sdk-go` v1.66.0
 - `glamour` v2.0.1 (`charm.land/glamour/v2`) — Markdown → ANSI renderer (Dracula theme, non-stream mode uses `glamour.Render` + `tview.TranslateANSI` for formatted markdown display)
+- `gjson` v1.19.0 (`github.com/tidwall/gjson`) — 工具消息参数/结果字段提取（点路径取值，不反序列化；本为 indirect，现转直接）
 
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
@@ -84,10 +86,12 @@
 - **ANSI → tview tag conversion required** — tview's `SetDynamicColors(true)` only supports its own color tag format (`[red]text[-]`). Standard ANSI escape sequences must go through `tview.TranslateANSI()` before writing to a TextView. Without this, ANSI codes appear as visible garbage.
 - **Tool response content must be skipped in content rendering** — Both stream and non-stream content paths check `Role != "tool"` to prevent tool JSON from leaking through the main content renderer.
 - **Multi-tool results handled in `engineRun.go`** — Framework merges parallel tool results into a single `tool.response` event with N Choices. `agentRunOnce` detects `ObjectTypeToolResponse` and iterates ALL Choices.
-- **Glamour markdown rendering** — Non-stream body text is rendered via `glamour` (dracula theme). `document.margin = 0` removes dracula theme's left margin; `strings.TrimRight` strips trailing whitespace to prevent alignment artifacts before tool calls. **Must append `[-:-:-]` after `TranslateANSI(out)`** — glamour's ANSI output may not end with a full reset sequence, leaving unclosed tview tags that leak into the next line (tool calls appear brighter/miscolored).
+- **Glamour markdown rendering** — engine 不直接 import glamour：通过 `tuiService.RenderMarkdown(in)`（`messagerender.renderNonStreamEvent` 调用）→ tui 内部 `newGlamourRender()`（dark 主题 + `document.margin=0` + `WithWordWrap(终端宽)`）解耦。`strings.TrimRight` 去尾空白。**`TranslateANSI(out)` 后必须接 `[-:-:-]`**——glamour ANSI 末尾可能无完整 reset，残留 tview tag 泄漏到下一行（工具行偏亮/串色）。
 - **`show_reasoning` config** — `config.Model.ShowReasoning` (`yaml:"show_reasoning"`) controls reasoning/thinking display. Default `false`. Affects both stream and non-stream paths.
 - **`maxtokens` config must stay set** — `config.Model.MaxTokens` (`yaml:"maxtokens"`, default 12800; lowered from 32000 for Anthropic SDK limits). If unset the framework falls back to 4096 (DeepSeek API default / Anthropic adapter hardcode), large tool-call JSON (WriteFile content, heredoc commands) hits `finish_reason=length` mid-arguments, and `WithToolCallArgumentsJSONRepairEnabled(true)` then silently "repairs" the truncated JSON into incomplete params. Root-cause analysis: `docs/tool-call-args-truncation.md`
-- **`messageRender.go` refactored** — `printMessage` split into `renderStreamEvent`, `renderNonStreamEvent`, `renderToolCall`, `renderToolResult` (`service/engine/messageRender.go`). Tool call/result rendering uses shared `addToolCallMsg`/`addToolResultMsg` helpers with `toolMsgBuffer` mutex. Compact single-line format via `pretty.TToolCompact` — green `●` + orange tool name + dim gray `args → result_summary`. No trailing `\n` (double-newline with next tool's leading `\n` causes alignment shift).
+- **工具消息渲染（messagerender + parammapper）** — `MessageRender.renderToolMessages` 对每个"结果已到"的工具消息打印一次（`hasResult`/`printed` 标志去重；调用方 `engineRun.go` 每轮 `agentRunOnce` 新建 `MessageRender`，buffer 跨轮不泄漏）。字段提取：`tools.GetParamMapper()` 聚合各工具包自注册的 `InjectMapper`（`functionTools`/`localexec` 各自定义同形 `Mappers` 接口，`*tools.Mappers` 结构化满足；`tools`→两包均无环）；`renderToolMessageByMapper` 用 **gjson** 点路径取 `In`/`Out` 字段，未注册工具回退原始 JSON。格式：`pretty.TToolCompact(name,args,result)` 紧凑单行，args/result 为 `""`/`"()"`/`"{}"` 跳过、`→` 随 result 出现（args 可空）。
+- **框架工具名前缀** — toolset 工具运行时名是 `{toolsetName}_{toolName}`（如 localexec `WithName("submit_command")` + toolset 名 `"LocalExec"` → LLM 看到 `LocalExec_submit_command`）。mapper 须用带前缀名；localexec 用 `localExecToolSetName+"_"+toolName` 构造。新增 toolset 工具的字段映射记得用前缀名。
+- **加新工具的字段映射** — 在所属工具包写 `InjectMapper(m Mappers)`（或加入既有），`m.AddMapping(<实际名>, In字段路径, Out字段路径)`；若引入新工具包，在 `tools/parammapper.go` 的 `GetParamMapper()` 加一行调用其 `InjectMapper`（注意无环：工具包不得反向 import `tools`）。
 - **embedFS case sensitivity** — `//go:embed` + `ReadFile` paths are case-sensitive on Linux. Always match exact file name case between `go:embed` glob patterns and `ReadFile` calls.
 - **Agent status bar (BeforeModel callback)** — `setBeforeModelStatusCallback()`（`service/engine/members.go`）在每次 LLM 调用时向请求**末尾** append 一条 system 状态栏（TIMENOW/CWD/MEMORY）。三条不可违反的设计约束：① 必须 append 到**尾部**而非 prepend——状态栏内容每次调用都变，放头部会破坏服务端自动前缀缓存（实测：尾部 95-99% 命中 vs 头部 0）；② 必须配套 `openai.WithOptimizeForCache(false)`（`service/engine/models/openai.go`）——否则框架的 `optimizeMessagesForCache` 会把尾部 system 重排到头部，缓存收益失效；③ `{{DATE}}`/`{{CWD}}` 占位符已从 `env.md`/`init.go` 移除（与状态栏重叠）。状态栏不进 session（仅存在于当次请求副本），不污染摘要/压缩。详见 `docs/agent-time-awareness-callbacks.md`
 - **Input multiplexing (InputChan)** — Tui 字段 `InputChan`（**unbuffered**），`ReadInputAreaPromptWithEnter()` 只注册捕获（非阻塞返回），引擎循环用 `select { case userPrompt = <-tui.InputChannel(): }` 读取（`service/engine/engineRun.go`）。三条约束：① 发送用 select-default——对端（引擎）未监听时不投递且**不清空输入框**（`SetText("")` 只在投递成功时执行），unbuffered send 永不阻塞 tview 事件循环、用户输入永不丢失；② **捕获常驻**——Enter 提交后不注销捕获（旧 `SetInputCapture(nil)` 已删除），agent 运行期间 Enter 被捕获消费（不换行不投递，Shift+Enter 仍可换行、Ctrl+K 帮助仍可用）；③ select 是扩展点——计划任务结果回传（schedule agent）将在 select 上加 TriggerCh 分支 + 前置 DrainPending 检查，勿改回阻塞式 `ReadInputAreaPromptWithEnter() string`。

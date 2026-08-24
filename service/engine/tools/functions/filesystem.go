@@ -15,6 +15,16 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
 
+const (
+	pwdToolName   string = "PWD"
+	cdToolName    string = "CD"
+	lsToolName    string = "LS"
+	mkdirToolName string = "Mkdir"
+	cpToolName    string = "CP"
+	mvToolName    string = "MV"
+	globToolName  string = "Glob"
+)
+
 // 获取当前工作目录
 func PWD(ctx context.Context, req struct {
 }) (map[string]string, error) {
@@ -23,7 +33,7 @@ func PWD(ctx context.Context, req struct {
 		return nil, err
 	}
 	return map[string]string{
-		"PWD": path,
+		"pwd": path,
 	}, nil
 }
 
@@ -31,9 +41,9 @@ func PWD(ctx context.Context, req struct {
 type fileInfo struct {
 	Name     string      `json:"name"`
 	Size     int64       `json:"size"`
-	IsDir    bool        `json:"isDir"`
+	IsDir    bool        `json:"is_dir"`
 	Mode     os.FileMode `json:"mode"`
-	ModeTime string      `json:"modTime"`
+	ModeTime string      `json:"mod_time"`
 }
 
 func LS(ctx context.Context, req struct {
@@ -66,7 +76,7 @@ func LS(ctx context.Context, req struct {
 		return nil, err
 	}
 	return map[string]string{
-		"Files": string(jsonBytes),
+		"files": string(jsonBytes),
 	}, nil
 }
 
@@ -86,7 +96,7 @@ func CD(ctx context.Context, req struct {
 		return nil, err
 	}
 	return map[string]string{
-		"CWD now": cwd,
+		"cwd": cwd,
 	}, nil
 }
 
@@ -153,8 +163,8 @@ func MV(ctx context.Context, req struct {
 	// 同设备直接重命名
 	if err := os.Rename(req.OldPath, req.NewPath); err == nil {
 		return map[string]string{
-			"OldPath": req.OldPath,
-			"NewPath": req.NewPath,
+			"old_path": req.OldPath,
+			"new_path": req.NewPath,
 		}, nil
 	} else if !errors.Is(err, syscall.EXDEV) {
 		return nil, err
@@ -232,37 +242,37 @@ func Glob(ctx context.Context, req struct {
 func GetFileSystemTools() []tool.Tool {
 	pwdtool := function.NewFunctionTool(
 		PWD,
-		function.WithName("PWD"),
+		function.WithName(pwdToolName),
 		function.WithDescription("获取当前工作目录"),
 	)
 	cdtool := function.NewFunctionTool(
 		CD,
-		function.WithName("CD"),
+		function.WithName(cdToolName),
 		function.WithDescription("切换当前工作目录"),
 	)
 	lstool := function.NewFunctionTool(
 		LS,
-		function.WithName("LS"),
+		function.WithName(lsToolName),
 		function.WithDescription("列出指定目录下的文件和子目录"),
 	)
 	mkdirTool := function.NewFunctionTool(
 		Mkdir,
-		function.WithName("Mkdir"),
+		function.WithName(mkdirToolName),
 		function.WithDescription("创建目录，支持递归创建父目录"),
 	)
 	copyTool := function.NewFunctionTool(
 		Copy,
-		function.WithName("CP"),
+		function.WithName(cpToolName),
 		function.WithDescription("复制文件或目录，支持跨设备复制"),
 	)
 	mvTool := function.NewFunctionTool(
 		MV,
-		function.WithName("MV"),
+		function.WithName(mvToolName),
 		function.WithDescription("移动或重命名文件或目录，支持跨设备移动"),
 	)
 	globTool := function.NewFunctionTool(
 		Glob,
-		function.WithName("Glob"),
+		function.WithName(globToolName),
 		function.WithDescription("按正则表达式搜索文件名，支持指定根目录和搜索深度"),
 	)
 	return []tool.Tool{pwdtool, cdtool, lstool, mkdirTool, copyTool, mvTool, globTool}

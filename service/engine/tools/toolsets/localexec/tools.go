@@ -33,7 +33,7 @@ func getTools(m *Manager) []tool.Tool {
 				"message": "Command started successfully. Use `get_status` to check running status and `get_output` to retrieve output",
 			}, nil
 		},
-		function.WithName("submit_command"),
+		function.WithName(submitCommandToolName),
 		function.WithDescription("异步执行一条命令并立即返回命令ID与运行状态。命令由`Process`和`Args`组成，支持跨平台shell命令执行，如`bash -c 'echo Hello World'`。命令异步运行，必须使用`get_status`检查是否完成，`get_output`获取输出，`intervene_command`写入stdin，`kill_command`强制终止"),
 	)
 
@@ -90,7 +90,7 @@ func getTools(m *Manager) []tool.Tool {
 				"status_all": marshalJson(list),
 			}, nil
 		},
-		function.WithName("get_status"),
+		function.WithName(getStatusToolName),
 		function.WithDescription("查看命令状态，如不传ID返回全部命令状态。传wait_seconds时，阻塞等待命令完成（每秒轮询，完成即返回），超时返回当前状态；适合长时间异步任务，避免反复轮询。"),
 	)
 
@@ -115,7 +115,7 @@ func getTools(m *Manager) []tool.Tool {
 				"output": string(data),
 			}, nil
 		},
-		function.WithName("get_output"),
+		function.WithName(getOutputToolName),
 		function.WithDescription("获取命令输出；支持窗口大小与选择stdout/stderr"),
 	)
 
@@ -142,7 +142,7 @@ func getTools(m *Manager) []tool.Tool {
 			}
 			return map[string]string{"id": req.Id, "msg": "no action taken; provide `input` or `signal`"}, nil
 		},
-		function.WithName("intervene_command"),
+		function.WithName(interveneCommandToolName),
 		function.WithDescription("向运行中的命令写入stdin或发送信号(Windows仅支持stdin与强制结束)"),
 	)
 
@@ -159,7 +159,7 @@ func getTools(m *Manager) []tool.Tool {
 			st := m.Status(req.Id)
 			return map[string]string{"id": req.Id, "status": st.Status}, nil
 		},
-		function.WithName("kill_command"),
+		function.WithName(killCommandToolName),
 		function.WithDescription("强制结束运行中的命令"),
 	)
 

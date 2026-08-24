@@ -222,7 +222,7 @@ func (t *Tui) AddHelpItems(items []map[string]string) {
 func (t *Tui) ResetHelpItems() {
 	t.defaultHelpItems()
 }
-func (t *Tui) NewGlamourRenderer() *glamour.TermRenderer {
+func (t *Tui) newGlamourRender() *glamour.TermRenderer {
 	_, _, w, _ := (*(*t).appLayout).agentMessage.GetInnerRect()
 	if w < 40 {
 		w = 80
@@ -238,7 +238,9 @@ func (t *Tui) NewGlamourRenderer() *glamour.TermRenderer {
 	)
 	return r
 }
-
+func (t *Tui) RenderMarkdown(in string) (string, error) {
+	return t.newGlamourRender().Render(in)
+}
 func (t *Tui) Run() {
 	err := (*t).app.Run()
 	if err != nil {

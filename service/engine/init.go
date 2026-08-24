@@ -24,7 +24,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
-	"charm.land/glamour/v2"
 	ag "trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
@@ -47,7 +46,7 @@ type tuiService interface {
 	ShowSuccessInMsgViewAndExit(sussessmsg string)
 	StatusBarScrollingTip(ctx context.Context, tip string, TColor string)
 	StatusBarUserTip(s string)
-	NewGlamourRenderer() *glamour.TermRenderer
+	RenderMarkdown(in string) (string, error)
 }
 
 // 定义配置文件夹中的各种配置文件名称

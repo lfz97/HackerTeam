@@ -3,6 +3,7 @@ package engine
 import (
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/models"
+	functionTools "HackerTeam/service/engine/tools/functions"
 	"errors"
 	"fmt"
 	"strings"
@@ -98,14 +99,15 @@ func afterToolCallback(ctx context.Context, args *tool.AfterToolArgs) (*tool.Aft
 	return nil, nil
 }
 
-// 创建队长agent，负责任务规划、分配和总结，队长只挂载文件目录及文件读写工具
+// 创建队长agent，负责任务规划、分配和总结，队长挂载文件目录、文件读写工具与todo清单
 func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Callbacks) (*llmagent.LLMAgent, error) {
 	captainPrompt := e.assemblePrompt("prompts/agents/captain.md")
 
 	// 内置工具清单常驻（启动时建一次），拷入私有slice再追加记忆工具，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools)+4)
+	tools := make([]tool.Tool, 0, len((*e).builtinTools)+5)
 	tools = append(tools, (*e).builtinTools...)
-	tools = append(tools, (*e).SqliteMemoryService.Tools()...) // 记忆工具：memory_search / memory_load / memory_add / memory_update / memory_delete（纯agent驱动，无自动提取）
+	tools = append(tools, (*e).SqliteMemoryService.Tools()...)           // 记忆工具：memory_search / memory_load / memory_add / memory_update / memory_delete（纯agent驱动，无自动提取）
+	tools = append(tools, functionTools.GetTodoTools()...)               // 框架内置 todo_write：任务清单仅队长持有，子Agent不共享（避免各自写乱计划）
 	tools = append(tools, subagentTools...)
 	// 配置文件声明的MCP工具集：挂载给全部agent（含队长），每轮run自动刷新
 	toolsets := make([]tool.ToolSet, 0, len((*e).mcpToolsets))
@@ -366,10 +368,12 @@ func (e *Engine) assemblePrompt(path string) string {
 	prompt = strings.ReplaceAll(prompt, "{{COMMAND_EXECUTION}}", (*e).CommandExecutionPrompt)
 	prompt = strings.ReplaceAll(prompt, "{{VULN_CONSENSUS}}", (*e).VulnConsensusPrompt)
 	prompt = strings.ReplaceAll(prompt, "{{OUTPUT_CONSENSUS}}", (*e).OutputConsensusPrompt)
+	//todo_write 工具使用说明（框架 tool/todo.DefaultToolPrompt，随框架版本走，不在提示词里硬编码）
+	prompt = strings.ReplaceAll(prompt, "{{TODO_PROMPT}}", functionTools.GetTodoToolPrompt())
 	return prompt
 }
 
-// 注入模型调用前callback，在消息末尾追加当前状态栏（时间、工作目录、内存）。
+// 注入模型调用前callback，在消息末尾追加当前状态栏（时间、工作目录、内存、todo清单）。
 // 注意：追加在末尾而非前置 —— 自动前缀缓存要求请求头部保持稳定，
 // 状态栏每次调用内容变化，放头部会破坏整个前缀缓存（实测：尾部99%命中 vs 头部0）。
 // 使用本功能必须关闭框架的 system 前置重排（openai.WithOptimizeForCache），否则
@@ -398,6 +402,13 @@ func setBeforeModelStatusCallback() llmagent.Option {
 				memNowStr = "UNKNOWN"
 			}
 			status := fmt.Sprintf(`[STATUS] TIMENOW: %s , CWD: %s , MEMORY USAGE: %s/%s MB`, datenow, cwd, memNowStr, memTotalStr)
+
+			//追加当前agent的todo清单状态（todo_write写入session state，按invocation branch读取，
+			//无清单时为空串不追加）。清单变化只影响尾部消息，不破坏前缀缓存；
+			//同轮内工具写入后下一跳请求即生效，上下文压缩掉历史后清单也不会丢。
+			if todoStatus := functionTools.TodoStatusBar(ctx); todoStatus != "" {
+				status += "\n" + todoStatus
+			}
 
 			//args.Request.Messages = append([]model.Message{model.NewSystemMessage(status)}, args.Request.Messages...) //在此修改原消息，在前面追加状态栏
 			args.Request.Messages = append(args.Request.Messages, model.NewSystemMessage(status)) //测试把状态栏放到最后，目的是不破坏缓存命中，需要关闭框架对openai格式api的消息重排机制（强制把system消息移动到最前方）openai.go:openai.WithOptimizeForCache(false)

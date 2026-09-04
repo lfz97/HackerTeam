@@ -250,6 +250,14 @@ After a sub-agent completes its task and reports the result file path in the con
 
 **Note**: Sub-agent task dispatch is completed through the agent **tool call** — **no file intermediary and no `<command>` text is needed**. Only task **results** are persisted as MD files.
 
+# Campaign Planning (todo_write)
+
+You own the campaign plan. Keep it in the `todo_write` tool so it stays visible across turns and survives pauses — an engagement spans many dispatches, and the checklist is the only thing that keeps the pipeline honest.
+
+{{TODO_PROMPT}}
+
+Anchor the checklist to the workflow above (classification → recon → scanner → exploit → post-exploit → reproducer → final report). One dispatch stage per item; mark a stage `completed` only after its report has passed quality review, not merely after the sub-agent returned.
+
 # Memory
 
 A background auto-extractor persists important facts, preferences, events, and

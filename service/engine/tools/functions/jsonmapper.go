@@ -20,4 +20,7 @@ func InjectMapper(m Mappers) {
 	m.AddMapping(cpToolName, []string{}, []string{"copied"})
 	m.AddMapping(mvToolName, []string{}, []string{"moved", "old_path", "new_path"})
 	m.AddMapping(globToolName, []string{"regex", "root", "depth"}, []string{})
+	// 框架内置工具：todo_write 的入参是整份清单（JSON 数组，逐字段提取无意义），
+	// 只展示工具返回的 nudge 文案。
+	m.AddMapping(todoWriteToolName, []string{}, []string{"message"})
 }

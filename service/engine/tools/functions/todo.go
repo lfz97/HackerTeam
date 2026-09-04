@@ -2,23 +2,52 @@ package functionTools
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/resultformat"
 	"trpc.group/trpc-go/trpc-agent-go/tool/todo"
 )
 
 // todoWriteToolName 框架内置 todo 工具的注册名（等价于 tool/todo.DefaultToolName）。
 const todoWriteToolName string = "todo_write"
 
-// GetTodoTools 返回框架内置的 todo_write 工具：为 Agent 提供跨轮持久化的结构化任务清单。
+// GetTodoTools 返回框架内置的 todo_write 工具（经 todoTool 包装）：为 Agent 提供跨轮持久化的结构化任务清单。
 // 清单写入 session state（temp:todos[:branch]），按 invocation branch 分键隔离，
 // 因此各子 Agent 读写的是自己的清单，不会覆盖队长的计划。
 // 工具的完整使用说明见 GetTodoToolPrompt，需要拼进系统提示词才能约束模型行为。
 func GetTodoTools() []tool.Tool {
-	return []tool.Tool{todo.New()}
+	return []tool.Tool{todoTool{Tool: todo.New()}}
+}
+
+// todoTool 包装框架内置 todo_write，为模型可见结果注册 formatter。清单的当前状态
+// 已由队长 BeforeModel 状态栏每跳注入（见 agent/status.go），工具结果只保留 nudge
+// 文案，不再回显整份 todos/oldTodos，避免同一清单在上下文里重复占 token。
+// 这是框架文档化的机制：tool/function 之外的工具实现只要暴露同名 ResultFormatter()
+// 方法，就按与 function.WithResultFormatter 相同的规则参与（processor 经
+// resultFormatterProvider 接口断言发现，见 internal/flow/processor/functioncall.go）。
+type todoTool struct {
+	*todo.Tool
+}
+
+// ResultFormatter 实现上述鸭子接口。保持 message 字段的 JSON 形态，TUI 侧按字段
+// 提取的渲染逻辑不变；state 持久化走内嵌 Tool 的 StateDeltaForInvocation，不受
+// formatter 影响（formatter 不参与状态协议）。
+func (t todoTool) ResultFormatter() resultformat.Formatter {
+	return resultformat.FormatterFunc[todo.Output](
+		func(_ context.Context, out todo.Output) (string, error) {
+			b, err := json.Marshal(struct {
+				Message string `json:"message"`
+			}{Message: out.Message})
+			if err != nil {
+				return "", fmt.Errorf("todo_write: format result: %w", err)
+			}
+			return string(b), nil
+		},
+	)
 }
 
 // GetTodoToolPrompt 返回 todo_write 工具的默认使用说明（tool/todo.DefaultToolPrompt），
@@ -28,11 +57,8 @@ func GetTodoToolPrompt() string {
 	return todo.DefaultToolPrompt
 }
 
-// 状态栏渲染参数上限：pending 条数与单条文本长度，避免清单过长撑爆尾部消息。
-const (
-	todoStatusBarMaxPending   = 8
-	todoStatusBarMaxItemRunes = 80
-)
+// 状态栏渲染参数上限：pending 条数，避免清单过长撑爆尾部消息。
+const todoStatusBarMaxPending = 8
 
 // TodoStatusBar 返回当前 invocation 会话中 todo 清单的紧凑状态摘要，供队长 BeforeModel
 // 状态栏追加；队长（按 invocation branch 分键）没有清单时返回空串。
@@ -53,7 +79,8 @@ func TodoStatusBar(ctx context.Context) string {
 
 // renderTodoStatusBar 把清单渲染成单行摘要：进行中的条目置顶（activeForm），
 // pending 逐条列出（content，超过 todoStatusBarMaxPending 折叠为计数），
-// completed 只显示计数。全 completed 的清单会被 todo_write 自动清空，不会走到这里。
+// completed 只显示计数。条目文本不截断，保持完整语义。全 completed 的清单
+// 会被 todo_write 自动清空，不会走到这里。
 func renderTodoStatusBar(items []todo.Item) string {
 	var inProgressText string
 	var pendingTexts []string
@@ -61,11 +88,11 @@ func renderTodoStatusBar(items []todo.Item) string {
 	for _, it := range items {
 		switch it.Status {
 		case todo.StatusInProgress:
-			inProgressText = truncateRunes(it.ActiveForm, todoStatusBarMaxItemRunes)
+			inProgressText = strings.TrimSpace(it.ActiveForm)
 		case todo.StatusPending:
 			pending++
 			if len(pendingTexts) < todoStatusBarMaxPending {
-				pendingTexts = append(pendingTexts, truncateRunes(it.Content, todoStatusBarMaxItemRunes))
+				pendingTexts = append(pendingTexts, strings.TrimSpace(it.Content))
 			}
 		case todo.StatusCompleted:
 			completed++
@@ -89,13 +116,4 @@ func renderTodoStatusBar(items []todo.Item) string {
 		b.WriteString(fmt.Sprintf(" (%d done)", completed))
 	}
 	return b.String()
-}
-
-// truncateRunes 按 rune 截断并去掉首尾空白，超长补省略号。
-func truncateRunes(s string, max int) string {
-	r := []rune(strings.TrimSpace(s))
-	if len(r) <= max {
-		return string(r)
-	}
-	return string(r[:max]) + "..."
 }

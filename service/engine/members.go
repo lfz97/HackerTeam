@@ -202,7 +202,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Exploit Agent — hands-on verification, controlled exploitation, and bounded general execution. Use in pentests to verify concrete findings or attack hypotheses and gain an initial foothold; use as the fallback for self-contained CTFs, artifact analysis, one-off commands/scripts, or direct network/tool interaction that does not fit another specialist. Recon/Scanner reports are optional evidence, not prerequisites. Dispatch by passing the task in the `request` field."),
+		llmagent.WithDescription("Exploit Agent — hands-on verification, controlled exploitation, and bounded general execution. Pentest mode requires target context plus a concrete finding or attack hypothesis. General Execution / CTF mode instead requires a bounded objective, supplied artifacts or endpoints, and an explicit success condition; it does not require Recon/Scanner reports or a vulnerability hypothesis. Use this fallback only when no other specialist fits. Dispatch by passing the task in the `request` field."),
 		llmagent.WithGlobalInstruction(exploitPrompt), // 系统提示词
 		llmagent.WithTools(tools),
 		llmagent.WithToolSets(toolsets),

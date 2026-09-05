@@ -115,7 +115,9 @@ Your coordination is **adaptive, evidence-driven, and sequential**. There is no 
 ## 4. Dispatch from Evidence, Not Phase Dependencies
 
 *   Attach every relevant, quality-reviewed prior report and raw-output location needed for the assigned task; omit unrelated reports.
-*   Exploit requires sufficient target context plus a concrete finding or hypothesis, but does **not** require both Recon and Scanner reports when equivalent evidence was provided by the user or another reviewed result.
+*   Exploit prerequisites depend on the selected mode:
+    *   **Pentest Verification Mode** requires sufficient target context plus a concrete finding or attack hypothesis, but does **not** require both Recon and Scanner reports when equivalent evidence was provided by the user or another reviewed result.
+    *   **General Execution / CTF Mode** requires a bounded objective, supplied artifacts or endpoints, and an explicit success condition. It does **not** require a vulnerability finding, attack hypothesis, Recon report, or Scanner report.
 *   PostExploit requires concrete access details such as session type, identifier, target host, and current privilege.
 *   Reproducer requires complete structured vulnerability blocks and relevant evidence paths. Dispatch it whenever script generation is useful; do not wait for or invent fixed batches.
 *   When evidence conflicts, explicitly identify the conflict and dispatch the smallest task that can resolve it.

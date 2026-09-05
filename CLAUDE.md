@@ -16,7 +16,7 @@
 - Go module: `HackerTeam` (Go 1.26.4)
 
 ## Architecture
-- Multi-agent AI pentesting platform: Captain serially dispatches Recon → Scanner → Exploit (cross-validate) → PostExploit, plus Reproducer in two batches (Batch1: after Scanner+Exploit, Batch2: after PostExploit)
+- Multi-agent AI pentesting platform: Captain maintains an adaptive `todo_write` plan and serially dispatches one specialized Agent at a time according to the current evidence need. PTES is a reference checklist, not a fixed Agent sequence; Agents may be skipped, repeated, or revisited.
 - Each agent prompt must have a "职责边界" rule as the first constraint — explicitly list what this agent MUST NOT do and WHICH agent handles that; LLMs cross role boundaries unless explicitly forbidden (Recon may try sqlmap, Scanner may try to exploit). Forbidding tool NAMES is not enough — LLMs bypass "don't use sqlmap" by doing manual injection with the same payloads. Forbid concrete BEHAVIORS with exact examples (e.g. "NEVER append ' / OR 1=1 / UNION SELECT to URL params") so the LLM cannot self-rationalize. Do NOT add cross-boundary refusal logic on sub-agents — if Recon rejects and Scanner also rejects, tasks deadlock; enforce boundaries on Captain's dispatch side only, accept the risk of Captain hallucination.
 - Shared consensus system in `service/engine/prompts/common/` (embedded via `//go:embed prompts/*` in `service/engine/engineCore.go`): `vuln_consensus.md` (vulnerability definition + severity rating by technical impact, no CVSS), `output_consensus.md` (output format, raw tool output preservation, vulnerability structured block format for Reproducer consumption), `command_execution.md` (source of `{{COMMAND_EXECUTION}}` — OS-aware command selection rules), `env.md` (source of `{{ENV}}` — resolved once in `configENVPrompt()`)
 - TUI built with `rivo/tview` + `gdamore/tcell/v2`, PTY execution via `creack/pty`
@@ -74,8 +74,8 @@
 - "Planner" as a team member = a separate LLMAgent that Captain dispatches to for structured attack plans (like Recon/Scanner). Architecturally different from `WithPlanner()`. Currently NOT used — Captain's own prompt handles planning adequately; adding a separate PlannerAgent adds a round-trip without benefit.
 
 ## Agent Framework Gotchas
-- Captain dispatches agents **serially** (Recon → Scanner → Exploit → PostExploit → Reproducer in two batches), not in parallel — `WithEnableParallelTools` is disabled; parallel dispatch causes framework-level issues when skill + localexec toolsets coexist
-- `HistoryScope` is **NOT** set to Isolated — the framework default is `HistoryScopeParentBranch`, meaning sub-agents inherit Captain's conversation branch history. Code does not override this default.
+- Captain dispatches agents **serially and adaptively**, not in a fixed sequence — `WithEnableParallelTools` remains disabled by design. Do not enable parallel dispatch without dedicated validation of shared MCP toolsets, persistent Agent histories, and local execution behavior.
+- Agent Tools use `WithPersistentHistory()` with `HistoryScopeIsolated`: each sub-agent keeps stable history across its own calls without inheriting Captain's conversation branch.
 - `LocalExec.submit_command` executes immediately (submit+start merged into one async call) — agents MUST poll `get_status` before `get_output`; `start_command` tool no longer exists
 - `localexec.Manager` is per-agent, not a global singleton — `LocalExec()` creates a new Manager for each `LocalExecToolSet` instance; global `cache.go` removed。**实例启动时建一次（`initBuiltinToolsets()`，每个执行角色一个），跨轮复用不重建**——上一轮 run 提交的长任务下一轮仍可 `get_status`/`get_output` 续查；`Close()` 会先 kill 所有未结束命令再清空注册表
 - **Toolset 生命周期二分：常驻 vs 每轮刷新** — `builtinTools`（15 件文件/日期工具）与 `builtinToolsets`（每角色 localexec）启动时创建，每轮 run 挂到新建的 agent 上，不刷新；`mcpToolsets` 每轮 run 在 `reload()` 里 Close 上一轮实例→按最新配置重建（配置改动下轮即生效）。框架**不会**调用 `ToolSet.Close()`（所有权在调用方），退出回收在 `AgentStart` 的 Exit 分支显式执行

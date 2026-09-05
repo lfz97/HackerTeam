@@ -2,7 +2,7 @@
 
 > **仅供授权渗透测试和安全研究使用。请遵守当地法律法规。**
 
-HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测试平台**，将大语言模型与本地 PTY 命令执行结合，按 PTES 标准自动完成完整攻击链。
+HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测试平台**，将大语言模型与本地 PTY 命令执行结合，由 Captain 在共享共识约束下自主规划并推进任务。
 
 **核心优势：**
 - **独立二进制部署** — 单文件，无运行时依赖，Linux/macOS 开箱即用
@@ -32,39 +32,36 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 ## 共识驱动的多 Agent 架构
 
-### Agent 分工与协作流
+### Agent 分工与自主协作
 
-`Captain` 作为中枢调度，将目标分解后按攻击链顺序分发给子 Agent。**先 Recon 后 Scanner**，结果汇合到 Exploit 交叉验证后精准利用，最后由 Reproducer 为所有已确认漏洞生成可运行的 Python 复现脚本：
+`Captain` 作为中枢调度，根据用户目标和已有证据维护 `todo_write` 任务清单，每次只选择一个最有价值的后续任务并串行调用对应 Agent。PTES 用于检查盲区，不再规定固定的 Recon → Scanner → Exploit 流程；不需要的 Agent 可以跳过，出现新证据时也可以重复调用或调整方向。
 
 ```
-              Captain
-                 |
-               Recon (深度侦察)
-                 |
-              Scanner (自动化广撒网)
-                 |
-            Exploit (老师傅)
-         交叉比对 + 去误报 + 精准利用
-                 |
-         ┌───────┴───────┐
-         │               │
-    PostExploit      Reproducer (Batch1)
-  后渗透+横向移动   为 Scanner+Exploit 确认的漏洞写脚本
-         │
-    Reproducer (Batch2)
-  为 PostExploit 的提权/横向等写脚本
+          用户目标 + 当前证据
+                  |
+       Captain + todo_write
+      选择当前最需要解决的问题
+                  |
+       串行调用一个合适的 Agent
+   ┌──────┬────────┬─────────┬─────────────┬────────────┐
+ Recon  Scanner  Exploit  PostExploit  Reproducer
+   └──────┴────────┴─────────┴─────────────┴────────────┘
+                  |
+          完整结果与证据审核
+                  |
+       更新 todo、重试、跳过或终止
 ```
 
 | Agent | 角色 | 职责 | 工具集 |
 |-------|------|------|--------|
-| **Captain** | 队长 | 任务规划、Agent 顺序调度、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
+| **Captain** | 队长 | 自主维护 todo、按证据串行调度 Agent、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
 | **Recon** | 侦察兵 | 子域名枚举、端口服务扫描、Web 指纹、目录爆破、被动情报（深度单点侦察） | LocalExec + Skills |
 | **Scanner** | 脚本小子 | 使用自动化扫描工具批量广撒网，覆盖面广速度快，不追求精准（误报交给 Exploit） | LocalExec + Skills |
-| **Exploit** | 老师傅 | 交叉比对 Recon + Scanner 结果，去误报后精准利用。负责漏洞最终技术定级 | LocalExec + Skills |
+| **Exploit** | 老师傅 | 验证具体漏洞或攻击假设、去误报后精准利用。负责漏洞最终技术定级 | LocalExec + Skills |
 | **PostExploit** | 后渗透 | 提权、凭证窃取、内网探测、横向移动、持久化、痕迹清理 | LocalExec + Skills |
 | **Reproducer** | 复现员 | 读取前序 Agent 报告中的漏洞结构化数据，为每个已确认漏洞生成 PoC + Exploit 双模式 Python 脚本 | LocalExec（仅语法检查） |
 
-**协作关键：** Recon 告诉 Exploit "目标是什么"，Scanner 告诉 Exploit "哪里可能有洞"，Exploit 自主判断真伪后动手，Reproducer 根据前序报告中的漏洞结构化块自动生成可运行的复现脚本。
+**协作关键：** 框架只固定授权边界、Agent 职责、证据格式和质量门；Captain 根据证据缺口决定下一步，不为了补齐预设阶段而调用 Agent。所有子 Agent 结果都要通过完整报告审核后，才能完成对应 todo 并成为后续任务的输入。
 
 ### Agent 间共识体系
 

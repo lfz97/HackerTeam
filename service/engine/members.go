@@ -202,7 +202,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Exploit Agent — hands-on exploitation and security tasks. Use to verify and exploit vulnerabilities (web, auth, network services, payload delivery, defense evasion) to gain a foothold. Also the default for direct single-agent tasks: CTF challenges, command/script execution, or any task needing tool/network interaction. When Recon/Scanner reports exist, pass them in prior_results; they are OPTIONAL for standalone tasks (e.g. CTF). Dispatch by passing the task in the `request` field."),
+		llmagent.WithDescription("Exploit Agent — hands-on verification, controlled exploitation, and bounded general execution. Pentest mode requires target context plus a concrete finding or attack hypothesis. General Execution / CTF mode instead requires a bounded objective, supplied artifacts or endpoints, and an explicit success condition; it does not require Recon/Scanner reports or a vulnerability hypothesis. Use this fallback only when no other specialist fits. Dispatch by passing the task in the `request` field."),
 		llmagent.WithGlobalInstruction(exploitPrompt), // 系统提示词
 		llmagent.WithTools(tools),
 		llmagent.WithToolSets(toolsets),
@@ -244,7 +244,7 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("PostExploit Agent — post-exploitation from an existing foothold/session. Use for privilege escalation, credential theft, internal recon, lateral movement, persistence, data exfiltration, trace cleanup. Provide current session/privilege info in the task. Dispatch by passing the task in the `request` field."),
+		llmagent.WithDescription("PostExploit Agent — one-objective post-exploitation from existing valid access. Use only when a session/credential/foothold already exists, and assign one explicit objective at a time: privilege escalation assessment, scoped internal recon, approved credential/data collection, authorized lateral movement, persistence, exfiltration, or cleanup. Provide current session/privilege info and the single authorized objective in the task. Dispatch by passing the task in the `request` field."),
 		llmagent.WithGlobalInstruction(postexploitPrompt), // 系统提示词
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
@@ -285,7 +285,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Scanner Agent — automated vulnerability scanning ONLY (breadth over accuracy). Use for nuclei, sqlmap (--batch), nikto, directory brute-forcing, weak-credential checks, tech/WAF identification. Does NOT verify, rate severity, or exploit. Dispatch by passing the task in the `request` field."),
+		llmagent.WithDescription("Scanner Agent — automated vulnerability scanning ONLY (breadth over accuracy). Use for nuclei, sqlmap --batch detection, nikto, and non-invasive service/path-scoped vulnerability checks against concrete targets. Does NOT do asset discovery, tech/WAF fingerprinting, directory enumeration, weak-credential attempts, verification, rating, or exploitation. Dispatch by passing the task in the `request` field."),
 		llmagent.WithGlobalInstruction(scannerPrompt), // 系统提示词
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),
@@ -301,7 +301,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 	return agent_p, err
 }
 
-// 复现agent，负责漏洞复现和验证，挂载相关技能库和工具
+// 复现agent，负责生成漏洞复现脚本并进行离线语法校验，挂载相关技能库和工具
 func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 	reproducerPrompt := e.assemblePrompt("prompts/agents/reproducer.md")
 	repo, _ := skill.NewFSRepository((*e).ReproducerSkillsFolderPath)
@@ -325,7 +325,7 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Reproducer Agent — generates standalone Python PoC/Exploit scripts from vulnerability findings. Provide prior agents' MD report paths in prior_results so it can extract vulnerability data. Never attacks targets. Dispatch by passing the task in the `request` field."),
+		llmagent.WithDescription("Reproducer Agent — generates standalone Python PoC/Exploit scripts from reviewed vulnerability evidence. Provide MD report paths, raw-output paths, or other Captain-reviewed evidence in prior_results so it can extract complete structured vulnerability data. Never attacks targets. Dispatch by passing the task in the `request` field."),
 		llmagent.WithGlobalInstruction(reproducerPrompt), // 系统提示词
 		llmagent.WithToolSets(toolsets),
 		llmagent.WithTools(tools),

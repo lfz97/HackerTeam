@@ -16,7 +16,7 @@ import (
 
 // NewSQLiteMemoryService 创建带自动记忆提取的 SQLite 记忆服务
 // 后台 extractor 在每个 turn 结束后自动从对话中提取记忆
-// agent 端暴露 memory_search/load/add/update 工具作为手动补充
+// agent 端暴露除 memory_clear 外的全部记忆工具（search/load/add/update/delete）作为手动补充
 func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Service, error) {
 	var extractorModel model.Model
 	if m.APIType == "openai" {
@@ -37,7 +37,8 @@ func NewSQLiteMemoryService(m config.Model, dbPath string) (*memorysqlite.Servic
 		memorysqlite.WithSoftDelete(true),
 		memorysqlite.WithMemoryLimit(100000),
 		memorysqlite.WithExtractor(ext),
-		memorysqlite.WithAutoMemoryExposedTools([]string{memory.AddToolName, memory.UpdateToolName}...), // 为 agent 额外暴露添加和更新工具，允许手动补充记忆
+		memorysqlite.WithToolEnabled(memory.LoadToolName, true), // auto 模式下 load 默认 disabled，必须显式 enable 才能被 exposed 生效
+		memorysqlite.WithAutoMemoryExposedTools([]string{memory.AddToolName, memory.UpdateToolName, memory.LoadToolName, memory.DeleteToolName, memory.SearchToolName}...), // 为 agent 暴露除了clear以外的所有记忆操作工具
 		memorysqlite.WithMemoryJobTimeout(600*time.Second),
 	)
 	if err != nil {

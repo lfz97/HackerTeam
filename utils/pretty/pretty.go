@@ -78,10 +78,9 @@ const (
 
 // ========== TUI 界面配色（GitHub 深色模式 + 深空蓝调）==========
 const (
-	TuiBg          = "#0F1115" // 整体背景色
+	TuiBg          = "#000000" // 整体背景色
 	TuiPanelBg     = "#151821" // 面板/侧边栏背景色
 	TuiBorderColor = "#2A2F3A" // 边框颜色
-	TuiStatusBarBg = "#151821" // 状态栏背景色
 	TuiInputAreaBg = "#151821" // 输入区背景色
 	TuiSplitLine   = "#4A5060" // 分割线颜色
 	TuiMainText    = "#C9D1D9" // 主文本颜色
@@ -456,16 +455,26 @@ func ErrorFWithExit(format string, args ...interface{}) {
 //
 // 设计规范:
 //   颜色语义: green=成功/正向  red=错误  yellow=警告/推理  cyan=用户/信息  magenta=工具
-//   符号规范: ✓成功 ✗错误 ⚠警告 ▶用户 ⚙工具 ◈状态
+//   符号规范: 系统消息（下面「状态消息」与「生命周期」两节）**不带任何符号**，语义完全
+//             由颜色承载。符号只用于对话内容的视觉标记，当前实际在用的是：
+//             ▶用户输入  ●工具行/非流式正文前缀  ↪工具结果  ⮡工具调用  »«推理区块
 //   布局规范: 状态消息前空行分隔，推理/工具用边框包裹
 
 const thinLine = "────────────────────────────────────────"
 
 // ── 状态消息 ─────────────────────────────────
+//
+// 本节与下面的「生命周期」节都属于"系统消息"：不带任何装饰符号，语义完全由颜色承载
+// （红=错误、黄=警告/中断、绿=成功、青=信息）。原来的 ✗ ✓ ⚠ ◈ 前缀已移除，
+// 同时去掉了 ::b —— 原来只有符号是粗体、正文是常规字重，符号没了就不需要粗体。
+// 新增本节的 helper 必须遵守此规则。
+//
+// 不在此列、符号必须保留的是对话内容的视觉标记：TUserInput 的 ▶、
+// 工具区块的 ● ↪ ⮡、推理区块的 » «、正文区块的 ●。
 
 // TError TUI 错误信息
 func TError(text string) string {
-	return fmt.Sprintf("\n[red::b]✗ [-:-:-]%s\n", text)
+	return fmt.Sprintf("\n[red]%s[-:-:-]\n", text)
 }
 
 // TErrorF TUI 格式化错误信息
@@ -475,7 +484,7 @@ func TErrorF(format string, args ...interface{}) string {
 
 // TSuccess TUI 成功信息
 func TSuccess(text string) string {
-	return fmt.Sprintf("\n[green::b]✓ [-:-:-]%s\n", text)
+	return fmt.Sprintf("\n[green]%s[-:-:-]\n", text)
 }
 
 // TSuccessF TUI 格式化成功信息
@@ -485,7 +494,7 @@ func TSuccessF(format string, args ...interface{}) string {
 
 // TWarning TUI 警告信息
 func TWarning(text string) string {
-	return fmt.Sprintf("\n[yellow::b]⚠ [-:-:-]%s\n", text)
+	return fmt.Sprintf("\n[yellow]%s[-:-:-]\n", text)
 }
 
 // TWarningF TUI 格式化警告信息
@@ -494,36 +503,57 @@ func TWarningF(format string, args ...interface{}) string {
 }
 
 // ── 生命周期 ─────────────────────────────────
+//
+// 同属"系统消息"，规则见上面「状态消息」节的注释：不带装饰符号，语义由颜色承载。
 
 // TWelcome TUI 欢迎/提示信息
 func TWelcome(text string) string {
-	return fmt.Sprintf("\n[green::b]◈ [-:-:-]%s\n", text)
+	return fmt.Sprintf("\n[green]%s[-:-:-]\n", text)
 }
 
 // TReady TUI 启动完成信息
 func TReady(name string) string {
-	return fmt.Sprintf("\n[green::b]✓ [-:-:-]%s 就绪\n", name)
+	return fmt.Sprintf("\n[green]%s 就绪[-:-:-]\n", name)
 }
 
 // TExit TUI 退出/结束信息
 func TExit(text string) string {
-	return fmt.Sprintf("\n[green::b]✓ [-:-:-]%s\n", text)
+	return fmt.Sprintf("\n[green]%s[-:-:-]\n", text)
 }
 
 // TNewConversation TUI 新对话提示
 func TNewConversation() string {
-	return "\n[cyan::b]◈ [-:-:-]新对话已开始\n"
+	return "\n[cyan]新对话已开始[-:-:-]\n"
 }
 
 // TInterrupted TUI 中断提示
 func TInterrupted() string {
-	return "\n[yellow::b]⚠ [-:-:-]输入已打断\n"
+	return "\n[yellow]输入已打断[-:-:-]\n"
 }
 
 // TCancelled TUI 取消提示
 func TCancelled() string {
-	return "\n[yellow::b]⚠ [-:-:-]会话已取消\n"
+	return "\n[yellow]会话已取消[-:-:-]\n"
 }
+
+// ── bar 通知（单行、无首尾换行）─────────────────────────
+// 与消息区版本（TNewConversation / TCancelled / TSuccess）同色同文案，唯一差别是
+// 不带 \n —— bar 是 SetWrap(false) 的 TextView，换行会显示成空白或把内容顶出可视区。
+// 按"系统消息不带装饰符号"的规则，这里也不加任何符号前缀。
+//
+// 去符号之后 bar 版与消息区版的差别只剩首尾换行，因此不需要新的私有拼接函数，
+// 直接复用 TColoredText（其实现本就是 "[%s]%s[-:-:-]"）。
+//
+// 没有 TBarInterrupted：它唯一的潜在调用点（TInterrupted 的打印）已作为重复打印删除。
+
+// TBarNewConversation bar 版新对话提示（NoticeBar 文案统一小写英文）
+func TBarNewConversation() string { return TColoredText(TColorCyan, "new conversation started") }
+
+// TBarCancelled bar 版取消提示
+func TBarCancelled() string { return TColoredText(TColorYellow, "session cancelled") }
+
+// TBarSuccess bar 版成功提示
+func TBarSuccess(text string) string { return TColoredText(TColorGreen, text) }
 
 // ── 对话内容 ─────────────────────────────────
 
@@ -580,9 +610,9 @@ func TToolResult(text string) string {
 }
 
 // TToolCompact 紧凑单行工具渲染：绿点 + 橙色工具名 + 灰色参数/结果概要
-// 格式: ● name  args → resultSummary
+// 格式: ● name  args ↪ result（result 换行缩进显示）
 func TToolCompact(name string, args []byte, result string) string {
-	// ── 参数压缩：去换行、合并空格、截断 80；空/()/{} 不输出 ──
+	// ── 参数压缩：去换行、合并空格、截断 80 rune；空/()/{} 不输出 ──
 	var compactArgs string
 	if len(args) > 0 {
 		s := strings.ReplaceAll(string(args), "\n", " ")
@@ -596,7 +626,7 @@ func TToolCompact(name string, args []byte, result string) string {
 		}
 	}
 
-	// ── 结果：去换行、合并空格、截断 200；空/()/{} 不输出（与 args 同法）──
+	// ── 结果：去换行、合并空格、截断 200 rune；空/()/{} 不输出（与 args 同法）──
 	var resultSummary string
 	if result != "" {
 		s := strings.ReplaceAll(result, "\n", " ")
@@ -610,7 +640,7 @@ func TToolCompact(name string, args []byte, result string) string {
 		}
 	}
 
-	// 拼灰色尾部：有 result 才带 " → "（args 可空；仅 args 无 result 时无箭头）
+	// 拼灰色尾部：有 result 才换行带 "↪ "（args 可空；仅 args 无 result 时无箭头）
 	var tail string
 	switch {
 	case compactArgs != "" && resultSummary != "":

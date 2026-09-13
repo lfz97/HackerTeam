@@ -126,7 +126,7 @@ func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Call
 		llmagent.WithToolCallbacks(toolCallbacks),
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
-	agent_p, err := setAgent(captain, (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(captain, (*(*e).Config_p).Model, opts, (*e).tui)
 	return agent_p, err
 
 }
@@ -168,7 +168,7 @@ func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent(recon, (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(recon, (*(*e).Config_p).Model, opts, nil)
 	return agent_p, err
 }
 
@@ -209,7 +209,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent(exploit, (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(exploit, (*(*e).Config_p).Model, opts, nil)
 	return agent_p, err
 
 }
@@ -251,7 +251,7 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent(postexploit, (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(postexploit, (*(*e).Config_p).Model, opts, nil)
 	return agent_p, err
 }
 
@@ -292,7 +292,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent(scanner, (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(scanner, (*(*e).Config_p).Model, opts, nil)
 	return agent_p, err
 }
 
@@ -330,13 +330,16 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 			llmagent.SkillToolProfileKnowledgeOnly,
 		),
 	}
-	agent_p, err := setAgent(reproducer, (*(*e).Config_p).Model, opts)
+	agent_p, err := setAgent(reproducer, (*(*e).Config_p).Model, opts, nil)
 	return agent_p, err
 }
 
-// setAgent 根据 APIType 创建对应模型的 agent（无状态，包级函数）
-func setAgent(agentName agentName, m config.Model, opts []llmagent.Option) (*llmagent.LLMAgent, error) {
-	opts = append(opts, setBeforeModelStatusCallback()) //设置beforeModel状态栏
+// setAgent 根据 APIType 创建对应模型的 agent（无状态，包级函数）。
+// sink 用于把 TodoBar 文本推给 TUI：只有 Captain（主 agent，与用户对话、持有 todo 清单）
+// 传 (*e).tui；五个子 agent 传 nil —— 子 agent 按 branch 读不到清单，每跳推空串会把
+// TodoBar 清空再由 Captain 推回造成闪烁，且它们本就非交互。
+func setAgent(agentName agentName, m config.Model, opts []llmagent.Option, sink todoTextSink) (*llmagent.LLMAgent, error) {
+	opts = append(opts, setBeforeModelStatusCallback(sink)) //设置beforeModel状态栏
 	if m.APIType == "openai" {
 		openaimodel := models.Openai(m)
 		opts = append(opts, llmagent.WithModel(openaimodel))

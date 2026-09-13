@@ -36,16 +36,16 @@ type tuiService interface {
 	AddHelpItems(items []map[string]string)
 	ClearAppFuncTrigger()
 	PrintToMsgView(content string, clear bool)
-	ReadInputAreaPromptWithEnter()
-	InputChannel() chan string
+	ListenUserInput() chan string
+	SetAgentRunning(running bool)
+	ShowNotice(msg string)
+	ShowStartupBanner(infoLines []string)
+	SetTodoText(text string)
 	ResetHelpItems()
 	SetAppFuncTriggerWithEsc(f func())
 	ShowErrorInMsgViewAndExit(errmsg string)
 	ShowMsgAndExitNoTrigger(msg string)
-	ShowSuccessInMsgView(sussessmsg string)
 	ShowSuccessInMsgViewAndExit(sussessmsg string)
-	StatusBarScrollingTip(ctx context.Context, tip string, TColor string)
-	StatusBarUserTip(s string)
 	RenderMarkdown(in string) (string, error)
 }
 
@@ -249,7 +249,7 @@ func (e *Engine) checkConfigFolder() {
 			if err != nil {
 				(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("创建默认config文件夹错误：%v", err))
 			}
-			(*e).tui.ShowSuccessInMsgView("检查到config文件夹不存在，已创建默认config文件夹")
+			(*e).tui.ShowNotice(pretty.TBarSuccess("config folder not found, created default"))
 		} else {
 			(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("检查config文件夹错误：%v", err))
 		}
@@ -324,7 +324,7 @@ func (e *Engine) checkSkillsFolder() {
 						(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("修正%s文件夹权限错误：%s", pf.roleFolder, err.Error()))
 					}
 				}
-				(*e).tui.ShowSuccessInMsgView(fmt.Sprintf("检查到%s文件夹不存在，已创建", pf.roleFolder))
+				(*e).tui.ShowNotice(pretty.TBarSuccess(fmt.Sprintf("%s folder not found, created default", filepath.Base(pf.roleFolder))))
 			} else {
 				(*e).tui.ShowErrorInMsgViewAndExit(pretty.TErrorF("检查%s文件夹错误：%s", pf.roleFolder, err.Error()))
 			}

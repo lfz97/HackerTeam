@@ -160,3 +160,18 @@ HackerTeam uses three complementary mechanisms to prevent context overflow:
 - **Note**: tiktoken `cl100k_base` vs DeepSeek API token count differs ~4-7% (empirically verified) — not accurate enough to explain 2x+ discrepancies
 - **Root cause pattern**: first summary attempt fails → delta grows unbounded → cascade failure → permanent retry loop
 - **Fix priority**: (1) enable Context Compaction for tool result size control, (2) lower `CheckTokenThresholdPercent` if needed, (3) use non-reasoning model for summarization as last resort
+
+## TUI v3（整体移植自 HyperBot v3.0.0, commit 9f829f1 "优化TUI展示"）
+
+- **新布局** — `service/tui/tui.go`。`MainFlex`(FlexRow) 四段：`AgentMessage`(弹性) + `TodoBar`(0~N 行动态) + `NoticeBar`(1 行常驻) + `InputRow`(1 行，左侧 2 列运行指示器 `indicator` + `InputArea`)。装饰性 StatusBar 与右侧 InputHint 已移除，键位提示由 NoticeBar 常驻 hint 承担。
+- **重绘节流** — 所有 widget 写入走 `QueueUpdate`（只写不画）→ `markDirty()` → `drawLoop`（30ms）按 `dirty` 原子标志节流 `app.Draw()`。`markDirty()` 必须在写入完成**之后**调用；drawLoop 不能删（纯流式输出期间 tview 不会自行重绘）。它身兼重绘/spinner 动画/TodoBar/NoticeBar 四职，单 ticker 驱动，私有状态收在 drawLoop 局部 `drawState`，无需加锁。
+- **glamour** — `glamourRenderer()` 按消息区宽度缓存 renderer；宽度必须在 `app.QueueUpdate` 内读（`GetInnerRect` 无锁，跨 goroutine 读是数据竞争）。渲染失败退回原文（`messagerender/messageRender.go`），不要吞掉整条回复。
+- **TodoBar/NoticeBar** — TodoBar 纵向每个任务一行，高度 0↔N 行（`ResizeItem`，proportion 必须 0；矮终端按 `minMessageRows=3` 钳制负高度）；NoticeBar 固定 1 行永不塌陷。多行 SetText 后必须 `ScrollToBeginning()`；`SetWrap(false)` 是刻意的（行数可精确计算）。
+- **todoTextSink** — `status.go` 的 `injectTodoStatus` 把 `TodoStatusBar` 输出同时注入 prompt 尾部与推给 sink。**空串也要推**（清单清空时 TodoBar 靠空串塌回 0 行）。装配约定：`members.go` 的 `setAgent(..., sink)` 只有 Captain 传 `(*e).tui`，五个子 agent 传 nil —— 子 agent 按 branch 读不到清单，每跳推空串会清掉 Captain 的显示造成闪烁；prompt 注入不受影响。
+- **转义契约** — `ShowNotice` 收受信 markup（`pretty.TBarXxx`），**不转义**；`SetTodoText` 收框架/LLM 纯文本，**必须 `tview.Escape`**（否则 `[TODO]`、`[urgent]` 等会被 tview 当颜色标签整个吞掉）。转义只放 TUI 边界，绝不放进 `renderTodoStatusBar`（输出同时喂 prompt）。宽度度量用 `tview.TaggedStringWidth` 且必须先 Escape 再度量。
+- **错误自动重试** — `engineCore.go` 常量 `errorMaxTimes=3`/`errorSleepGap=3s` + `Engine.errorStreak`。归零时机四个：一轮成功(Continue)、/new、ESC(Int)、用户提交非空输入；只有自动重试链内部不归零。耗尽后 Code 保持 Error、streak 不归零、整个复用 `*EndTurn_p`。`agentRunIteratively` 输入循环是"Error 优先 + else 兜底"结构，不要改回列举式（新增 turnCode 会落进安全兜底）。
+- **启动横幅** — `service/tui/banner.go`。挂在 `Startup` turnCode 上（该 code 永远不会被 `agentRunIteratively` 返回，横幅必然只打一次）；Engine 侧 `startupInfoLines()` 决定内容（skills 数为 5 个角色文件夹子目录计数），TUI 侧 `compose(width)` 决定拼版；横幅是"死文本"，resize 不重排。
+- **输入复用** — `InputChan` 改为未导出 `inputChan`；`ReadInputAreaPromptWithEnter()+InputChannel()` 合并为 `ListenUserInput() chan string`。引擎循环 `select { case userPrompt = <-(*e).tui.ListenUserInput(): }`。unbuffered + select-default 投递语义不变。
+- **系统消息不带装饰符号** — `pretty.go` 状态消息/生命周期两节去掉 `✗ ✓ ⚠ ◈` 前缀与 `::b`，语义由颜色承载；对话内容标记（▶ ● ↪ ⮡ »«）保留。新增 bar 版 helper：`TBarNewConversation/TBarCancelled/TBarSuccess`（无首尾换行）。
+- **每类事件只打一次** — 错误在 `agentRunOnce` 源头各打一次（RunError/TerminalError），中断在 `Ctx.Done` 分支打一次；`agentRunIteratively` 顶部只处理 Startup（横幅）与 New（通知），Error/Int 不再重复打印。
+- **接口收敛** — `init.go` 的 tuiService 是 Engine 专属门面（新增 ListenUserInput/SetAgentRunning/ShowNotice/ShowStartupBanner/SetTodoText；移除 ReadInputAreaPromptWithEnter/InputChannel/ShowSuccessInMsgView/StatusBar*）；session 包持有单方法 `msgPrinter` 小接口。`ShowSuccessInMsgView` 已删除（职责迁去 NoticeBar），`ShowSuccessInMsgViewAndExit` 保留。

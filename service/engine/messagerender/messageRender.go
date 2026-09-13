@@ -89,7 +89,11 @@ func (r *MessageRender) renderNonStreamEvent(Choice model.Choice) {
 	}
 	// 正文内容 - 使用 glamour 渲染 markdown，TranslateANSI 转为 tview 颜色标签
 	if strings.TrimSpace(Choice.Message.Content) != "" && Choice.Message.Role != "tool" {
-		out, _ := (*r).tui.RenderMarkdown(pretty.TContentNoneStreamTag(Choice.Message.Content))
+		body := pretty.TContentNoneStreamTag(Choice.Message.Content)
+		out, err := (*r).tui.RenderMarkdown(body)
+		if err != nil {
+			out = body // 渲染失败退回原文，别把整条回复吞掉
+		}
 		out = strings.TrimRight(out, "\n\r ")
 		(*r).tui.PrintToMsgView(tview.TranslateANSI(out)+"[-:-:-]", false)
 	}

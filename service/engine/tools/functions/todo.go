@@ -77,10 +77,14 @@ func TodoStatusBar(ctx context.Context) string {
 	return renderTodoStatusBar(items)
 }
 
-// renderTodoStatusBar 把清单渲染成单行摘要：进行中的条目置顶（activeForm），
-// pending 逐条列出（content，超过 todoStatusBarMaxPending 折叠为计数），
-// completed 只显示计数。条目文本不截断，保持完整语义。全 completed 的清单
-// 会被 todo_write 自动清空，不会走到这里。
+// renderTodoStatusBar 把清单渲染成纵向摘要，每个元素独占一行：
+//   [TODO]
+//   ◐ 进行中（activeForm）
+//   ☐ 待办（content，超过 todoStatusBarMaxPending 折叠为计数）
+//   (N more · N done)
+// 条目文本不截断，保持完整语义。全 completed 的清单会被 todo_write 自动清空，
+// 不会走到这里。输出是带换行的多行文本，同一份喂给 [STATUS] prompt 尾部与
+// TodoBar（后者按行数占高）。
 func renderTodoStatusBar(items []todo.Item) string {
 	var inProgressText string
 	var pendingTexts []string
@@ -98,22 +102,26 @@ func renderTodoStatusBar(items []todo.Item) string {
 			completed++
 		}
 	}
-	var b strings.Builder
-	b.WriteString("[TODO] ")
+	lines := []string{"[TODO]"}
 	if inProgressText != "" {
-		b.WriteString("◐ " + inProgressText)
+		lines = append(lines, "◐ "+inProgressText)
 	}
-	if len(pendingTexts) > 0 {
-		if b.Len() > len("[TODO] ") {
-			b.WriteString(" | ")
-		}
-		b.WriteString("☐ " + strings.Join(pendingTexts, " | ☐ "))
-		if hidden := pending - len(pendingTexts); hidden > 0 {
-			b.WriteString(fmt.Sprintf(" (+%d more)", hidden))
-		}
+	for _, text := range pendingTexts {
+		lines = append(lines, "☐ "+text)
+	}
+	// 计数行：折叠数与完成数合并为一行，无计数时整行省略
+	var counts []string
+	if hidden := pending - len(pendingTexts); hidden > 0 {
+		counts = append(counts, fmt.Sprintf("%d more", hidden))
 	}
 	if completed > 0 {
-		b.WriteString(fmt.Sprintf(" (%d done)", completed))
+		counts = append(counts, fmt.Sprintf("%d done", completed))
 	}
-	return b.String()
+	if len(counts) > 0 {
+		lines = append(lines, "("+strings.Join(counts, " · ")+")")
+	}
+	if len(lines) == 1 {
+		return "" // 防御：items 非空时必有一种状态命中，正常不会走到
+	}
+	return strings.Join(lines, "\n")
 }

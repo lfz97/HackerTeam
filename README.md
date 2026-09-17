@@ -317,11 +317,11 @@ description: >-
 
 | 工具 | 功能 |
 |------|------|
-| `submit_command` | 异步执行命令（提交并立即启动），返回任务 ID 与运行状态 |
-| `get_status` | 查询任务状态（running / done / failed / killed） |
-| `get_output` | 获取 stdout/stderr 输出（支持滑动窗口） |
-| `intervene_command` | 向进程写 stdin 或发送信号（SIGINT / SIGTERM / SIGKILL） |
-| `kill_command` | 强制结束进程 |
+| `run` | 执行命令，最多阻塞 20 秒：期间结束就直接返回状态/退出码/输出，超时则转后台并返回任务 ID |
+| `status` | 查询任务状态（running / done / failed / killed）；`wait_seconds` 可阻塞等到完成再返回 |
+| `output` | 获取 stdout/stderr 输出；超过内联上限的整份落盘，只回头部预览与文件路径 |
+| `intervene` | 向进程写 stdin 或发送信号（SIGHUP / SIGINT / SIGQUIT / SIGABRT / SIGTERM / SIGKILL） |
+| `kill` | 强制结束进程 |
 
 > **平台说明**：PTY 在 Linux/macOS 上完整可用。Windows 原生不支持 PTY，LocalExec 会自动降级为普通管道（pipe），此时 `ssh`、`sudo`、`msfconsole` 等交互式工具无法正常工作，且 AI 操控 PowerShell 的失败率显著偏高。**使用 HackerTeam 请务必在 Linux/macOS 或 WSL 中运行。**
 
@@ -332,9 +332,9 @@ description: >-
 | 工具集 | 工具 | 功能 |
 |--------|------|------|
 | **FileSystem** | `PWD` / `CD` / `LS` / `Mkdir` / `CP` / `MV` / `Glob` | 文件系统导航与操作 |
-| **FileOps** | `ReadFile` / `WriteFile` / `EditFile` / `SearchInFile` / `DeleteFile` / `FileStat` / `Diff` | 文件读写与搜索 |
+| **FileOps** | `read` / `write` / `edit` / `search` / `delete` / `stat` / `diff` | 文件读写与搜索 |
 | **Date** | `date_now` | 获取当前日期时间 |
-| **LocalExec** | `submit_command` / `get_status` / `get_output` / `intervene_command` / `kill_command` | PTY 命令管理 |
+| **LocalExec** | `run` / `status` / `output` / `intervene` / `kill` | PTY 命令管理 |
 | **Skills** | 知识注入 | 将 SKILL.md 内容注入系统提示词 |
 
 Captain 仅挂载 FileSystem + FileOps + Date，不挂载 LocalExec 和 Skills。Reproducer 挂载 LocalExec 但仅用于语法检查（`python3 -m py_compile`），不执行实际攻击。

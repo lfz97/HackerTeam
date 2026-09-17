@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/pmezard/go-difflib/difflib"
 	"io"
 	"os"
@@ -13,12 +14,13 @@ import (
 	"strings"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
+	"unicode/utf8"
 )
 
 func WriteFile(ctx context.Context, req struct {
-	Path    string `json:"path" jsonschema:"description:要写入的文件路径。"`
-	Content string `json:"content" jsonschema:"description:写入的文件内容"`
-	Append  bool   `json:"append" jsonschema:"description:是否启用追加模式，默认为false即全文覆盖，如果为true则在文件末尾追加写入。"`
+	Path    string `json:"path" jsonschema:"description=要写入的文件路径。"`
+	Content string `json:"content" jsonschema:"description=写入的文件内容"`
+	Append  bool   `json:"append" jsonschema:"description=是否启用追加模式，默认为false即全文覆盖，如果为true则在文件末尾追加写入。"`
 }) (map[string]string, error) {
 
 	if req.Path == "" {
@@ -52,9 +54,9 @@ func WriteFile(ctx context.Context, req struct {
 }
 
 func ReadFile(ctx context.Context, req struct {
-	Path   string `json:"path" jsonschema:"description:要读取的文件路径。"`
-	Bytes  int    `json:"bytes" jsonschema:"description:读取文件的窗口大小，单位为字节。默认为1024字节。"`
-	Offset int    `json:"offset" jsonschema:"description:读取文件的偏移位置，单位为字节。默认为0，即从文件开头开始读取。"`
+	Path   string `json:"path" jsonschema:"description=要读取的文件路径。"`
+	Bytes  int    `json:"bytes" jsonschema:"description=读取文件的窗口大小，单位为字节。默认为1024字节。"`
+	Offset int    `json:"offset" jsonschema:"description=读取文件的偏移位置，单位为字节。默认为0，即从文件开头开始读取。"`
 }) (map[string]string, error) {
 
 	if req.Path == "" {
@@ -62,6 +64,9 @@ func ReadFile(ctx context.Context, req struct {
 	}
 	if req.Bytes < 0 {
 		return nil, errors.New("`bytes` must >= 0")
+	}
+	if req.Offset < 0 {
+		return nil, errors.New("`offset` must >= 0")
 	}
 	if req.Bytes == 0 {
 		req.Bytes = 1024
@@ -71,25 +76,49 @@ func ReadFile(ctx context.Context, req struct {
 		return nil, err
 	}
 	defer fd.Close()
-	fd.Seek(int64(req.Offset), io.SeekStart) //根据请求的偏移位置调整文件指针位置，默认为0即从文件开头开始读取
-	buf := make([]byte, req.Bytes)           //根据请求的窗口大小创建缓冲区
-	n, err := fd.Read(buf)
-	if err != nil && err != io.EOF {
+	fi, err := fd.Stat()
+	if err != nil {
 		return nil, err
 	}
-	content := buf[:n] //按实际读取读取的内容长度截取缓冲区，否则如果读取的内容长度小于窗口大小，返回的内容会包含多余的空字节填充
+	total := fi.Size()
+	// Seek 的错误必须检查：Offset 非法时若忽略返回值，文件指针会停在 0，随后读到的
+	// 是文件开头——调用方以为读的是自己指定的位置，拿到错数据却毫无提示。
+	if _, err := fd.Seek(int64(req.Offset), io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to seek to offset %d: %w", req.Offset, err)
+	}
+	buf := make([]byte, req.Bytes) //根据请求的窗口大小创建缓冲区
+	// 用 ReadFull 而不是单次 Read：Read 不保证填满缓冲区（short read 是合法的），
+	// 文件正被后台任务写入时会被误判成 EOF。读到文件末尾时返回 EOF/ErrUnexpectedEOF 属正常。
+	n, err := io.ReadFull(fd, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return nil, err
+	}
+	// 按实际读取长度截取，否则窗口大于剩余内容时会带出多余的空字节填充；
+	// 再对齐到 rune 边界，去掉被字节窗口劈开的半个多字节字符（中文输出尤其明显）。
+	// 被去掉的半个字符会在下次从 nextOffset 读取时重新取回，不丢数据。
+	content := trimPartialRune(buf[:n])
+	// 读到了字节但整个窗口都不是合法 UTF-8（二进制文件尾部很常见）时不能再 trim：
+	// 否则 content 为空、nextOffset 原地不动、eof 又是 false，调用方会卡在同一
+	// offset 上无限重读。这种情况下原样返回，进度优先于编码整洁。
+	if len(content) == 0 && n > 0 {
+		content = buf[:n]
+	}
+	next := req.Offset + len(content)
 	return map[string]string{
-		"length":  strconv.Itoa(len(content)),
-		"content": string(content),
+		"length":     strconv.Itoa(len(content)),
+		"nextOffset": strconv.Itoa(next), //分页续读时直接把这个值传给 offset，无需自己计算
+		"totalSize":  strconv.Itoa(int(total)),
+		"eof":        strconv.FormatBool(int64(next) >= total),
+		"content":    string(content),
 	}, nil
 }
 
 // EditFile：编辑指定文件中的内容，支持替换指定的旧内容为新内容。默认仅允许唯一匹配时替换（多处匹配会报错），设置replace_all为true则全量替换。
 func EditFile(ctx context.Context, req struct {
-	Path       string `json:"path" jsonschema:"description:要编辑的文件路径。"`
-	Old        string `json:"old" jsonschema:"description:要替换的旧内容。"`
-	New        string `json:"new" jsonschema:"description:要替换的新内容。"`
-	ReplaceAll bool   `json:"replace_all" jsonschema:"description:是否替换文件中所有匹配的字符串，默认为false仅允许唯一匹配（多处匹配会报错）。设置为true则全量替换。"`
+	Path       string `json:"path" jsonschema:"description=要编辑的文件路径。"`
+	Old        string `json:"old" jsonschema:"description=要替换的旧内容。"`
+	New        string `json:"new" jsonschema:"description=要替换的新内容。"`
+	ReplaceAll bool   `json:"replace_all" jsonschema:"description=是否替换文件中所有匹配的字符串，默认为false仅允许唯一匹配（多处匹配会报错）。设置为true则全量替换。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
@@ -152,8 +181,8 @@ type matchInfo struct {
 
 // 通过正则表达式在指定文件中搜索内容，返回所有匹配项的行号和内容。使用Go RE2语法，不支持lookahead/lookbehind/backreference。`.`默认不匹配换行，跨行匹配用`(?s)`。`^`和`$`默认匹配文本首尾，匹配行首行尾用`(?m)`。
 func SearchInFile(ctx context.Context, req struct {
-	Path  string `json:"path" jsonschema:"description:要搜索的文件路径。"`
-	Regex string `json:"regex" jsonschema:"description:要搜索的正则表达式。"`
+	Path  string `json:"path" jsonschema:"description=要搜索的文件路径。"`
+	Regex string `json:"regex" jsonschema:"description=要搜索的正则表达式。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
@@ -198,7 +227,7 @@ func SearchInFile(ctx context.Context, req struct {
 }
 
 func DeleteFile(ctx context.Context, req struct {
-	Path string `json:"path" jsonschema:"description:要删除的文件路径。"`
+	Path string `json:"path" jsonschema:"description=要删除的文件路径。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
@@ -213,7 +242,7 @@ func DeleteFile(ctx context.Context, req struct {
 }
 
 func FileInfo(ctx context.Context, req struct {
-	Path string `json:"path" jsonschema:"description:要获取信息的文件路径。"`
+	Path string `json:"path" jsonschema:"description=要获取信息的文件路径。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
@@ -232,8 +261,8 @@ func FileInfo(ctx context.Context, req struct {
 }
 
 func Diff(ctx context.Context, req struct {
-	Src string `json:"src" jsonschema:"description:要比较的第一个文件路径。"`
-	Dst string `json:"dst" jsonschema:"description:要比较的第二个文件路径。"`
+	Src string `json:"src" jsonschema:"description=要比较的第一个文件路径。"`
+	Dst string `json:"dst" jsonschema:"description=要比较的第二个文件路径。"`
 }) (map[string]string, error) {
 	if req.Src == "" || req.Dst == "" {
 		return nil, errors.New("`PathA` and `PathB` cannot be empty")
@@ -318,4 +347,22 @@ func GetFileOperationsTools() []tool.Tool {
 		function.WithDescription("比较两个文件的差异，返回unified diff格式的结果。"),
 	)
 	return []tool.Tool{wftool, rftool, eftool, sftool, dftool, fitool, difftool}
+}
+
+// trimPartialRune 去掉末尾被字节窗口劈开的半个 UTF-8 字符，ReadFile 按字节分页时
+// 用它保证返回的内容是合法 UTF-8。被去掉的部分会在下次从 nextOffset 读取时重新
+// 取回，不丢数据。
+func trimPartialRune(b []byte) []byte {
+	// 从末尾往前找最近的 rune 起点；UTF-8 单字符最长 4 字节，回退 4 次足够。
+	for i := len(b) - 1; i >= 0 && i >= len(b)-4; i-- {
+		if !utf8.RuneStart(b[i]) {
+			continue // 10xxxxxx，是延续字节，继续往前找
+		}
+		// b[i:] 是一个 rune 的开头；不合法说明这个 rune 被截断了，整段丢弃
+		if !utf8.Valid(b[i:]) {
+			return b[:i]
+		}
+		return b
+	}
+	return b
 }

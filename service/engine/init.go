@@ -120,7 +120,7 @@ func (e *Engine) initBuiltinTools() {
 
 // initBuiltinToolsets 内置工具集：每个需要执行命令的角色一个常驻 localexec 实例。
 // Manager 保持 per-agent（各角色作业命名空间隔离），实例跨轮复用——
-// 上一轮 run 提交的长任务在下一轮仍可通过 get_status/get_output 续查。
+// 上一轮 run 提交的长任务在下一轮仍可通过 status/output 续查。
 func (e *Engine) initBuiltinToolsets() {
 	(*e).builtinToolsets = map[string]tool.ToolSet{}
 	for _, role := range []string{"Recon", "Scanner", "Exploit", "PostExploit", "Reproducer"} {

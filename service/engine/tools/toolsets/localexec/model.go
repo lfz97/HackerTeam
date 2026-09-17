@@ -29,7 +29,6 @@ type SubmitOptions struct {
 
 // 输出选项
 type OutputOptions struct {
-	Window int    // 最后N字节；0或负数表示全部
 	Stream string // stdout 或 stderr
 }
 

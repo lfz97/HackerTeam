@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	charm.land/glamour/v2 v2.0.1
 	github.com/anthropics/anthropic-sdk-go v1.66.0
+	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/creack/pty v1.1.24
 	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/google/uuid v1.6.0
@@ -35,7 +36,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be // indirect
-	github.com/charmbracelet/x/ansi v0.11.8 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20260816001655-68d539dca504 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect

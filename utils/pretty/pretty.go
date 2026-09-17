@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 // ========== 颜色定义 ==========
@@ -609,15 +611,24 @@ func TToolResult(text string) string {
 	return fmt.Sprintf("\n[#8B7355]  %s[-]", displayText)
 }
 
+// compactLine 把多行文本压成单行：去掉 ANSI 转义与回车（命令输出常带 PTY 的 \r\n
+// 和程序自身的颜色码，直接进 tview 会串色或被当标签解析），换行转空格并合并多余空格。
+func compactLine(s string) string {
+	s = ansi.Strip(s)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "  ", " ")
+	return strings.TrimSpace(s)
+}
+
 // TToolCompact 紧凑单行工具渲染：绿点 + 橙色工具名 + 灰色参数/结果概要
 // 格式: ● name  args ↪ result（result 换行缩进显示）
 func TToolCompact(name string, args []byte, result string) string {
 	// ── 参数压缩：去换行、合并空格、截断 80 rune；空/()/{} 不输出 ──
 	var compactArgs string
 	if len(args) > 0 {
-		s := strings.ReplaceAll(string(args), "\n", " ")
-		s = strings.ReplaceAll(s, "  ", " ")
-		s = strings.TrimSpace(s)
+		s := compactLine(string(args))
 		if len([]rune(s)) > 80 {
 			s = string([]rune(s)[:80]) + "...)"
 		}
@@ -629,9 +640,7 @@ func TToolCompact(name string, args []byte, result string) string {
 	// ── 结果：去换行、合并空格、截断 200 rune；空/()/{} 不输出（与 args 同法）──
 	var resultSummary string
 	if result != "" {
-		s := strings.ReplaceAll(result, "\n", " ")
-		s = strings.ReplaceAll(s, "  ", " ")
-		s = strings.TrimSpace(s)
+		s := compactLine(result)
 		if len([]rune(s)) > 200 {
 			s = string([]rune(s)[:200]) + "...)"
 		}

@@ -47,7 +47,7 @@ type fileInfo struct {
 }
 
 func LS(ctx context.Context, req struct {
-	Path string `json:"path" jsonschema:"description:要列出文件的目录路径。默认为当前目录。"`
+	Path string `json:"path" jsonschema:"description=要列出文件的目录路径。默认为当前目录。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		req.Path = "."
@@ -82,7 +82,7 @@ func LS(ctx context.Context, req struct {
 
 // 切换当前工作目录
 func CD(ctx context.Context, req struct {
-	Path string `json:"path" jsonschema:"description:要切换到的目录路径。"`
+	Path string `json:"path" jsonschema:"description=要切换到的目录路径。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		req.Path = "."
@@ -102,8 +102,8 @@ func CD(ctx context.Context, req struct {
 
 // 创建目录
 func Mkdir(ctx context.Context, req struct {
-	Path    string `json:"path" jsonschema:"description:要创建的目录路径。"`
-	Parents bool   `json:"parents" jsonschema:"description:是否自动创建父目录。默认为false。"`
+	Path    string `json:"path" jsonschema:"description=要创建的目录路径。"`
+	Parents bool   `json:"parents" jsonschema:"description=是否自动创建父目录。默认为false。"`
 }) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`path` can't be empty!")
@@ -126,8 +126,8 @@ func Mkdir(ctx context.Context, req struct {
 
 // 复制文件或目录
 func Copy(ctx context.Context, req struct {
-	Src string `json:"src" jsonschema:"description:源文件或目录路径。"`
-	Dst string `json:"dst" jsonschema:"description:目标文件或目录路径。"`
+	Src string `json:"src" jsonschema:"description=源文件或目录路径。"`
+	Dst string `json:"dst" jsonschema:"description=目标文件或目录路径。"`
 }) (map[string]string, error) {
 	if req.Src == "" || req.Dst == "" {
 		return nil, errors.New("`src` and `dst` can't be empty!")
@@ -151,8 +151,8 @@ func Copy(ctx context.Context, req struct {
 
 // 移动或重命名文件或目录
 func MV(ctx context.Context, req struct {
-	OldPath string `json:"oldPath" jsonschema:"description:要移动或重命名的文件或目录的原路径。"`
-	NewPath string `json:"newPath" jsonschema:"description:要移动或重命名的文件或目录的新路径。"`
+	OldPath string `json:"oldPath" jsonschema:"description=要移动或重命名的文件或目录的原路径。"`
+	NewPath string `json:"newPath" jsonschema:"description=要移动或重命名的文件或目录的新路径。"`
 }) (map[string]string, error) {
 	if req.OldPath == "" || req.NewPath == "" {
 		return nil, errors.New("`oldPath` and `newPath` can't be empty!")
@@ -185,9 +185,9 @@ func MV(ctx context.Context, req struct {
 }
 
 func Glob(ctx context.Context, req struct {
-	Regex string `json:"regex" jsonschema:"description:要搜索的正则表达式。"`
-	Root  string `json:"root" jsonschema:"description:要搜索的起始路径。默认为当前目录。"`
-	Depth int    `json:"depth" jsonschema:"description:搜索深度，默认为0表示同目录，如果传入-1，则无深度限制。"`
+	Regex string `json:"regex" jsonschema:"description=要搜索的正则表达式。"`
+	Root  string `json:"root" jsonschema:"description=要搜索的起始路径。默认为当前目录。"`
+	Depth int    `json:"depth" jsonschema:"description=搜索深度，默认为0表示同目录，如果传入-1，则无深度限制。"`
 }) (map[string]string, error) {
 	if req.Depth < -1 {
 		return nil, errors.New("`depth` must be -1 (for unlimited) or a non-negative integer")

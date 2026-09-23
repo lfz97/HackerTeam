@@ -36,6 +36,7 @@ type tuiService interface {
 	AddHelpItems(items []map[string]string)
 	ClearAppFuncTrigger()
 	PrintToMsgView(content string, clear bool)
+	ReplaceTailInMsgView(raw string, replacement string) bool
 	ListenUserInput() chan string
 	SetAgentRunning(running bool)
 	ShowNotice(msg string)

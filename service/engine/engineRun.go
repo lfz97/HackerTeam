@@ -205,7 +205,7 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 
 			for _, choice := range (*(*event).Response).Choices {
 
-				msgRender.RenderResponse(choice)
+				msgRender.RenderResponse(choice, (*(*event).Response).IsPartial)
 				gatherPartialOutput(&partialOutput, choice, (*(*e).AgentRunner_p).Stream)
 			}
 

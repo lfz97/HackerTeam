@@ -368,6 +368,38 @@ func (t *Tui) PrintToMsgView(content string, clear bool) {
 	t.markDirty()
 }
 
+// ReplaceTailInMsgView 把消息区末尾的 raw 文本替换成渲染版，返回是否替换成功。
+//
+// 只在 raw 正好位于 buffer 末尾时才替换。中途有别的写入者插进来时（工具块、
+// session/summarizer.go 的摘要钩子、TerminalError 消息），宁可放弃替换、保持 raw，
+// 也绝不改动前面的历史——替换失败最多退化成"没有 markdown 渲染"，改错位置则是毁掉整屏。
+//
+// 读取和 SetText 必须在同一个 QueueUpdate 里：GetText 在 tview v0.42.0 不加锁，
+// 分两次调用的话中间可能插进一次写入，把那个 delta 吃掉。
+func (t *Tui) ReplaceTailInMsgView(raw string, replacement string) bool {
+	replaced := false
+	t.app.QueueUpdate(func() {
+		// LastIndex(buf, "") 返回 len(buf) 而不是 -1，不挡会在末尾凭空追加一份正文
+		if raw == "" {
+			return
+		}
+		buf := t.appLayout.agentMessage.GetText(false)
+		// 用 LastIndex 而不是 Replace：短回复（如"好的。"）可能在前面出现过，
+		// 比如用户自己的输入经 pretty.TUserInput 回显进同一个 buffer
+		i := strings.LastIndex(buf, raw)
+		if i < 0 || i+len(raw) != len(buf) {
+			return
+		}
+		// SetText 只调 resetIndex()，不动 lineOffset / trackEnd，所以滚动位置保得住
+		t.appLayout.agentMessage.SetText(buf[:i] + replacement)
+		replaced = true
+	})
+	// replaced 在闭包里写、外面读是安全的：QueueUpdate 阻塞到执行完才返回，
+	// 与 banner.go 里 contentWidth 的写法一致
+	t.markDirty()
+	return replaced
+}
+
 func (t *Tui) ListenUserInput() chan string {
 	t.app.QueueUpdateDraw(func() {
 		t.app.SetFocus(t.appLayout.inputArea)

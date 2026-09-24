@@ -101,8 +101,8 @@ func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Call
 	// 内置工具清单常驻（启动时建一次），拷入私有slice再追加记忆工具，避免与Engine共享列表产生append别名
 	tools := make([]tool.Tool, 0, len((*e).builtinTools)+5)
 	tools = append(tools, (*e).builtinTools...)
-	tools = append(tools, (*e).SqliteMemoryService.Tools()...)           // 记忆工具：除 memory_clear 外全部暴露，后台 extractor 自动提取 + agent 手动增删改查
-	tools = append(tools, functionTools.GetTodoTools()...)               // 框架内置 todo_write：任务清单仅队长持有，子Agent不共享（避免各自写乱计划）
+	tools = append(tools, (*e).SqliteMemoryService.Tools()...) // 记忆工具：除 memory_clear 外全部暴露（agentic 闸门：默认集合 + 显式开 Delete），写入全靠队长手动调用
+	tools = append(tools, functionTools.GetTodoTools()...)     // 框架内置 todo_write：任务清单仅队长持有，子Agent不共享（避免各自写乱计划）
 	tools = append(tools, subagentTools...)
 	// 配置文件声明的MCP工具集：挂载给全部agent（含队长），每轮run自动刷新
 	toolsets := make([]tool.ToolSet, 0, len((*e).mcpToolsets))

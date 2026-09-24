@@ -55,9 +55,10 @@ func (e *Engine) agentRunIteratively(Ctx context.Context, inputContext turnInfo)
 		// ② 兜底分支是"等用户输入"，比"自动构造 prompt 再打一次 API"安全得多：
 		//    将来新增 turnCode 忘记登记，后果是多等一次用户输入，而不是无上限烧 API。
 		//
-		// 预算判定刻意内联、不抽中间变量：errorStreak 只在下面"提交非空输入"那条路上
-		// 归零，而那条路紧接着 break 出循环、不会重新求值；空输入走 continue 时
-		// errorStreak 未被修改，第二次判定结果一致。所以内联与循环外算一次等价。
+		// 预算判定刻意内联、不抽中间变量：本循环内 errorStreak 从不变化（归零点都在
+		// agentRunOnce 的 Ctx.Done / Response 事件分支与 AgentStart 的 New/else 分支），
+		// 内联与循环外算一次等价。手动输入在这里也刻意不归零（语义见 agentRunOnce 的
+		// Response 分支注释）。
 		if inputContext.Code == Error && (*e).errorStreak < errorMaxTimes {
 			if inputContext.PartialOutput != "" {
 				userPrompt = fmt.Sprintf("之前的对话发生了错误，错误信息是: %s, 之前的输出内容是: %s, 请基于这些信息调整你的回答并继续完成对话", inputContext.Reason, inputContext.PartialOutput)
@@ -94,9 +95,6 @@ func (e *Engine) agentRunIteratively(Ctx context.Context, inputContext turnInfo)
 					continue //如果用户输入为空，重新开始本轮循环，等待用户输入
 
 				} else {
-					// 用户手动提交了一次新输入，给这一轮一份全新的重试预算。
-					// 只对"重试已耗尽"路径有实际意义（其余路径 errorStreak 本来就是 0）。
-					(*e).errorStreak = 0
 					(*e).tui.PrintToMsgView(pretty.TUserInput(userPrompt), false)
 					break //正常输入，继续执行后续逻辑
 				}
@@ -197,12 +195,18 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 		select {
 		case <-Ctx.Done():
 			(*e).tui.ShowNotice(pretty.TBarCancelled())
+			(*e).errorStreak = 0 //重置错误计数
 			return nil
 
 		default:
 		}
 		if (*event).Response != nil && len((*(*event).Response).Choices) > 0 {
-
+			// 收到任何带 Choices 的 Response 事件（含流式部分块）即归零。语义是"配置层
+			// 健康检查"而非"有界重试预算"：能吐 token = key/端点/鉴权/本地网络都通，
+			// 故障只剩传输层抖动（随机、重试期望为正），自动重试到成功为止。
+			// 已知且刻意接受的代价：确定性中途失败（超时、内容过滤）会无限自动重试，
+			// 由人盯着兜底。不要改成"只在 completion 归零"——那会把语义改回有界预算。
+			(*e).errorStreak = 0
 			for _, choice := range (*(*event).Response).Choices {
 
 				msgRender.RenderResponse(choice, (*(*event).Response).IsPartial)

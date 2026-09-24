@@ -34,9 +34,10 @@ type Agentrunner struct {
 // Engine 封装核心状态变量（原 global 包级变量）
 type Engine struct {
 	// errorStreak 当前连续错误次数，配合 errorMaxTimes / errorSleepGap
-	// 实现自动重试的上限与退避。归零时机有四个，缺一不可：一轮成功(Continue)、/new、
-	// 用户 ESC 中断(Int)、用户在 agentRunIteratively 提交一条非空输入。
-	// 只有"自动重试链"内部不归零——那正是要计数的时候。
+	// 实现自动重试的上限与退避。归零时机：收到任何带 Choices 的 Response 事件(第一个
+	// token 即归，语义见 engineRun.go 的注释)、/new、用户 ESC 中断(同在 agentRunOnce 归)、
+	// AgentStart 的 else 分支兜底。手动提交输入不归零。
+	// 只有"零输出的自动重试链"内部不归零——那正是要计数的时候。
 	errorStreak int
 
 	tui tuiService
@@ -109,8 +110,8 @@ func (e *Engine) AgentStart() {
 			(*e).tui.ShowMsgAndExitNoTrigger(pretty.TExit("对话已结束，感谢使用！后会有期！"))
 
 		} else if (*EndTurn_p).Code == New { //用户开始新对话，重置SessionId, RequestId，更新MsgContext为新对话的初始状态
-			// /new 在 agentRunIteratively 的输入分支里是提前 return 的，走不到"用户提交
-			// 非空输入"那处归零，所以必须在这里单独归
+			// /new 在 agentRunIteratively 的输入分支里是提前 return 的，跑不到
+			// agentRunOnce 里的归零点，所以必须在这里单独归
 			(*e).errorStreak = 0
 			e.randomStartID()
 			MsgContext = turnInfo{
@@ -126,7 +127,9 @@ func (e *Engine) AgentStart() {
 				// ① Code 保持 Error —— Int 的语义是"用户按了 ESC 中断"，与事实不符，
 				//    不能为了蹭"回到输入循环"这个副作用而填一个假状态码。真正让下一轮
 				//    等用户输入的是 agentRunIteratively 里的 errorStreak < errorMaxTimes 判定。
-				// ② errorStreak 不归零 —— 归零会让下一轮重新满足自动重试条件，无限循环照旧。
+				// ② errorStreak 不归零 —— 归零会让下一轮重新满足自动重试条件。它只在
+				//    收到 Response 事件（配置层健康的证据，见 agentRunOnce 注释）/
+				//    新对话/中断时归零；耗尽因此只可能由零输出失败触发。
 				// ③ 整个复用 *EndTurn_p，不新造 literal —— 新建会静默丢掉 Reason 与 PartialOutput。
 				(*e).tui.PrintToMsgView(pretty.TErrorF("连续 %d 次失败，已停止自动重试。请检查网络/配置后重新输入。", errorMaxTimes), false)
 				MsgContext = *EndTurn_p
@@ -139,7 +142,9 @@ func (e *Engine) AgentStart() {
 			MsgContext = *EndTurn_p
 
 		} else { //其他情况（Continue 正常结束 / Int 用户中断），错误链断开、计数归零
-			// 归零覆盖两个时机：Continue（自动重试链里第 2 次尝试成功时收口）与 Int（人已介入）
+			// 归零主力在 agentRunOnce（Ctx.Done / Response 事件两个第一现场分支）；这里
+			// 是对 Continue / Int 的兜底——万一事件流没走完就关闭，Continue 仍能在这里
+			// 断开错误链
 			(*e).errorStreak = 0
 			MsgContext = *EndTurn_p
 			continue

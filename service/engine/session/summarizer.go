@@ -7,7 +7,6 @@ import (
 	"embed"
 	"fmt"
 	"regexp"
-	"time"
 
 	"strings"
 
@@ -59,9 +58,8 @@ func NewSummarizer(m config.Model, tui msgPrinter) summary.SessionSummarizer {
 	// ── 创建 summarizer阈值 ───────────────
 	sum := summary.NewSummarizer(
 		summarizerModel,
-		summary.WithChecksAny( // 任一条件满足即触发
+		summary.WithChecksAny( // 只按 token 阈值触发；时间阈值已删：挂机不发消息也压摘要，只会白白压掉活跃会话的上下文
 			summary.CheckTokenThreshold(int(CheckTokenThresholdPercent*float64(m.ContextWindow))), // 新增 n 个 token 后触发
-			summary.CheckTimeThreshold(10*time.Minute),                                            //n 分钟无活动
 		),
 		summary.WithMaxSummaryWords(maxSummaryWords),     //设置摘要的最大长度，单位为词
 		summary.WithSystemPrompt(systemSummarizerPrompt), //设置系统提示词，指导模型如何进行摘要，默认为空，可以根据需要自定义

@@ -99,27 +99,27 @@
 - **Input multiplexing (InputChan)** — Tui 字段 `InputChan`（**unbuffered**），`ReadInputAreaPromptWithEnter()` 只注册捕获（非阻塞返回），引擎循环用 `select { case userPrompt = <-tui.InputChannel(): }` 读取（`service/engine/engineRun.go`）。三条约束：① 发送用 select-default——对端（引擎）未监听时不投递且**不清空输入框**（`SetText("")` 只在投递成功时执行），unbuffered send 永不阻塞 tview 事件循环、用户输入永不丢失；② **捕获常驻**——Enter 提交后不注销捕获（旧 `SetInputCapture(nil)` 已删除），agent 运行期间 Enter 被捕获消费（不换行不投递，Shift+Enter 仍可换行、Ctrl+K 帮助仍可用）；③ select 是扩展点——计划任务结果回传（schedule agent）将在 select 上加 TriggerCh 分支 + 前置 DrainPending 检查，勿改回阻塞式 `ReadInputAreaPromptWithEnter() string`。
 - **`model/anthropic` 是独立子模块，须与根模块分开升级** — go.mod 里 `trpc.group/trpc-go/trpc-agent-go/model/anthropic` 单独锁版本，升级根模块不会带上子模块修复。2026-08 踩坑：根模块升到修复 commit、子模块仍锁 v1.11.2（不含 #2501 修复），无参 MCP 工具序列化为 `"properties":null`，DeepSeek anthropic 端点报 400。现锁 `v1.11.1-0.20260820131707-cdaece75b478`；官方发布新 tag 后升回正式版
 
-## Auto-Extraction Memory (SQLite)
+## Manual Memory (SQLite)
 
-Persistent long-term memory using SQLite, with background LLM-based extraction after each turn. Captain is the sole memory manager — sub-agents do NOT get memory tools.
+Persistent long-term memory using SQLite. No background extractor — every write is an explicit tool call by Captain (search-before-store, on-the-spot writes, in-place maintenance). Captain is the sole memory manager — sub-agents do NOT get memory tools. (Mirrors HyperBot PR #12.)
 
 ### Architecture
-- `service/engine/memory/sqlite.go` — factory: creates `memorysqlite.Service` with `extractor.NewExtractor(model)` + `WithExtractor(ext)`. Exposes `memory_search`, `memory_load`, `memory_add`, `memory_update` via `WithAutoMemoryExposedTools`. `memory_delete` and `memory_clear` are not exposed to agents.
+- `service/engine/memory/sqlite.go` — factory: creates `memorysqlite.Service` with `WithSoftDelete` + `WithMemoryLimit(100000)` + `WithToolEnabled(memory.DeleteToolName, true)`. No extractor. Agentic mode: `enabledTools` is the exposure gate — framework default set is add/update/search/load; Delete needs the explicit enable; `memory_clear` is not in the set (dangerous op).
 - `service/engine/engineCore.go` — `SqliteMemoryService *memorysqlite.Service` field on `Engine` struct
-- `service/engine/init.go` — `initSqliteMemoryService()` creates extractor model from config (via `models.Openai()` / `models.Anthropic()`), passes to `NewSQLiteMemoryService(m, dbPath)`. Called after `LoadConfig()`, before `newRunner()`.
+- `service/engine/init.go` — `initSqliteMemoryService()` calls `memory.NewSQLiteMemoryService(filepath.Join((*e).ConfigFolderPath, memoryDBFileName))`. Called after `LoadConfig()`, before `newRunner()`.
 - `service/engine/members.go` — `initCaptain()` appends `SqliteMemoryService.Tools()` (exposes `memory_search`/`memory_load`/`memory_add`/`memory_update` to Captain only) and sets `WithPreloadMemory(10)`. Sub-agents do NOT get memory tools — only Captain manages memory.
-- `service/engine/prompts/agents/captain.md` — `# Memory` section defines Captain's memory behavior: search-before-store, proactive storage, outdated correction, atomic/specific writing standards
+- `service/engine/prompts/agents/captain.md` — `# Memory` section defines Captain's memory behavior: search-before-store, on-the-spot writes, in-place maintenance, subject+alias+timestamp discipline
 
 ### Team considerations
 - Captain is the sole memory manager — all memory creation, update, and deletion happens through Captain's explicit tool calls
 - Sub-agents benefit indirectly — Captain can reference past operations and store useful patterns discovered during pentest
-- Auto-extraction runs after each turn via the framework's `EnqueueAutoMemoryJob`, but Captain can also manually manage memories
+- No background extraction — memory exists only where Captain explicitly wrote it; stale entries are corrected/deleted on the spot when they surface in the [MEMORY] preload or a search
 
 ### Gotchas
 - `initSqliteMemoryService()` MUST be called before `newRunner()` — the agent factory reads `SqliteMemoryService.Tools()`, nil service → panic
 - `stdlog.SetOutput(file)` in `redirectFrameworkLog()` redirects gse dictionary-loading chatter away from TUI
 - Default memory limit: 100000 (`service/engine/memory/sqlite.go:WithMemoryLimit`)
-- Extractor model is the same as main model (same API endpoint/credentials)
+- `memory_delete` is NOT in the framework's agentic default tool set — it only works because of the explicit `WithToolEnabled(memory.DeleteToolName, true)` in the factory
 
 ## Context Management
 
@@ -127,7 +127,7 @@ HackerTeam uses three complementary mechanisms to prevent context overflow:
 
 ### 1. Session Summarization (`service/engine/session/summarizer.go` + `service/engine/members.go`)
 - `WithAddSessionSummary(true)` on ALL 6 agents (Captain + 5 sub-agents) enables async summary injection
-- Summarizer triggers at `CheckTokenThreshold(0.6 * contextwindow)` OR `CheckTimeThreshold(10min)` via `WithChecksAny`
+- Summarizer triggers at `CheckTokenThreshold(0.6 * contextwindow)` via `WithChecksAny` (time threshold removed — idle sessions would be compressed for no benefit)
 - `WithSkipRecent` preserves the last complete interaction cycle (from last user message to tail) from being summarized — keeps current turn intact in prompt
 - `WithToolResultFormatter` truncates tool results to 1000 runes (head 500 + tail 500) before entering summary model input — especially valuable for sub-agents whose tool outputs (nmap, sqlmap) are 50K+ tokens. Only affects summary input; original events remain intact
 - `WithSyncSummaryIntraRun(true)` on ALL 6 agents — enables synchronous summary refresh between LLM loop iterations. Critical for sub-agents running long command chains (nmap scans, exploit attempts) where async summary may arrive too late

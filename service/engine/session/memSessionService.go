@@ -8,7 +8,7 @@ import (
 
 // NewMemorySessionService 创建一个基于内存的 SessionService 实例，使用自动摘要功能来管理会话上下文。
 // NewMemorySessionService 创建一个基于内存的 SessionService 实例，使用自动摘要功能来管理会话上下文。
-// tui 只用于摘要生成后打一行提示，见 msgPrinter。
+// sink 只用于摘要生成后投一条摘要记录，见 msgPrinter。
 func NewMemorySessionService(m config.Model, tui msgPrinter) *inmemory.SessionService {
 	MemSessionService := inmemory.NewSessionService(
 		inmemory.WithSummarizer(NewSummarizer(m, tui)),
@@ -18,4 +18,3 @@ func NewMemorySessionService(m config.Model, tui msgPrinter) *inmemory.SessionSe
 	)
 	return MemSessionService
 }
-

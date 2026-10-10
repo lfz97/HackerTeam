@@ -1,29 +1,18 @@
 package engine
 
 import (
-	"context"
-	"embed"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
-	"time"
+	"sync"
 
 	"HackerTeam/service/engine/config"
-	"HackerTeam/utils/pretty"
 	"github.com/google/uuid"
-
-	memorysqlite "trpc.group/trpc-go/trpc-agent-go/memory/sqlite"
+	"trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
-	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
+	"trpc.group/trpc-go/trpc-agent-go/session"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
-)
-
-// 连续错误自动重试策略。达到上限后不再自动重试，把控制权交还用户。
-// 用常量而非 yaml 配置：目前没有按实例调整的需求，将来要配再提升为 Engine 字段。
-const (
-	errorMaxTimes = 3
-	errorSleepGap = 3 * time.Second
 )
 
 type Agentrunner struct {
@@ -31,26 +20,18 @@ type Agentrunner struct {
 	Stream bool
 }
 
-// Engine 封装核心状态变量（原 global 包级变量）
+// Engine 封装核心状态变量（原 global 包级变量）。
+// 对上层 UI 的可观察状态与 pull 契约见 uistate.go；错误预算见 errorBudget.go。
 type Engine struct {
-	// errorStreak 当前连续错误次数，配合 errorMaxTimes / errorSleepGap
-	// 实现自动重试的上限与退避。归零时机：收到任何带 Choices 的 Response 事件(第一个
-	// token 即归，语义见 engineRun.go 的注释)、/new、用户 ESC 中断(同在 agentRunOnce 归)、
-	// AgentStart 的 else 分支兜底。手动提交输入不归零。
-	// 只有"零输出的自动重试链"内部不归零——那正是要计数的时候。
-	errorStreak int
-
-	tui tuiService
-
-	Config_p             *config.Config           //yaml配置
-	Agentname            string                   //Agent名称
-	CWD                  string                   //当前工作目录
-	ConfigFolderPath     string                   //配置文件夹路径
-	HackerTeamConfigPath string                   //配置文件路径
-	AgentRunner_p        *Agentrunner             //Runner，全局唯一
-	SessionService_p     *inmemory.SessionService //会话服务，包含自动摘要功能
-	SqliteMemoryService  *memorysqlite.Service    // sqlite记忆服务
-	FrameworkLogFile_p   *os.File                 // 保存日志文件句柄，防止被 GC 回收
+	Config_p             *config.Config  //yaml配置
+	Agentname            string          //Agent名称
+	CWD                  string          //当前工作目录
+	ConfigFolderPath     string          //配置文件夹路径
+	HackerTeamConfigPath string          //配置文件路径
+	AgentRunner_p        *Agentrunner    //Runner，全局唯一
+	SessionService_p     session.Service //会话服务，包含自动摘要功能
+	SqliteMemoryService  memory.Service  // sqlite记忆服务
+	FrameworkLogFile_p   *os.File        // 保存日志文件句柄，防止被 GC 回收
 
 	EnvPrompt              string //环境上下文提示词（prompts/common/env.md，已替换占位符）
 	CommandExecutionPrompt string //共享的命令执行提示词片段
@@ -69,36 +50,98 @@ type Engine struct {
 	PostExploitSkillsFolderPath string
 	ScannerSkillsFolderPath     string
 	ReproducerSkillsFolderPath  string
+
+	// errBudget 连续错误自动重试预算：策略（max/gap）与状态（streak）同体，
+	// 状态流转见 errorBudget.go 的 errorBudget 类型。
+	errBudget errorBudget
+
+	// ── 对上层 UI 暴露的可观察状态（pull 契约，方法见 uistate.go）──
+	mu        sync.Mutex // 串行化引擎各 goroutine 的写入与 UI goroutine 的读取
+	records   []string
+	version   uint64
+	runState  RunState
+	todoText  string
+	notice    notice
+	startup   []string
+	startupOK bool
+	skills    []SkillItem
+	inputCh   chan string
+
+	interruptCh chan struct{}
 }
 
-//go:embed prompts/*
-var PromptFiles embed.FS //提示词嵌入FS
-
-//go:embed skillsTemplates/*
-var ToolSkills embed.FS //技能模板嵌入FS
-
-func GetEngineService(name string, tui tuiService) *Engine {
-	e := &Engine{
-		tui: tui,
+func GetEngineService(name string) *Engine {
+	return &Engine{
+		Agentname:   name,
+		inputCh:     make(chan string),
+		interruptCh: make(chan struct{}),
+		notice:      notice{Kind: NoticeNone},
+		errBudget:   newErrorBudget(defaultErrorMaxTimes, defaultErrorSleepGap),
 	}
-	(*e).Agentname = name
-	(*e).preCheckLoad()
-	(*e).newRunner()
-	return e
 }
 
+// Init 完成环境检查与资产装配（bootstrap），随后构造 runner。
+// 检查器只返回错误与产物；致命呈现（parkWithFatal）是 Engine 的职责。
+func (e *Engine) Init() {
+	env, err := Check(e.Agentname, e)
+	if err != nil {
+		e.parkWithFatal(FatalError, err.Error(), true)
+		return
+	}
+	if env.NeedRestart {
+		// 首跑创建了默认配置文件：须改完配置重启，本次启动到此为止。
+		e.parkWithFatal(FatalSuccess, "检查到配置文件不存在，已创建默认配置文件。请根据实际情况修改配置文件后重新启动程序！", true)
+		return
+	}
+	e.absorb(env)
+	e.newRunner()
+}
+
+// absorb 把 bootstrap 产物拷入引擎字段，并上屏启动期收集的非致命提示。
+func (e *Engine) absorb(env *BootEnv) {
+	e.CWD = env.CWD
+	e.ConfigFolderPath = env.ConfigFolderPath
+	e.HackerTeamConfigPath = env.HackerTeamConfigPath
+	e.FrameworkLogFile_p = env.LogFile
+	e.Config_p = env.Config
+	e.EnvPrompt = env.EnvPrompt
+	e.CommandExecutionPrompt = env.CommandExecutionPrompt
+	e.VulnConsensusPrompt = env.VulnConsensusPrompt
+	e.OutputConsensusPrompt = env.OutputConsensusPrompt
+	e.SessionService_p = env.SessionService
+	e.SqliteMemoryService = env.SqliteMemoryService
+	e.builtinTools = env.BuiltinTools
+	e.builtinToolsets = env.BuiltinToolsets
+	for role, folder := range env.RoleSkillFolders {
+		switch role {
+		case reconSkillsFolder:
+			e.ReconSkillsFolderPath = folder
+		case exploitSkillsFolder:
+			e.ExploitSkillsFolderPath = folder
+		case postExploitSkillsFolder:
+			e.PostExploitSkillsFolderPath = folder
+		case scannerSkillsFolder:
+			e.ScannerSkillsFolderPath = folder
+		case reproducerSkillsFolder:
+			e.ReproducerSkillsFolderPath = folder
+		}
+	}
+	for _, n := range env.Notices {
+		e.setNotice(n.Kind, n.Text)
+	}
+}
+
+// AgentStart 引擎主循环：读用户输入、分类分发，直到退出。
+// 一轮对话在 turn 里跑（含自动重试）；错误预算的状态流转见 errorBudget。
 func (e *Engine) AgentStart() {
-	// 初始用 Startup 而不是 New：程序刚启动时并不存在"上一轮对话"，
-	// 推一条"新对话已开始"到 NoticeBar 是噪音。New 只留给用户真的敲 /new 的场合。
-	MsgContext := turnInfo{
-		Code:          Startup,
-		Reason:        "程序启动",
-		PartialOutput: "",
-	}
 	e.randomStartID()
 	for {
-		EndTurn_p := e.agentRunIteratively(context.Background(), MsgContext)
-		if (*EndTurn_p).Code == Exit { //用户主动结束对话，退出程序
+		cmd := parseInput(<-(*e).inputCh)
+		(*e).errBudget.recharge() //任何用户输入都充值（斜杠/空输入也是，无害）
+
+		switch cmd.Kind {
+		case cmdExit: //用户主动结束对话：释放资源，置终态并永久驻留
+			(*e).appendTyped("slash", cmd.Prompt)
 			//关闭AgentRunner，释放资源
 			(*(*e).AgentRunner_p).Runner.Close()
 			for _, ts := range (*e).mcpToolsets {
@@ -107,49 +150,19 @@ func (e *Engine) AgentStart() {
 			for _, ts := range (*e).builtinToolsets {
 				ts.Close() //localexec：kill残留运行命令并清空注册表
 			}
-			(*e).tui.ShowMsgAndExitNoTrigger(pretty.TExit("对话已结束，感谢使用！后会有期！"))
+			(*e).parkWithFatal(FatalExit, "", false)
 
-		} else if (*EndTurn_p).Code == New { //用户开始新对话，重置SessionId, RequestId，更新MsgContext为新对话的初始状态
-			// /new 在 agentRunIteratively 的输入分支里是提前 return 的，跑不到
-			// agentRunOnce 里的归零点，所以必须在这里单独归
-			(*e).errorStreak = 0
+		case cmdNew: //用户开始新对话：重置SessionId, RequestId
+			(*e).appendTyped("slash", cmd.Prompt)
 			e.randomStartID()
-			MsgContext = turnInfo{
-				Code:          New,
-				Reason:        "新对话",
-				PartialOutput: "",
-			}
+			(*e).setNotice(NoticeNewConversation, "")
 
-		} else if (*EndTurn_p).Code == Error { //出错：累加连续错误计数，未达上限则退避后自动重试
-			(*e).errorStreak++
-			if (*e).errorStreak >= errorMaxTimes {
-				// 放弃自动重试，把控制权交还用户。三个要点：
-				// ① Code 保持 Error —— Int 的语义是"用户按了 ESC 中断"，与事实不符，
-				//    不能为了蹭"回到输入循环"这个副作用而填一个假状态码。真正让下一轮
-				//    等用户输入的是 agentRunIteratively 里的 errorStreak < errorMaxTimes 判定。
-				// ② errorStreak 不归零 —— 归零会让下一轮重新满足自动重试条件。它只在
-				//    收到 Response 事件（配置层健康的证据，见 agentRunOnce 注释）/
-				//    新对话/中断时归零；耗尽因此只可能由零输出失败触发。
-				// ③ 整个复用 *EndTurn_p，不新造 literal —— 新建会静默丢掉 Reason 与 PartialOutput。
-				(*e).tui.PrintToMsgView(pretty.TErrorF("连续 %d 次失败，已停止自动重试。请检查网络/配置后重新输入。", errorMaxTimes), false)
-				MsgContext = *EndTurn_p
-				continue
-			}
-			// 必须在 Sleep 之前打：sleep 期间引擎 goroutine 阻塞、不监听输入通道，
-			// 用户打字没有反应，需要知道程序在等什么。
-			(*e).tui.PrintToMsgView(pretty.TWarningF("%d 秒后重试（第 %d/%d 次）...", errorSleepGap/time.Second, (*e).errorStreak, errorMaxTimes), false)
-			time.Sleep(errorSleepGap)
-			MsgContext = *EndTurn_p
+		case cmdPrompt: //普通对话输入
+			(*e).appendTyped("user", cmd.Prompt)
+			e.turn(cmd.Prompt)
 
-		} else { //其他情况（Continue 正常结束 / Int 用户中断），错误链断开、计数归零
-			// 归零主力在 agentRunOnce（Ctx.Done / Response 事件两个第一现场分支）；这里
-			// 是对 Continue / Int 的兜底——万一事件流没走完就关闭，Continue 仍能在这里
-			// 断开错误链
-			(*e).errorStreak = 0
-			MsgContext = *EndTurn_p
-			continue
+		case cmdEmpty: //空输入，重新等待
 		}
-
 	}
 }
 
@@ -159,7 +172,7 @@ func (e *Engine) randomStartID() {
 }
 
 // startupInfoLines 拼出启动横幅的信息行（label 补齐到 13 列），宽度截断交给 TUI。
-// 调用时机在 AgentStart 第一轮，此时 preCheckLoad/newRunner/randomStartID 均已完成。
+// 调用时机在 bootstrap 完成后的第一轮，此时 newRunner/randomStartID 均已完成。
 func (e *Engine) startupInfoLines() []string {
 	cfg := (*e).Config_p.Model
 	cwd := (*e).CWD

@@ -126,7 +126,7 @@ func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Call
 		llmagent.WithToolCallbacks(toolCallbacks),
 		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
 	}
-	agent_p, err := setAgent(captain, (*(*e).Config_p).Model, opts, (*e).tui)
+	agent_p, err := setAgent(captain, (*(*e).Config_p).Model, opts, e)
 	return agent_p, err
 
 }

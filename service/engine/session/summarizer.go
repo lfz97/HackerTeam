@@ -3,7 +3,6 @@ package session
 import (
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/models"
-	"HackerTeam/utils/pretty"
 	"embed"
 	"fmt"
 	"regexp"
@@ -37,10 +36,10 @@ func initSummarizerPrompts() {
 	userSummarizerPrompt = string(userSummarizerPrompt_b)
 }
 
-// msgPrinter 本包对 TUI 的全部需求：摘要生成后往消息区打一行提示。
-// 在消费方按需声明小接口，而不是依赖 init.go 的 tuiService 胖接口。
+// summarySink 本包对展示端的全部需求：摘要生成后投一条摘要记录（pull 契约，
+// 展示端以 AppendSummary 实现，渲染是消费端的事）。
 type msgPrinter interface {
-	PrintToMsgView(content string, clear bool)
+	AppendSummary(text string)
 }
 
 func NewSummarizer(m config.Model, tui msgPrinter) summary.SessionSummarizer {
@@ -86,7 +85,7 @@ func NewSummarizer(m config.Model, tui msgPrinter) summary.SessionSummarizer {
 		}),
 		summary.WithPostSummaryHook(func(s *summary.PostSummaryHookContext) error {
 			cleanSummary := reThink.ReplaceAllString(s.Summary, "") //将摘要内容中的<think>...</think>部分去掉
-			tui.PrintToMsgView(pretty.TColoredText(pretty.TColorGreen, fmt.Sprintf("\n->已生成摘要：\n%v\n", cleanSummary)), false)
+			tui.AppendSummary(fmt.Sprintf("%v", cleanSummary))
 			return nil
 		}),
 	)

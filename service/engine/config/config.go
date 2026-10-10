@@ -17,7 +17,17 @@ type Model struct {
 	ContextWindow               int    `yaml:"contextwindow"`
 	MaxTokens                   int    `yaml:"maxtokens"` // 每次请求的最大生成 token 数，默认 12800
 	ShowReasoning               bool   `yaml:"show_reasoning"`
+	ReasoningEffort             string `yaml:"reasoning_effort"` // 思考强度档位（如 low/medium/high/max），留空则不下发该参数
 	HttpTimeout                 int    `yaml:"httptimeout"`
+}
+
+// ReasoningEffortPtr 返回思考强度档位的指针；未配置（空串）返回 nil——
+// 框架的 GenerationConfig 以指针判空决定是否下发该参数。
+func (m *Model) ReasoningEffortPtr() *string {
+	if m.ReasoningEffort == "" {
+		return nil
+	}
+	return &m.ReasoningEffort
 }
 
 type User struct {

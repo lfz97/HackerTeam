@@ -135,6 +135,8 @@ func (e *Engine) absorb(env *BootEnv) {
 // 一轮对话在 turn 里跑（含自动重试）；错误预算的状态流转见 errorBudget。
 func (e *Engine) AgentStart() {
 	e.randomStartID()
+	// 启动横幅只在此组装一次（bootstrap/newRunner 均已完成）。
+	(*e).setStartupInfo((*e).startupInfoLines())
 	for {
 		cmd := parseInput(<-(*e).inputCh)
 		(*e).errBudget.recharge() //任何用户输入都充值（斜杠/空输入也是，无害）

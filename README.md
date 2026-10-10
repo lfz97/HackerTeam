@@ -391,6 +391,7 @@ model:
   stream: true                          # 流式输出，开启后可实时看到推理过程和工具调用
   maxtokens: 12800                      # 每次请求的最大生成 token 数，默认 12800
   httptimeout: 600                      # HTTP 请求超时，单位/秒
+  reasoning_effort: ""                  # 思考强度档位（low/medium/high/max），留空不下发该参数
   show_reasoning: false                 # 是否显示推理内容，默认 false（不显示）
 
 # MCP server 配置（可选）。启用的 server 挂载给全部 agent（含队长），实例跨 agent 共享
@@ -424,7 +425,9 @@ model:
 | 命令 | 功能 |
 |------|------|
 | `/new` | 开始新会话 |
-| `/exit` 或 `ESC` | 退出 |
+| `/exit` | 退出 |
+| `ESC` | 中断当前回合 |
+| `Ctrl+K` | 帮助页（斜杠指令与技能列表） |
 
 > 配置/Skill/MCP 工具集在每轮对话自动重载，无需手动刷新（旧版 `/flush` 已移除）。
 

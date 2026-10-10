@@ -1,0 +1,59 @@
+name: release-build
+
+# main 每次推送：静态编译一份制品，替换 latest 预发布里的同名资产。
+# 版本化 release（如 v1.5.0）不受影响；自动构建只进 latest 这一个固定预发布。
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一时间只保留一次构建，避免连续推送时并发上传互相覆盖
+concurrency:
+  group: release-build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # latest 标签需要在本仓库内强制挪动，浅克隆下 push tag 不可靠
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # mattn/go-sqlite3 走 CGO。runner 的 glibc 比部署机（Debian 12）新，
+      # 动态编译的制品在旧 glibc 上直接起不来——用 musl 静态链接，产物零依赖。
+      - name: Build static binary (musl + CGO)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          CC=musl-gcc CGO_ENABLED=1 go build -ldflags '-extldflags -static -s -w' -o HackerTeam ./cmd
+
+      # 固定 latest 预发布：首次创建（tag 指向当时 HEAD），此后每次把 tag 强制挪到最新 main
+      - name: Ensure latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            git tag -f latest "$GITHUB_SHA"
+            git push -f origin "refs/tags/latest"
+          else
+            gh release create latest \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "latest (main 自动构建)" \
+              --notes "main 分支最新版本" \
+              --prerelease
+          fi
+
+      # --clobber 同名资产原位替换：release 里永远只有一份最新制品
+      - name: Replace release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload latest HackerTeam --repo "$GITHUB_REPOSITORY" --clobber

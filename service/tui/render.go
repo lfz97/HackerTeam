@@ -222,6 +222,8 @@ func renderNotice(kind, text string) string {
 		return noticeNewConversation()
 	} else if kind == "cancelled" {
 		return noticeCancelled()
+	} else if kind == "cleared" {
+		return noticeCleared()
 	} else if kind == "success" {
 		return noticeSuccess(text)
 	} else if kind == "warning" {

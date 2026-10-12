@@ -46,6 +46,7 @@ const (
 	NoticeCancelled       = "cancelled"
 	NoticeSuccess         = "success"
 	NoticeWarning         = "warning"
+	NoticeClear           = "cleared"
 )
 
 // Fatal 进程终态（RunStateJSON 里 fatal 对象的形状）。
@@ -89,6 +90,16 @@ func (e *Engine) Records() []string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return append([]string(nil), e.records...)
+}
+
+// 清空记录。必须递增 version：TUI 按 version != seenVersion 决定是否
+// 重组视图，只清 records 不 bump，聊天区不会刷新（fatal 有同样的前科，
+// 见 pull.go 的显式触发）。不依赖调用方先 append 之类的顺序巧合。
+func (e *Engine) clearRecords() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.records = []string{}
+	e.version++
 }
 
 // appendRecord 追加一条已序列化的 JSON 记录（引擎内部写入口）。

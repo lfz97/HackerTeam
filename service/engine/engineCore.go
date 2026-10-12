@@ -43,7 +43,7 @@ type Engine struct {
 
 	builtinTools    []tool.Tool             // 内置function工具清单（文件系统/文件操作/日期），启动时确定，跨轮常驻不刷新
 	builtinToolsets map[string]tool.ToolSet // 内置工具集（每个执行角色一个常驻localexec实例），启动时确定，跨轮常驻，jobs可跨轮续查
-	mcpToolsets     []tool.ToolSet          // 配置文件声明的MCP工具集，每轮run自动Close重建，共享挂载给全部agent
+	mcpToolsets     []tool.ToolSet          // 配置文件声明的MCP工具集，增量对齐（同名复用），共享挂载给全部agent
 
 	ReconSkillsFolderPath       string
 	ExploitSkillsFolderPath     string
@@ -158,6 +158,9 @@ func (e *Engine) AgentStart() {
 			(*e).appendTyped("slash", cmd.Prompt)
 			e.randomStartID()
 			(*e).setNotice(NoticeNewConversation, "")
+		case cmdClear: //清除历史消息：记录全部丢弃（连本条 /clear 也不留痕），通知栏提示
+			(*e).clearRecords()
+			(*e).setNotice(NoticeClear, "")
 
 		case cmdPrompt: //普通对话输入
 			(*e).appendTyped("user", cmd.Prompt)

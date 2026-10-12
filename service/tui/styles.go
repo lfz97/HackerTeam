@@ -175,6 +175,11 @@ func noticeCancelled() string {
 	return colorText(cWarning, "session cancelled")
 }
 
+// noticeCleared 清屏通知（info，同 new_conversation 的中性信息色）。
+func noticeCleared() string {
+	return colorText(cInfo, "history cleared")
+}
+
 // noticeSuccess 成功通知（淡绿）。
 func noticeSuccess(text string) string {
 	return colorText(cSuccessSubtle, text)

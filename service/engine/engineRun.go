@@ -20,6 +20,7 @@ const (
 	cmdExit                       //退出程序
 	cmdNew                        //开始新对话
 	cmdEmpty                      //空输入
+	cmdClear                      //清除历史消息
 )
 
 type inputCmd struct {
@@ -37,6 +38,8 @@ func parseInput(raw string) inputCmd {
 		return inputCmd{Kind: cmdExit, Prompt: check}
 	case "/new":
 		return inputCmd{Kind: cmdNew, Prompt: check}
+	case "/clear":
+		return inputCmd{Kind: cmdClear, Prompt: check}
 	case "":
 		return inputCmd{Kind: cmdEmpty}
 	}

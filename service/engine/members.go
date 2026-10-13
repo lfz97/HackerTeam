@@ -62,7 +62,9 @@ func (e *Engine) InitTeam() (*llmagent.LLMAgent, error) {
 			agenttool.WithHistoryScope(agenttool.HistoryScopeIsolated), //子调用使用独立 FilterKey，通常只读取本次工具参数，不继承父历史
 		))
 	}
-	toolCallbacks := tool.NewCallbacks().RegisterAfterTool(afterToolCallback)
+	// sidecar 旁路记录（工具原始结果 → wireRecord.Meta 下发 TUI 渲染，模型
+	// 上下文不受影响）与既有的空响应护栏回调并列挂载
+	toolCallbacks := tool.NewCallbacks().RegisterAfterTool(afterToolCallback).RegisterAfterTool(e.sidecar.afterTool())
 	captain, err := e.initCaptain(subagentTools, toolCallbacks)
 	if err != nil {
 		return nil, err

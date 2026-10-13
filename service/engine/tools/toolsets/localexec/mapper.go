@@ -20,9 +20,12 @@ type Mappers interface {
 func InjectMapper(m Mappers) {
 	prefix := localExecToolSetName + "_"
 	// id 放在 output 前：结果整体截断 200 rune，长输出会把尾部的 id 挤掉
-	m.AddMapping(prefix+runToolName, []string{"process", "args"}, []string{"id", "output"})
-	m.AddMapping(prefix+statusToolName, []string{"id"}, []string{"status"})
-	m.AddMapping(prefix+outputToolName, []string{"id"}, []string{})
+	// run：标量字段在前、output 块殿后（渲染层块独立于标量行）；
+	// output：工具的本体就是取输出，Out 必须含 output；落盘超阈值时
+	// note/outputFile 告知 agent 完整内容的位置
+	m.AddMapping(prefix+runToolName, []string{"process", "args"}, []string{"status", "exitCode", "id", "output"})
+	m.AddMapping(prefix+statusToolName, []string{"id"}, []string{"status", "exitCode", "id", "pid", "status_all"})
+	m.AddMapping(prefix+outputToolName, []string{"id"}, []string{"id", "output", "note", "outputFile"})
 	m.AddMapping(prefix+interveneToolName, []string{"id", "signal"}, []string{"msg"})
 	m.AddMapping(prefix+killToolName, []string{"id"}, []string{"status"})
 }

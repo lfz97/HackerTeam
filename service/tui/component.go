@@ -28,10 +28,14 @@ func NewPrettyTextArea(width int, height int, charLimit int) (textarea.Model, te
 
 	//定义样式
 	style := textarea.DefaultStyles(false)
+	// 输入文字用调色板最亮档（Sash #ECEBF0，crush 编辑器同款）：
+	// 不设前景色会落到终端默认灰，输入区显得暗
 	style.Focused.Base = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).       //圆角框线
 		BorderForeground(lipgloss.Color("62")). //框线颜色
-		Padding(0, 1)                           //框线与文字边距（垂直、水平）
+		Padding(0, 1).                          //框线与文字边距（垂直、水平）
+		Foreground(cFgBase)
+	style.Focused.Text = lipgloss.NewStyle().Foreground(cFgBase)
 	style.Focused.CursorLine = lipgloss.NewStyle()
 
 	//应用样式

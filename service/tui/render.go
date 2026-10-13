@@ -41,7 +41,7 @@ func (t *TUI) composeView(st *pullState) string {
 				continue
 			}
 			if m.Role == "tool" {
-				out = renderToolResult(&m, toolBuf)
+				out = renderToolResult(&m, toolBuf, w, string(rec.Meta))
 			} else {
 				tailReasoning.WriteString(m.ReasoningContent)
 				tailContent.WriteString(m.Content)
@@ -54,7 +54,7 @@ func (t *TUI) composeView(st *pullState) string {
 				continue
 			}
 			if m.Role == "tool" {
-				out = renderToolResult(&m, toolBuf)
+				out = renderToolResult(&m, toolBuf, w, string(rec.Meta))
 			} else {
 				bufferToolCalls(&m, toolBuf)
 				// 思考块并入本条输出（定稿自带则用它，否则用流式尾累积的，两者本应同文），
@@ -128,16 +128,17 @@ func bufferToolCalls(m *model.Message, toolBuf map[string]*wireToolCall) {
 	}
 }
 
-// renderToolResult 渲染工具行：结果（Role=tool 的框架 message）到达时，按 ToolID
-// 匹配此前缓冲的工具调用（toolCompact 内建参数/结果压缩与截断，原始数据直喂即可）。
+// renderToolResult 渲染工具块：结果（Role=tool 的框架 message）到达时，按 ToolID
+// 匹配此前缓冲的工具调用（toolView 按 mapper 字段提取参数/结果并按内容类型路由，
+// w 传入做超宽折行；meta 为引擎 sidecar 下发的旁路元数据，优先于 content 解析）。
 // 无缓冲匹配时与旧版一致：宁可不出工具行，也不凭空渲染。
-func renderToolResult(m *model.Message, toolBuf map[string]*wireToolCall) string {
+func renderToolResult(m *model.Message, toolBuf map[string]*wireToolCall, w int, meta string) string {
 	entry := toolBuf[m.ToolID]
 	if entry == nil {
 		return ""
 	}
 	delete(toolBuf, m.ToolID)
-	return msgIndent.Render(toolCompact(entry.name, []byte(entry.args), m.Content))
+	return msgIndent.Render(toolView(entry.name, []byte(entry.args), m.Content, w, meta))
 }
 
 // renderThinking 思考块：弱化左竖线 + 弱化文本（quote 风格，无底色）。
@@ -322,7 +323,9 @@ func hexOf(c string) *string { return &c }
 func markdownStyle() ansi.StyleConfig {
 	return ansi.StyleConfig{
 		Document: ansi.StyleBlock{
-			StylePrimitive: ansi.StylePrimitive{Color: hexOf("#BFBCC8")},
+			// Sash 最亮档（#ECEBF0）：暗底终端上正文要够亮才醒目
+			// （原 Smoke #BFBBC8 在暗底下衬得发灰）；与输入框文字同档
+			StylePrimitive: ansi.StylePrimitive{Color: hexOf("#ECEBF0")},
 		},
 		BlockQuote: ansi.StyleBlock{
 			StylePrimitive: ansi.StylePrimitive{},

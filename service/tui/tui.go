@@ -100,6 +100,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg: //窗口变化
 		t.width = m.Width
 		t.height = m.Height
+		t.recalcPadding() // 内容列封顶居中：先定 padding，applyViewText 按其重排
 		t.applyViewText(t.viewText) // 按新宽度整体重排
 		t.recalcComponentSize()
 		return t, nil

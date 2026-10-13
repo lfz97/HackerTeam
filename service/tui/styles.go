@@ -37,6 +37,12 @@ var (
 	// 兼容旧引用：边框沿用 demo 的 "62"（输入框/帮助浮层），次文本对齐 Squid。
 	cBorder = lipgloss.Color("62")
 	cSub    = cFgMuted
+
+	// 工具块体区竖线：与用户消息（primary 线）、思考块（faint 线）同款视觉
+	// 语言。参数区暗灰（输入=既定上下文，Oyster）、结果区淡绿（输出=产出，
+	// Guac；饱和度低于 success 主色，错误结果的红色内容仍可辨识）。
+	cToolLineIn  = cFgMostSubtle
+	cToolLineOut = cSuccessSubtle
 )
 
 // maxTextWidth 消息文本的最大列宽（crush 同款 cap：超宽终端下正文不至于拉满，
@@ -107,58 +113,28 @@ func summaryText(text string) string {
 	return colorText(cSuccessSubtle, "已生成摘要：\n"+text)
 }
 
-// ── 工具行（crush toolHeader：状态图标 + info 工具名 + muted 参数）──
+// ── 工具块头部行（crush toolHeader：状态图标 + info 工具名）──
+// 参数行/结果行/内容块由 toolview.go 的 toolView 负责。
 
-// toolCompact 工具行渲染：头部一行（✓ name args），有结果时追加缩进的
-// 底色摘要块。参数压缩：去换行、合并空格、截断 80 rune；结果截断 200 rune。
-func toolCompact(name string, args []byte, result string) string {
-	header := toolHeader(name, compactArgs(args))
-
-	summary := ""
-	if result != "" {
-		s := compactLine(result)
-		if len([]rune(s)) > 200 {
-			s = string([]rune(s)[:200]) + "...)"
-		}
-		if s != "" && s != "()" && s != "{}" {
-			summary = s
-		}
-	}
-	if summary == "" {
-		return header
-	}
-	body := "  " + colorText(cFgMuted, "↪ "+summary)
-	return header + "\n" + body
-}
-
-// toolHeader 头部行：✓ 工具名 参数。
+// toolHeader 头部行：✓ 工具名（params 预留扩展，空串不出尾随空格）。
 func toolHeader(name, params string) string {
 	icon := colorText(cSuccess, "✓")
+	if params == "" {
+		return fmt.Sprintf("%s %s", icon, colorText(cInfo, name))
+	}
 	return fmt.Sprintf("%s %s %s", icon, colorText(cInfo, name), params)
 }
 
-// compactArgs 压缩工具参数：空/()/{} 输出空串。
-func compactArgs(args []byte) string {
-	if len(args) == 0 {
-		return ""
-	}
-	s := compactLine(string(args))
-	if len([]rune(s)) > 80 {
-		s = string([]rune(s)[:80]) + "...)"
-	}
-	if s == "()" || s == "{}" {
-		return ""
-	}
-	return colorText(cFgMuted, s)
-}
-
 // compactLine 把多行文本压成单行：去掉 ANSI 转义与回车（命令输出常带 PTY 的
-// \r\n 和程序自身的颜色码，直接进视图会串色），换行转空格并合并多余空格。
+// \r\n 和程序自身的颜色码，直接进视图会串色），换行转空格并合并多余空格，
+// tab 展开为 4 空格（测量计 0 列而终端展开 8 列，见 cleanBlock 注释）。
+// toolview 的参数/标量兜底在用；多行内容块用 toolview.cleanBlock（保留换行）。
 func compactLine(s string) string {
 	s = ansi.Strip(s)
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\t", tabSpaces)
 	s = strings.ReplaceAll(s, "  ", " ")
 	return strings.TrimSpace(s)
 }

@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	argValueMaxRunes = 40 // 参数/标量值单行截断
+	argValueMaxRunes = 80 // 参数/标量值单行截断
 	blockMaxLines    = 40 // diff/长文本/代码块默认显示行数（用户指定：概览多看一点）
 
 	// tabSpaces tab 展开宽度：ANSI 宽度测量把 \t 计 0 列而终端展开到

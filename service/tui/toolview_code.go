@@ -1,8 +1,8 @@
 package tui
 
 // 工具块的 chroma 语法高亮。配色取 markdownStyle() 的 Chroma 同款（视觉
-// 语言一致）。composeView 每帧全量重放 → lexer 与格式化结果均按
-// (filename, content) 缓存，带锁（渲染可能多 goroutine 触达）。
+// 语言一致）。无缓存：高亮成本毫秒级、人不可感知（感知口径的消融数据见
+// composebench_test.go），渲染管线保持无全局可变状态。
 
 import (
 	"bytes"
@@ -14,14 +14,6 @@ import (
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/charmbracelet/x/ansi"
-)
-
-var (
-	lexMu    sync.Mutex
-	lexCache = map[string]chroma.Lexer{}
-
-	hlMu    sync.Mutex
-	hlCache = map[string]string{} // key: filename + "\x00" + source
 )
 
 // codeStyle 项目调色板映射到 chroma style（一次性构建）。
@@ -45,41 +37,20 @@ var codeStyle = sync.OnceValue(func() *chroma.Style {
 	return s
 })
 
-// lexerFor 按文件名选 lexer（memoize）；匹配不上用内容分析兜底，再兜 Fallback。
+// lexerFor 按文件名选 lexer；匹配不上用内容分析兜底，再兜 Fallback。
 func lexerFor(filename, source string) chroma.Lexer {
-	lexMu.Lock()
-	l, ok := lexCache[filename]
-	lexMu.Unlock()
-	if ok {
-		return l
-	}
-	l = lexers.Match(filename)
+	l := lexers.Match(filename)
 	if l == nil {
 		l = lexers.Analyse(source)
 	}
 	if l == nil {
 		l = lexers.Fallback
 	}
-	lexMu.Lock()
-	lexCache[filename] = l
-	lexMu.Unlock()
 	return l
 }
 
-// highlightCode 源码 → 24-bit ANSI 高亮文本（按 filename+source 缓存）。
-// 缓存超限（512）整体丢弃重建：会话内工具块数量有限，泄漏兜底优先于淘汰精度。
+// highlightCode 源码 → 24-bit ANSI 高亮文本。
 func highlightCode(source, filename string) string {
-	key := filename + "\x00" + source
-	hlMu.Lock()
-	if v, ok := hlCache[key]; ok {
-		hlMu.Unlock()
-		return v
-	}
-	if len(hlCache) > 512 {
-		hlCache = map[string]string{}
-	}
-	hlMu.Unlock()
-
 	l := lexerFor(filename, source)
 	// 不用 TokeniseOptions{EnsureLF: true}：chroma v2.27.0 里它会触发 lexer
 	// 状态机 "unknown state" panic（追加换行后栈状态错乱），nil options 正常。
@@ -95,11 +66,7 @@ func highlightCode(source, filename string) string {
 	if err := f.Format(&buf, codeStyle(), it); err != nil {
 		return source
 	}
-	out := buf.String()
-	hlMu.Lock()
-	hlCache[key] = out
-	hlMu.Unlock()
-	return out
+	return buf.String()
 }
 
 // codeBlockLines 高亮代码块：行号列（most-subtle 右对齐）+ chroma 高亮 +

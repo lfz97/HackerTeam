@@ -56,6 +56,7 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if t.submitInput(text) {
 				t.ta.Reset()
 			}
+			t.vp.GotoBottom()
 			t.recalcComponentSize()
 			return t, nil
 

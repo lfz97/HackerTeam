@@ -69,8 +69,8 @@ func TestArgRowsEmptyAndTruncate(t *testing.T) {
 	if rows := argRows("x", nil); len(rows) != 0 {
 		t.Fatalf("want no rows for nil, got %#v", rows)
 	}
-	rows := argRows("x", []byte(`{"k":"`+strings.Repeat("一", 45)+`"}`))
-	if len([]rune(rows[0].val)) > 41 { // 40 rune + 省略号
+	rows := argRows("x", []byte(`{"k":"`+strings.Repeat("一", 85)+`"}`))
+	if len([]rune(rows[0].val)) > 81 { // 80 rune + 省略号（argValueMaxRunes=80）
 		t.Fatalf("value not truncated: %q", rows[0].val)
 	}
 	if !strings.HasSuffix(rows[0].val, "…") {
@@ -352,9 +352,9 @@ func TestToolViewRowWrapNarrowWidth(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"x": {Name: "x", In: []string{"K"}, Out: nil},
 	})
-	// w=20：avail=14，值 41 个全宽字符必然折行；任何行显示宽不得越过
+	// w=20：avail=14，值 81 个全宽字符必然折行；任何行显示宽不得越过
 	// w - msgIndentW = 18
-	out := toolView("x", []byte(`{"K":"`+strings.Repeat("一", 45)+`"}`), "", 20)
+	out := toolView("x", []byte(`{"K":"`+strings.Repeat("一", 85)+`"}`), "", 20)
 	lines := strings.Split(out, "\n")
 	if len(lines) < 3 {
 		t.Fatalf("value not wrapped:\n%s", out)
@@ -364,8 +364,8 @@ func TestToolViewRowWrapNarrowWidth(t *testing.T) {
 			t.Errorf("line %d overflows padding (width %d): %q", i, lw, ansi.Strip(ln))
 		}
 	}
-	if n := strings.Count(ansi.Strip(out), "一"); n != 40 { // 截断后 40 个 + …
-		t.Errorf("content lost in wrap/truncate: got %d 一, want 40", n)
+	if n := strings.Count(ansi.Strip(out), "一"); n != 80 { // 截断后 80 个 + …
+		t.Errorf("content lost in wrap/truncate: got %d 一, want 80", n)
 	}
 }
 

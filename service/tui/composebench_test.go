@@ -1,6 +1,18 @@
 package tui
 
 // 全量重放性能基准：真实规模会话（20 轮×重内容）测量 composeView 成本。
+// 消融结论（2026-10-13，口径：人的感知，不是秒表）：
+//   - ms 级差异人不可感知——LLM 流式节奏是秒级，网络抖动远大于任何单项成本，
+//     因此所有缓存（chroma 双缓存、glamour 渲染器缓存）全部删除，渲染管线
+//     无全局可变状态。合成重负载（20 轮×重内容）全帧 ~100ms，真实会话通常
+//     个位数到十几 ms，均远低于感知阈值
+//   - compose 节流 + version 跳过保留：那是"没变化就不干活"的架构机制，
+//     不是微优化
+//   - 本基准的真正用途：诊断规模化悬崖——全量重放成本随会话长度线性增长，
+//     数百轮重会话时若真感到卡顿，解法是按记录内容哈希的结果级缓存，
+//     先跑这里拿基线再动手
+
+// 全量重放性能基准：真实规模会话（20 轮×重内容）测量 composeView 成本。
 // 消融结论（2026-10-13，稳态数据见下方各微基准）：
 //   - 全帧稳态 ~68ms/次（compose 节流 100ms 预算内）
 //   - chroma 双缓存（hlCache/lexCache）：删后 103ms（+52%），真有影响——保留
@@ -22,7 +34,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/alecthomas/chroma/v2"
 
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -84,8 +95,8 @@ func buildSession() []string {
 			Role:             "assistant",
 			ReasoningContent: thinking,
 			ToolCalls: []model.ToolCall{
-				{ID: fmt.Sprintf("t%d-a", turn), Function: model.FunctionDefinitionParam{Name: "EditFile", Arguments: []byte(fmt.Sprintf(`{"path":"/home/lfz/hyperbot/service/main.go","old":"x%d","new":"y%d"}`, turn, turn))}},
-				{ID: fmt.Sprintf("t%d-b", turn), Function: model.FunctionDefinitionParam{Name: "WriteFile", Arguments: []byte(fmt.Sprintf(`{"path":"/tmp/x%d.go","content":%s}`, turn, strconv.Quote(code)))}},
+				{ID: fmt.Sprintf("t%d-a", turn), Function: model.FunctionDefinitionParam{Name: "edit", Arguments: []byte(fmt.Sprintf(`{"path":"/home/lfz/hyperbot/service/main.go","old":"x%d","new":"y%d"}`, turn, turn))}},
+				{ID: fmt.Sprintf("t%d-b", turn), Function: model.FunctionDefinitionParam{Name: "write", Arguments: []byte(fmt.Sprintf(`{"path":"/tmp/x%d.go","content":%s}`, turn, strconv.Quote(code)))}},
 				{ID: fmt.Sprintf("t%d-c", turn), Function: model.FunctionDefinitionParam{Name: "LocalExec_run", Arguments: []byte(fmt.Sprintf(`{"process":"bash","args":["-c","tail -n 50 log%d.log"]}`, turn))}},
 			},
 		}))
@@ -112,25 +123,6 @@ func BenchmarkComposeWarm(b *testing.B) {
 	_ = t.composeView(st) // 预热缓存
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = t.composeView(st)
-	}
-}
-
-// BenchmarkComposeCold 每次清空 glamour/chroma 缓存（无缓存的全量重放成本）。
-func BenchmarkComposeCold(b *testing.B) {
-	t := newBenchTUI()
-	st := newPullState()
-	st.width = 120
-	_ = t.composeView(st)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		// 清 chroma 双缓存（测量无缓存的真实重放成本）
-		hlMu.Lock()
-		hlCache = map[string]string{}
-		hlMu.Unlock()
-		lexMu.Lock()
-		lexCache = map[string]chroma.Lexer{}
-		lexMu.Unlock()
 		_ = t.composeView(st)
 	}
 }

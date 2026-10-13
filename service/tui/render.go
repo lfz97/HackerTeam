@@ -146,7 +146,11 @@ func renderToolResult(m *model.Message, toolBuf map[string]*wireToolCall, w int,
 // 不走 glamour（结构化 markdown 对它没有增益，纯文本渲染在长思考流式
 // 重放下的成本也低一个量级）；样式的 Width 负责软换行。
 func renderThinking(r string, w int) string {
-	return msgIndent.Render(thinkingQuote(w - msgIndentW).Render(r))
+	gw := w - msgIndentW - thinkingFrameW
+	if gw < 10 {
+		gw = 10
+	}
+	return msgIndent.Render(thinkingQuote(gw).Render(r))
 }
 
 // flushTail 渲染流式尾段并清空累积，返回值作为边界记录（user/slash/warn/
@@ -171,7 +175,11 @@ func flushTail(st *pullState, tailReasoning, tailContent *strings.Builder, w int
 // UserMarkdownRenderer——用户输入在 textarea 里手打，保留换行，避免渲染后
 // 和输入时看到的不一样）。
 func userBlock(st *pullState, text string, w int) string {
-	out, err := st.glamRenderer.user(text, w)
+	gw := w - userBarFrameW
+	if gw < 10 {
+		gw = 10
+	}
+	out, err := st.glamRenderer.user(text, gw)
 	if err != nil {
 		out = text // 渲染失败退回原文，别把输入吞掉
 	}
@@ -184,6 +192,12 @@ func userBlock(st *pullState, text string, w int) string {
 // msgIndentW msgIndent 的左缩进列数（思考盒等需要扣掉它再对宽）。
 const msgIndentW = 2
 
+// thinkingFrameW 思考块边框占宽：左竖线(1) + 内边距(1)。
+const thinkingFrameW = 2
+
+// userBarFrameW 用户消息左线占宽：边框(1) + 内边距(1)。
+const userBarFrameW = 2
+
 // glamourTailPad 匹配行尾的"空白 + ANSI 序列"混合填充。glamour 会把标题、表格、
 // 代码块的每一行都补满整行宽度，每个空格还裹一层 SGR：实测 153B 的 markdown
 // 渲染后是 12.7KB，其中 92% 是这种填充。消息区每帧全量重绘、每次重组都要扫
@@ -193,7 +207,11 @@ var glamourTailPad = regexp.MustCompile(`(?:\x1b\[[0-9;]*m|[ \t])+$`)
 // renderBody 用 glamour 渲染助手正文（crush Markdown StyleConfig）。ANSI 输出
 // 直接进 viewport——bubbletea 渲染器本身就是 ANSI 消费者。
 func renderBody(st *pullState, content string, w int) string {
-	out, err := st.glamRenderer.main(content, w)
+	gw := w - msgIndentW
+	if gw < 10 {
+		gw = 10
+	}
+	out, err := st.glamRenderer.main(content, gw)
 	if err != nil {
 		out = content // 渲染失败退回原文，别把整条回复吞掉
 	}

@@ -458,3 +458,29 @@ func TestToolViewSearchInFileFallback(t *testing.T) {
 		t.Errorf("numeric order broken, first result row: %q", lines[4])
 	}
 }
+
+// 回归：显示层 re-marshal 禁用 HTML 转义——默认 json.Marshal 会把 & < > 变成
+// \u0026 等，40 字符截断切在转义序列中间显示成 "\u002"（现场：echo '…' && date）。
+func TestStringValueNoHTMLEscape(t *testing.T) {
+	got := stringValue([]any{"-c", "echo 'Hello from HyperBot!' && date && whoami && hostname"})
+	if strings.Contains(got, `\u00`) {
+		t.Errorf("HTML escape leaked into display value: %s", got)
+	}
+	if !strings.Contains(got, "&&") {
+		t.Errorf("&& lost: %s", got)
+	}
+	got = stringValue(map[string]any{"cmd": "a < b > c & d"})
+	if strings.Contains(got, `\u00`) || !strings.Contains(got, "<") {
+		t.Errorf("HTML escape leaked: %s", got)
+	}
+}
+
+// 端到端：超长 && 命令行参数经截断后不得出现转义序列残片。
+func TestToolViewTruncationNotMidEscape(t *testing.T) {
+	args := []byte(`{"Process":"bash","Args":["-c","echo 'Hello from HyperBot!' && date && whoami && hostname"]}`)
+	out := toolView("exec", args, `{"Status":"done"}`, 120)
+	flat := ansi.Strip(out)
+	if strings.Contains(flat, `\u00`) {
+		t.Errorf("escape fragment in truncated display:\n%s", flat)
+	}
+}

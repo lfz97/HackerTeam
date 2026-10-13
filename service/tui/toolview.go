@@ -7,6 +7,7 @@ package tui
 // 参数渲染 key value 行、结果按内容类型路由（diff 双色块 / 多行文本块 / 标量行）。
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"image/color"
@@ -168,15 +169,28 @@ func allDigits(keys []string) bool {
 // ── 值与 JSON 工具函数 ───────────────────────────────────
 
 // stringValue 标量值转显示文本：字符串原样，其余紧凑 JSON。
+// marshalCompact 值 → 紧凑 JSON（显示用）。必须 SetEscapeHTML(false)：
+// 默认 marshal 会把 & < > 转成 \u0026/\u003c/\u003e，argValueMaxRunes 截断
+// 恰好切在转义序列中间时显示成 "\u002" 这样的乱码（真实现场：
+// echo 'Hello from HyperBot!' && date 的命令行参数行）。
+func marshalCompact(v any) (string, bool) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		return "", false
+	}
+	return strings.TrimRight(buf.String(), "\n"), true
+}
+
 func stringValue(v any) string {
 	if s, ok := v.(string); ok {
 		return s
 	}
-	b, err := json.Marshal(v)
-	if err != nil {
-		return fmt.Sprintf("%v", v)
+	if s, ok := marshalCompact(v); ok {
+		return s
 	}
-	return string(b)
+	return fmt.Sprintf("%v", v)
 }
 
 // decodeJSONObject 严格解析 JSON 对象（空输入/非对象/非法返回 false）。
@@ -298,8 +312,8 @@ func expandJSONList(s string) (string, bool) {
 	for _, e := range arr {
 		if str, ok := e.(string); ok {
 			parts = append(parts, str)
-		} else if b, err := json.Marshal(e); err == nil {
-			parts = append(parts, string(b))
+		} else if b, ok := marshalCompact(e); ok {
+			parts = append(parts, b)
 		} else {
 			return "", false
 		}

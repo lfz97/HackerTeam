@@ -18,10 +18,8 @@ import (
 func (t *TUI) applyFrame(m frameMsg) (tea.Model, tea.Cmd) {
 	cmds := []tea.Cmd{t.pullCmd()}
 
-	changed := false
-	if m.running != t.running {
+	if m.running != t.running { // spinner 门控是行为语义（Start/Stop），非优化
 		t.running = m.running
-		changed = true
 		if m.running {
 			cmds = append(cmds, t.bottom.spinner.Start())
 		} else {
@@ -29,24 +27,14 @@ func (t *TUI) applyFrame(m frameMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	if m.todo != t.todoText {
-		t.todoText = m.todo
-		changed = true
-	}
-
-	if m.notice != t.bottom.notice {
-		t.bottom.SetNotice(m.notice)
-		changed = true
-	}
-
-	if m.view != t.viewText {
-		t.applyViewText(m.view)
-		changed = true
-	}
-
-	if changed {
-		t.recalcComponentSize()
-	}
+	// 帧无条件应用：各 callee 幂等（SetNotice 纯赋值且 TTL 计时在引擎侧；
+	// applyViewText 相同文本滚动语义不变；recalc 同输入同布局），且帧只在
+	// 引擎 version 变化时产生——无风暴可挡，diff 判定只买到亚毫秒的省略，
+	// 感知口径下不值一层守卫（消融论证见提交记录）。
+	t.todoText = m.todo
+	t.bottom.SetNotice(m.notice)
+	t.applyViewText(m.view)
+	t.recalcComponentSize()
 
 	// 终态：waitKey=true 的消息（init 错误等）已随 view 上屏、等任意键退出；
 	// waitKey=false（/exit）无告别语，直接退出。

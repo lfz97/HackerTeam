@@ -66,7 +66,7 @@ func (t *TUI) composeView(st *pullState) string {
 				}
 				tailReasoning.Reset()
 				if strings.TrimSpace(m.Content) != "" {
-					body = append(body, renderBody(st, m.Content, w))
+					body = append(body, renderBody(m.Content, w))
 				}
 				tailContent.Reset()
 				out = strings.Join(body, "\n\n")
@@ -97,7 +97,7 @@ func (t *TUI) composeView(st *pullState) string {
 		parts = append(parts, renderThinking(tailReasoning.String(), w))
 	}
 	if tailContent.Len() > 0 {
-		parts = append(parts, renderBody(st, tailContent.String(), w))
+		parts = append(parts, renderBody(tailContent.String(), w))
 	}
 	// 终态消息拼在最后（引擎置 fatal 后 park，不再有新记录）
 	if st.lastFatal != nil && st.lastFatal.Text != "" {
@@ -160,7 +160,7 @@ func flushTail(st *pullState, tailReasoning, tailContent *strings.Builder, w int
 		parts = append(parts, renderThinking(tailReasoning.String(), w))
 	}
 	if tailContent.Len() > 0 {
-		parts = append(parts, renderBody(st, tailContent.String(), w))
+		parts = append(parts, renderBody(tailContent.String(), w))
 	}
 	tailReasoning.Reset()
 	tailContent.Reset()
@@ -178,7 +178,7 @@ func userBlock(st *pullState, text string, w int) string {
 	if gw < 10 {
 		gw = 10
 	}
-	out, err := st.glamRenderer.user(text, gw)
+	out, err := renderMarkdownUser(text, gw)
 	if err != nil {
 		out = text // 渲染失败退回原文，别把输入吞掉
 	}
@@ -200,12 +200,12 @@ const userBarFrameW = 2
 
 // renderBody 用 glamour 渲染助手正文（crush Markdown StyleConfig）。ANSI 输出
 // 直接进 viewport——bubbletea 渲染器本身就是 ANSI 消费者。
-func renderBody(st *pullState, content string, w int) string {
+func renderBody(content string, w int) string {
 	gw := w - msgIndentW
 	if gw < 10 {
 		gw = 10
 	}
-	out, err := st.glamRenderer.main(content, gw)
+	out, err := renderMarkdownMain(content, gw)
 	if err != nil {
 		out = content // 渲染失败退回原文，别把整条回复吞掉
 	}
@@ -258,56 +258,43 @@ func renderFatal(text, style string) string {
 	}
 }
 
-// ── glamour renderer 缓存（按宽度，pull 链单 goroutine 串行使用）──
+// ── glamour 渲染（每次直建）──
+//
+// 不缓存渲染器：单次构建实测 ~28µs（composebench 消融微基准），每帧几十条
+// 消息合计 <1ms，缓存不值得（曾按宽度 memoize，消融判定为冗余已删）。
 
-// glamourCache 按宽度缓存 main（助手正文）/user（用户输入，保留换行）两个
-// renderer。重建要解析一遍 style 配置，不能每条消息重建。
-type glamourCache struct {
-	mainR *glamour.TermRenderer
-	userR *glamour.TermRenderer
-	width int
-}
-
-// renderOut 渲染器落缓存（宽度变化时重建）。
-func (c *glamourCache) renderOut(w int) error {
-	if c.width == w && c.mainR != nil && c.userR != nil {
-		return nil
-	}
-	// 宽度小于 40 时 glamour 样式会严重劣化，兜底 80
+// newGlamourRenderer 构建终端 markdown 渲染器（宽度小于 40 时 glamour 样式
+// 会严重劣化，兜底 80）。
+func newGlamourRenderer(w int, preserveNL bool) (*glamour.TermRenderer, error) {
 	if w < 40 {
 		w = 80
 	}
-	r, err := glamour.NewTermRenderer(
+	opts := []glamour.TermRendererOption{
 		glamour.WithStyles(markdownStyle()),
 		glamour.WithWordWrap(w),
-	)
-	if err != nil {
-		return err
 	}
-	ur, err := glamour.NewTermRenderer(
-		glamour.WithStyles(markdownStyle()),
-		glamour.WithWordWrap(w),
-		glamour.WithPreservedNewLines(),
-	)
-	if err != nil {
-		return err
+	if preserveNL {
+		opts = append(opts, glamour.WithPreservedNewLines())
 	}
-	c.mainR, c.userR, c.width = r, ur, w
-	return nil
+	return glamour.NewTermRenderer(opts...)
 }
 
-func (c *glamourCache) main(in string, w int) (string, error) {
-	if err := c.renderOut(w); err != nil {
+// renderMarkdownMain 助手正文 → glamour 渲染。
+func renderMarkdownMain(content string, w int) (string, error) {
+	r, err := newGlamourRenderer(w, false)
+	if err != nil {
 		return "", err
 	}
-	return c.mainR.Render(in)
+	return r.Render(content)
 }
 
-func (c *glamourCache) user(in string, w int) (string, error) {
-	if err := c.renderOut(w); err != nil {
+// renderMarkdownUser 用户输入 → glamour 渲染（保留换行）。
+func renderMarkdownUser(text string, w int) (string, error) {
+	r, err := newGlamourRenderer(w, true)
+	if err != nil {
 		return "", err
 	}
-	return c.userR.Render(in)
+	return r.Render(text)
 }
 
 // ── crush 风格 markdown StyleConfig ──────────────────────

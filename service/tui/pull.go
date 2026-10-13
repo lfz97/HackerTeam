@@ -35,11 +35,10 @@ type pullState struct {
 	lastFatal     *wireFatal
 	view          string // 最近一次重组的视图全文（帧恒携带，重复帧交给框架去重）
 	width         int    // 本轮重组用的组件宽度（glamour 按此换行）
-	glamRenderer  *glamourCache
 }
 
 func newPullState() *pullState {
-	return &pullState{glamRenderer: &glamourCache{}}
+	return &pullState{}
 }
 
 // pullCmd 是 pull 链的 Elm 载体：tea.Tick 到点后在 cmd goroutine 上执行一轮

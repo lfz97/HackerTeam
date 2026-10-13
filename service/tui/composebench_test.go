@@ -130,7 +130,6 @@ func BenchmarkComposeCold(b *testing.B) {
 		lexMu.Lock()
 		lexCache = map[string]chroma.Lexer{}
 		lexMu.Unlock()
-		st.glamRenderer = &glamourCache{}
 		_ = t.composeView(st)
 	}
 }

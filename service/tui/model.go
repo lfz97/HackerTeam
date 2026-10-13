@@ -36,22 +36,18 @@ type wireSkillItem struct {
 }
 
 // wireRecord 消息日志记录：type 承载消息类型。
-//   - delta / message：msg 为框架 model.Message 原样（框架自带 json 标签，两端同型收发）；
-//     Role=tool 的记录可携带 meta（引擎 sidecar 下发的工具结果旁路元数据，
-//     与发给模型的 content 无关的渲染增强数据）
+//   - delta / message：msg 为框架 model.Message 原样（框架自带 json 标签，两端同型收发）
 //   - user / slash / warn / error / summary：text 为语义原文
 type wireRecord struct {
 	Type string          `json:"type"`
 	Msg  json.RawMessage `json:"msg,omitempty"`
 	Text string          `json:"text,omitempty"`
-	Meta json.RawMessage `json:"meta,omitempty"` // Role=tool 记录携带的 sidecar 旁路元数据（原始 JSON 对象）
 }
 
 // wireToolCall 待结果的工具调用缓冲条目（按 ToolCall.ID 索引）。
 type wireToolCall struct {
 	name string
 	args string
-	meta string // 引擎 sidecar 下发的渲染元数据 JSON（{"result":...,"meta":...}），可为空
 }
 
 // ── 事件循环消息 ─────────────────────────────────────────

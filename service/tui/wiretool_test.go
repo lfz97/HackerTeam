@@ -1,8 +1,8 @@
 package tui
 
-// wire 集成回归测试：engine 侧 wireToolMsg 产出的记录形状（meta 为原始 JSON
-// 对象）必须在 TUI 侧完整解析并渲染出工具块。历史上 wireRecord.Meta 曾被
-// 定义为 string，导致带 meta 的记录解析失败被静默跳过——所有工具块消失。
+// wire 集成回归测试：engine 侧 wireRecord 产出的记录形状必须在 TUI 侧完整
+// 解析并渲染出工具块（delta 分片参数续接 + Role=tool 结果配对）。历史上
+// 记录字段类型不匹配曾导致解析失败被静默跳过——所有工具块消失。
 
 import (
 	"encoding/json"
@@ -16,14 +16,13 @@ import (
 	tools "HackerTeam/service/engine/tools"
 )
 
-// engineWireToolRecord 构造与 engine.wireToolMsg 同形的记录 JSON。
-func engineWireToolRecord(t *testing.T, typ string, m model.Message, meta json.RawMessage) string {
+// engineWireToolRecord 构造与 engine.wireMsg 同形的记录 JSON。
+func engineWireToolRecord(t *testing.T, typ string, m model.Message) string {
 	t.Helper()
 	b, err := json.Marshal(struct {
-		Type string          `json:"type"`
-		Msg  *model.Message  `json:"msg,omitempty"`
-		Meta json.RawMessage `json:"meta,omitempty"`
-	}{typ, &m, meta})
+		Type string         `json:"type"`
+		Msg  *model.Message `json:"msg,omitempty"`
+	}{typ, &m})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +47,7 @@ func TestWireRecordWithMetaRendersToolBlock(t *testing.T) {
 					Arguments: []byte(frag),
 				},
 			}},
-		}, nil)
+		})
 		var rec wireRecord
 		if err := json.Unmarshal([]byte(callRec), &rec); err != nil {
 			t.Fatalf("call record unmarshal: %v", err)
@@ -60,23 +59,23 @@ func TestWireRecordWithMetaRendersToolBlock(t *testing.T) {
 		bufferToolCalls(&m, toolBuf)
 	}
 
-	// 2) 工具结果记录带 sidecar meta（原始 JSON 对象——回归触发点）
+	// 2) 工具结果记录
 	resultRec := engineWireToolRecord(t, "message", model.Message{
 		Role:    "tool",
 		ToolID:  "t1",
 		Content: `{"BytesWritten":44}`,
-	}, json.RawMessage(`{"result":{"BytesWritten":44}}`))
+	})
 	var rec2 wireRecord
 	if err := json.Unmarshal([]byte(resultRec), &rec2); err != nil {
-		t.Fatalf("REGRESSION: result record with meta failed to parse: %v", err)
+		t.Fatalf("REGRESSION: result record failed to parse: %v", err)
 	}
 	var m2 model.Message
 	if err := json.Unmarshal(rec2.Msg, &m2); err != nil {
 		t.Fatalf("result msg unmarshal: %v", err)
 	}
 
-	// 3) composeView 同款路径：Role=tool → renderToolResult(meta)
-	out := renderToolResult(&m2, toolBuf, 120, string(rec2.Meta))
+	// 3) composeView 同款路径：Role=tool → renderToolResult
+	out := renderToolResult(&m2, toolBuf, 120)
 	if out == "" {
 		t.Fatalf("tool block not rendered (entry not matched?)")
 	}

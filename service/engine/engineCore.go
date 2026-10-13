@@ -55,10 +55,6 @@ type Engine struct {
 	// 状态流转见 errorBudget.go 的 errorBudget 类型。
 	errBudget errorBudget
 
-	// sidecar 工具结果旁路通道（AfterTool 回调写入、emitChoice 消费，
-	// 见 toolmeta.go）——模型上下文不受影响。
-	sidecar *toolSidecar
-
 	// ── 对上层 UI 暴露的可观察状态（pull 契约，方法见 uistate.go）──
 	mu        sync.Mutex // 串行化引擎各 goroutine 的写入与 UI goroutine 的读取
 	records   []string
@@ -81,7 +77,6 @@ func GetEngineService(name string) *Engine {
 		interruptCh: make(chan struct{}),
 		notice:      notice{Kind: NoticeNone},
 		errBudget:   newErrorBudget(defaultErrorMaxTimes, defaultErrorSleepGap),
-		sidecar:     newToolSidecar(),
 	}
 }
 

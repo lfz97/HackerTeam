@@ -128,12 +128,10 @@ func (e *Engine) AppendSummary(text string) { e.appendTyped(RecSummary, text) }
 // AppendRecordJSON 追加一条已序列化的 JSON 记录（emitChoice 的透传序列化产物走这里）。
 func (e *Engine) AppendRecordJSON(raw string) { e.appendRecord(raw) }
 
-// wireRecord 消息记录的 JSON 形状：type 承载消息类型，msg 为框架 message 原样，
-// meta 为工具结果旁路元数据（仅 Role=tool 记录携带；模型上下文不含此字段）。
+// wireRecord 消息记录的 JSON 形状：type 承载消息类型，msg 为框架 message 原样。
 type wireRecord struct {
-	Type string          `json:"type"`
-	Msg  *model.Message  `json:"msg,omitempty"`
-	Meta json.RawMessage `json:"meta,omitempty"`
+	Type string         `json:"type"`
+	Msg  *model.Message `json:"msg,omitempty"`
 }
 
 func wireMsg(typ string, m model.Message) string {
@@ -144,16 +142,6 @@ func wireMsg(typ string, m model.Message) string {
 	return string(b)
 }
 
-// wireToolMsg 同 wireMsg，但附带工具结果旁路元数据（sidecar 按 ToolID 取，
-// take-once：delta 与 message 双路径先到先得）。
-func (e *Engine) wireToolMsg(typ string, m model.Message) string {
-	meta := e.sidecar.consume(m.ToolID)
-	b, err := json.Marshal(wireRecord{Type: typ, Msg: &m, Meta: meta})
-	if err != nil {
-		return "" // 防御性兜底
-	}
-	return string(b)
-}
 
 // emitChoice 把框架 Response choice 透传序列化进消息日志——引擎只传原始 message
 // （model.Message 自带 json 标签），增量/完整靠 type 字段区分；怎么渲染是 UI 的事。
@@ -166,11 +154,7 @@ func (e *Engine) emitChoice(choice model.Choice, isPartial bool) {
 			d.ReasoningContent = ""
 		}
 		if d.Content != "" || d.ReasoningContent != "" || len(d.ToolCalls) != 0 || d.Role == "tool" {
-			if d.Role == "tool" {
-				e.AppendRecordJSON(e.wireToolMsg("delta", d))
-			} else {
-				e.AppendRecordJSON(wireMsg("delta", d))
-			}
+			e.AppendRecordJSON(wireMsg("delta", d))
 		}
 	}
 	if !isPartial {
@@ -179,11 +163,7 @@ func (e *Engine) emitChoice(choice model.Choice, isPartial bool) {
 			m.ReasoningContent = ""
 		}
 		if strings.TrimSpace(m.Content) != "" || len(m.ToolCalls) != 0 || m.Role == "tool" {
-			if m.Role == "tool" {
-				e.AppendRecordJSON(e.wireToolMsg("message", m))
-			} else {
-				e.AppendRecordJSON(wireMsg("message", m))
-			}
+			e.AppendRecordJSON(wireMsg("message", m))
 		}
 	}
 }

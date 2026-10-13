@@ -54,13 +54,9 @@ func argPath(obj map[string]any) string {
 	return ""
 }
 
-// resultObjectOf 结果对象解析（sidecar meta 优先），非对象返回 nil。
-func resultObjectOf(result, meta string) map[string]any {
-	raw := result
-	if m := sidecarResult(meta); m != "" {
-		raw = m
-	}
-	obj, _ := decodeJSONObject([]byte(strings.TrimSpace(raw)))
+// resultObjectOf 结果对象解析，非对象返回 nil。
+func resultObjectOf(result string) map[string]any {
+	obj, _ := decodeJSONObject([]byte(strings.TrimSpace(result)))
 	return obj
 }
 
@@ -225,12 +221,8 @@ func padRight(s string, w int) string {
 
 // resultParts 结果解析：JSON 对象按 mapper.Out 顺序提取字段——标量成行、
 // 多行内容成块；非对象结果（JSON 字符串或原文）整体按内容类型路由。
-// 空/()/{} 无输出。meta 为引擎 sidecar 旁路元数据时其 result 优先
-// （对模型侧结果压缩免疫）。
-func resultParts(name string, result string, meta string) ([]kvRow, []textBlock) {
-	if raw := sidecarResult(meta); raw != "" {
-		result = raw
-	}
+// 空/()/{} 无输出。
+func resultParts(name string, result string) ([]kvRow, []textBlock) {
 	s := strings.TrimSpace(result)
 	if s == "" || s == "{}" || s == "()" {
 		return nil, nil
@@ -274,28 +266,6 @@ func resultParts(name string, result string, meta string) ([]kvRow, []textBlock)
 		return nil, []textBlock{{text: str, isDiff: isDiff(str)}}
 	}
 	return []kvRow{{key: "result", val: truncateRunes(compactLine(str), argValueMaxRunes)}}, nil
-}
-
-// sidecarResult 从引擎旁路元数据提取原始结果文本，无/无效返回空串。
-// 引擎侧负载形状见 engine/toolmeta.go：{"result": <原始结果>, "meta": {...}}。
-func sidecarResult(meta string) string {
-	if strings.TrimSpace(meta) == "" {
-		return ""
-	}
-	var payload struct {
-		Result json.RawMessage `json:"result"`
-	}
-	if err := json.Unmarshal([]byte(meta), &payload); err != nil || len(payload.Result) == 0 {
-		return ""
-	}
-	var v any
-	if json.Unmarshal(payload.Result, &v) != nil || v == nil {
-		return "" // null/坏数据：静默回退 content 路径
-	}
-	if s, ok := v.(string); ok {
-		return s // 字符串结果（cronagent 等）：解开引号直接用
-	}
-	return string(payload.Result) // 对象/数组/标量：紧凑 JSON 走常规解析
 }
 
 // isMultiline 清洗后含真实换行（≥2 行）即多行内容。
@@ -381,8 +351,7 @@ var diffHeaderVerbs = map[string]string{
 // toolView 工具块总装：头部行（✓ name）→ 参数字段行（most-subtle，最暗）→
 // 空行分段 → 结果标量行 + 多行内容块（muted，亮一档）。参数与结果行同列
 // 对齐，仅靠空行与明暗区分段。w 为块可用总宽（msgIndent 的缩进已扣）。
-// meta 为引擎 sidecar 旁路元数据（原始结果优先于 content 解析）。
-func toolView(name string, args []byte, result string, w int, meta string) string {
+func toolView(name string, args []byte, result string, w int) string {
 	avail := w - msgIndentW - 4 // 扣 msgIndent(2) 与块内容 4 空格缩进
 	if avail < 10 {
 		avail = 10
@@ -392,14 +361,14 @@ func toolView(name string, args []byte, result string, w int, meta string) strin
 	path := argPath(argsObj)
 
 	argRowList := argRows(name, args)
-	resRows, blocks := resultParts(name, result, meta)
+	resRows, blocks := resultParts(name, result)
 
 	// 代码内容：响应侧字段（WriteFile/ReadFile 的 content/Content）渲染为
 	// 高亮代码块——实际写入/读出的内容，响应为准。参数侧同名字段不再渲染
 	// 兜底，仅在下方从参数值行摘除（同一数据不重复展示）。
 	var codeLines []string
 	if resCode := codeResultFields[name]; resCode != "" {
-		if obj := resultObjectOf(result, meta); obj != nil {
+		if obj := resultObjectOf(result); obj != nil {
 			if s, ok := obj[resCode].(string); ok && strings.TrimSpace(s) != "" {
 				codeLines = codeBlockLines(path, s, avail)
 			}

@@ -118,7 +118,7 @@ func TestResultPartsDiffRouting(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"edit": {Name: "edit", In: []string{"Path"}, Out: []string{"Diff"}},
 	})
-	rows, blocks := resultParts("edit", `{"Diff":`+strconv.Quote(testDiff)+`}`, "")
+	rows, blocks := resultParts("edit", `{"Diff":`+strconv.Quote(testDiff)+`}`)
 	if len(rows) != 0 || len(blocks) != 1 {
 		t.Fatalf("want 0 rows 1 block, got %d rows %d blocks", len(rows), len(blocks))
 	}
@@ -131,7 +131,7 @@ func TestResultPartsLongTextRouting(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"exec": {Name: "exec", In: []string{"Cmd"}, Out: []string{"Output"}},
 	})
-	rows, blocks := resultParts("exec", `{"Output":"total 24\ndrwxr-xr-x 5\n-rw-r--r-- 1"}`, "")
+	rows, blocks := resultParts("exec", `{"Output":"total 24\ndrwxr-xr-x 5\n-rw-r--r-- 1"}`)
 	if len(rows) != 0 || len(blocks) != 1 || blocks[0].isDiff {
 		t.Fatalf("want 1 text block, got rows=%#v blocks=%#v", rows, blocks)
 	}
@@ -141,7 +141,7 @@ func TestResultPartsScalarRow(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"write": {Name: "write", In: []string{"Path"}, Out: []string{"BytesWritten"}},
 	})
-	rows, blocks := resultParts("write", `{"BytesWritten":1234}`, "")
+	rows, blocks := resultParts("write", `{"BytesWritten":1234}`)
 	if len(rows) != 1 || rows[0].key != "BytesWritten" || rows[0].val != "1234" || len(blocks) != 0 {
 		t.Fatalf("want scalar row, got rows=%#v blocks=%#v", rows, blocks)
 	}
@@ -150,12 +150,12 @@ func TestResultPartsScalarRow(t *testing.T) {
 func TestResultPartsNonObjectResult(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{})
 	// JSON 字符串整体路由为内容块
-	_, blocks := resultParts("raw", `"line1\nline2\nline3"`, "")
+	_, blocks := resultParts("raw", `"line1\nline2\nline3"`)
 	if len(blocks) != 1 || blocks[0].isDiff {
 		t.Fatalf("want text block, got %#v", blocks)
 	}
 	// 非法 JSON 原文兜底
-	rows, _ := resultParts("raw", `plain result`, "")
+	rows, _ := resultParts("raw", `plain result`)
 	if len(rows) != 1 || rows[0].key != "result" || rows[0].val != "plain result" {
 		t.Fatalf("want result fallback row, got %#v", rows)
 	}
@@ -164,7 +164,7 @@ func TestResultPartsNonObjectResult(t *testing.T) {
 func TestResultPartsEmpty(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{})
 	for _, s := range []string{"", "{}", "()", "   "} {
-		if rows, blocks := resultParts("x", s, ""); len(rows) != 0 || len(blocks) != 0 {
+		if rows, blocks := resultParts("x", s); len(rows) != 0 || len(blocks) != 0 {
 			t.Fatalf("want nothing for %q, got %#v %#v", s, rows, blocks)
 		}
 	}
@@ -202,7 +202,7 @@ func TestToolViewAssembly(t *testing.T) {
 		"edit": {Name: "edit", In: []string{"Path"}, Out: []string{"Diff"}},
 	})
 	args := []byte(`{"Path":"service/tui/render.go"}`)
-	out := toolView("edit", args, `{"Diff":"--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new"}`, 120, "")
+	out := toolView("edit", args, `{"Diff":"--- a/x.go\n+++ b/x.go\n@@ -1 +1 @@\n-old\n+new"}`, 120)
 	lines := strings.Split(out, "\n")
 	// header + ←Edit 块头（Path 行摘除）+ 空行 + 2 行内容（diff 头行不渲染）
 	if len(lines) != 5 {
@@ -239,7 +239,7 @@ func TestToolViewKeyAlignment(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"x": {Name: "x", In: []string{"K", "LongerKey"}, Out: []string{"R"}},
 	})
-	out := toolView("x", []byte(`{"K":"v1","LongerKey":"v2"}`), `{"R":"ok"}`, 120, "")
+	out := toolView("x", []byte(`{"K":"v1","LongerKey":"v2"}`), `{"R":"ok"}`, 120)
 	lines := strings.Split(out, "\n")
 	if len(lines) != 5 { // header + 2 参数 + 空行 + 1 结果
 		t.Fatalf("want 5 lines, got %d:\n%s", len(lines), out)
@@ -262,7 +262,7 @@ func TestToolViewSectionBrightness(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"x": {Name: "x", In: []string{"K"}, Out: []string{"R"}},
 	})
-	out := toolView("x", []byte(`{"K":"v"}`), `{"R":"v"}`, 120, "")
+	out := toolView("x", []byte(`{"K":"v"}`), `{"R":"v"}`, 120)
 	lines := strings.Split(out, "\n")
 	// 参数 #605F6B（96;95;107）、结果 #858392（133;131;146）——明暗区分
 	if !strings.Contains(lines[1], "96;95;107") {
@@ -288,21 +288,21 @@ func TestToolViewBlankLineOnlyBetweenSections(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"p": {Name: "p", In: []string{"K"}, Out: nil},
 	})
-	if out := toolView("p", []byte(`{"K":"v"}`), "", 120, ""); visBlanks(out) != 0 {
+	if out := toolView("p", []byte(`{"K":"v"}`), "", 120); visBlanks(out) != 0 {
 		t.Errorf("unexpected blank line (params only):\n%s", out)
 	}
 	// 只有结果：无空行
 	withMappers(t, map[string]*tools.ParamMapper{
 		"r": {Name: "r", In: nil, Out: []string{"R"}},
 	})
-	if out := toolView("r", nil, `{"R":"v"}`, 120, ""); visBlanks(out) != 0 {
+	if out := toolView("r", nil, `{"R":"v"}`, 120); visBlanks(out) != 0 {
 		t.Errorf("unexpected blank line (result only):\n%s", out)
 	}
 	// 都有：恰一行空行
 	withMappers(t, map[string]*tools.ParamMapper{
 		"b": {Name: "b", In: []string{"K"}, Out: []string{"R"}},
 	})
-	if out := toolView("b", []byte(`{"K":"v"}`), `{"R":"v"}`, 120, ""); visBlanks(out) != 1 {
+	if out := toolView("b", []byte(`{"K":"v"}`), `{"R":"v"}`, 120); visBlanks(out) != 1 {
 		t.Errorf("want exactly one blank separator:\n%s", out)
 	}
 }
@@ -354,7 +354,7 @@ func TestToolViewRowWrapNarrowWidth(t *testing.T) {
 	})
 	// w=20：avail=14，值 41 个全宽字符必然折行；任何行显示宽不得越过
 	// w - msgIndentW = 18
-	out := toolView("x", []byte(`{"K":"`+strings.Repeat("一", 45)+`"}`), "", 20, "")
+	out := toolView("x", []byte(`{"K":"`+strings.Repeat("一", 45)+`"}`), "", 20)
 	lines := strings.Split(out, "\n")
 	if len(lines) < 3 {
 		t.Fatalf("value not wrapped:\n%s", out)
@@ -369,38 +369,9 @@ func TestToolViewRowWrapNarrowWidth(t *testing.T) {
 	}
 }
 
-func TestToolViewMetaPreferred(t *testing.T) {
-	withMappers(t, map[string]*tools.ParamMapper{
-		"write": {Name: "write", In: []string{"Path"}, Out: []string{"BytesWritten"}},
-	})
-	// 模拟未来模型侧结果压缩：content 只剩摘要，sidecar 保留原始结果
-	meta := `{"result":{"BytesWritten":4821}}`
-	out := toolView("write", []byte(`{"Path":"x.go"}`), `{"BytesWritten":0}`, 120, meta)
-	if !strings.Contains(ansi.Strip(out), "4821") {
-		t.Errorf("sidecar result not preferred:\n%s", out)
-	}
-	if strings.Contains(ansi.Strip(out), "0") && strings.Contains(out, "BytesWritten") {
-		t.Errorf("content result should be overridden")
-	}
-}
-
-func TestToolViewMetaInvalidFallsBack(t *testing.T) {
-	withMappers(t, map[string]*tools.ParamMapper{
-		"write": {Name: "write", In: []string{"Path"}, Out: []string{"BytesWritten"}},
-	})
-	// 空/坏 JSON/null 结果：静默回退 content 路径。
-	// （数值/字符串是合法 sidecar 结果，不走回退，另见 TestToolViewMetaPreferred）
-	for _, meta := range []string{"", "not json", `{"result":null}`} {
-		out := toolView("write", []byte(`{"Path":"x.go"}`), `{"BytesWritten":4821}`, 120, meta)
-		if !strings.Contains(ansi.Strip(out), "4821") {
-			t.Errorf("meta %q should fall back to content:\n%s", meta, out)
-		}
-	}
-}
-
 func TestToolViewEmptyArgsResult(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{})
-	out := toolView("date_now", nil, "", 120, "")
+	out := toolView("date_now", nil, "", 120)
 	lines := strings.Split(out, "\n")
 	if len(lines) != 1 || !strings.Contains(lines[0], "date_now") {
 		t.Fatalf("want header only, got:\n%s", out)
@@ -441,7 +412,7 @@ func TestResultPartsListExpansion(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"glob": {Name: "glob", In: []string{"Regex"}, Out: []string{"Matches"}},
 	})
-	rows, blocks := resultParts("glob", `{"Matches":"[\"a.go\",\"b.go\",\"c.go\"]"}`, "")
+	rows, blocks := resultParts("glob", `{"Matches":"[\"a.go\",\"b.go\",\"c.go\"]"}`)
 	if len(rows) != 0 || len(blocks) != 1 {
 		t.Fatalf("want 0 rows 1 block, got rows=%#v blocks=%#v", rows, blocks)
 	}
@@ -474,7 +445,7 @@ func TestToolViewSearchInFileFallback(t *testing.T) {
 		"search": {Name: "search", In: []string{"Path", "Regex"}, Out: nil},
 	})
 	res := `{"10":"m10","2":"m2","0":"m0"}`
-	out := toolView("search", []byte(`{"Path":"x.go","Regex":"foo"}`), res, 120, "")
+	out := toolView("search", []byte(`{"Path":"x.go","Regex":"foo"}`), res, 120)
 	lines := strings.Split(out, "\n")
 	// header + 2 参数行 + 空行 + 3 结果行
 	if len(lines) != 7 {

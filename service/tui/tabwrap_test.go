@@ -29,7 +29,7 @@ func TestBlockWithTabsNoOverflow(t *testing.T) {
 	out := toolView("LocalExec_run",
 		[]byte(`{"Process":"bash","Args":["-c","tail"]}`),
 		`{"Id":"x","Status":"done","ExitCode":0,"Output":`+quoteJSON(logLine)+`}`,
-		110, "")
+		110)
 	padded := msgIndent.Render(out)
 	for i, ln := range strings.Split(padded, "\n") {
 		if w := ansi.StringWidth(ln); w > 110 {

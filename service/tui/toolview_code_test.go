@@ -95,7 +95,7 @@ func TestToolViewWriteFileArgsContentSuppressed(t *testing.T) {
 	// 响应无 content（如出错路径）：参数 Content 行仍摘除（避免与响应
 	// content 代码块重复），参数侧不再渲染兜底块——响应为准
 	args := []byte(`{"path":"x.go","content":"func main() {\n\treturn 42\n}\n"}`)
-	out := toolView("write", args, `{"wrote":44}`, 120, "")
+	out := toolView("write", args, `{"wrote":44}`, 120)
 	flat := ansi.Strip(out)
 	if strings.Contains(flat, "func main()") {
 		t.Errorf("args-side content fallback should be gone:\n%s", flat)
@@ -175,7 +175,7 @@ func TestToolViewWriteFileResultContent(t *testing.T) {
 	// 结果行不重复展示 content 截断值
 	args := []byte(`{"Path":"x.py","content":"print(1)\nprint(2)\n"}`)
 	result := `{"wrote":20,"content":"print(1)\nprint(2)\n"}`
-	out := toolView("write", args, result, 120, `{"result":{"wrote":20,"content":"print(1)\nprint(2)\n"}}`)
+	out := toolView("write", args, result, 120)
 	flat := ansi.Strip(out)
 	if !strings.Contains(flat, "print(1)") || !strings.Contains(flat, "print(2)") {
 		t.Errorf("result content not rendered as code block:\n%s", flat)
@@ -193,7 +193,7 @@ func TestToolViewBodySectionLines(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"CD": {Name: "CD", In: []string{"Path"}, Out: []string{"CwdNow"}},
 	})
-	out := toolView("CD", []byte(`{"Path":"/tmp"}`), `{"CwdNow":"/home/x"}`, 120, "")
+	out := toolView("CD", []byte(`{"Path":"/tmp"}`), `{"CwdNow":"/home/x"}`, 120)
 	lines := strings.Split(out, "\n")
 	// 头部行无竖线
 	if strings.HasPrefix(ansi.Strip(lines[0]), "│") {
@@ -222,7 +222,7 @@ func TestToolViewReadFileContent(t *testing.T) {
 	})
 	// ReadFile 响应的 Content（实际读出的内容）渲染为高亮代码块
 	result := `{"length":28,"content":"func main() {\n\treturn 42\n}\n"}`
-	out := toolView("read", []byte(`{"Path":"x.go","Bytes":1024}`), result, 120, "")
+	out := toolView("read", []byte(`{"Path":"x.go","Bytes":1024}`), result, 120)
 	flat := ansi.Strip(out)
 	if !strings.Contains(flat, "func main()") || !strings.Contains(flat, "return 42") {
 		t.Errorf("read content not rendered as code block:\n%s", flat)

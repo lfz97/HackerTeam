@@ -103,9 +103,9 @@ func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 		st.lastFatal = rs.Fatal
 		st.pending = true
 	}
-	// 宽度变化强制重组：resize 后旧宽度排版的帧（尤其表格行）只靠
-	// wrapViewText 词级软换行兜底——表格行被从词边界打断成无分隔符的
-	// 裸续行。pullCmd 续链捕获的新宽度到达时立即按新宽度全量重组
+	// 宽度变化强制重组：applyViewText 不改写内容（宽度只有一个权威），
+	// resize 后旧宽度帧原样显示，pullCmd 续链捕获的新宽度到达时立即
+	// 按新宽度全量重组
 	// （绕过 composeInterval 节流：resize 是稀疏事件，兜底中间帧本就该
 	// 尽快替换。在途旧宽度 tick 的 w 未变不触发，下一 tick 新宽度触发）。
 	widthChanged := st.composedWidth != w && w > 0

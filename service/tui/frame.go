@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 )
 
 // applyFrame 把 pull 链的一帧落到 model 上。
@@ -62,11 +61,14 @@ func (t *TUI) applyFrame(m frameMsg) (tea.Model, tea.Cmd) {
 	return t, tea.Batch(cmds...)
 }
 
-// applyViewText 把视图全文写入 viewport（按当前宽度软换行，视口底部跟随）。
+// applyViewText 把视图全文写入 viewport（视口底部跟随）。
+// 不做任何改写/重排：compose 的产物即最终形态（宽度只有一个权威）。
+// resize 后旧宽度帧原样显示一瞬（≤一个 pull 周期），widthChanged 重组
+// 随即替换——宁可短暂旧排版，不做静默内容改写。
 func (t *TUI) applyViewText(text string) {
 	t.viewText = text
 	wasBottom := t.vp.AtBottom() // 必须在写入前获取：写入后内容变长，同一滚动位置会被误判成"不在底部"
-	t.vp.SetContent(wrapViewText(text, t.componentWidth()))
+	t.vp.SetContent(strings.TrimRight(text, "\n"))
 	if wasBottom { //在底部就跳底刷新，实现消息持续跟随
 		t.vp.GotoBottom()
 	}
@@ -91,15 +93,4 @@ func (t *TUI) recalcPadding() {
 	t.rightPadding = basePad + extra - extra/2
 }
 
-// wrapViewText 按宽度软换行。提交时用 lipgloss 根据窗口宽度软换行，
-// 不在 viewport 渲染时软换行，提高性能（长文本只重排一次而不是每帧重算）。
-// tab 展开是兜底安全网：任何来源（思考/正文/用户粘贴/工具块）的 tab 都在
-// 这里展开——ANSI 宽度测量把 \t 计 0 列而终端展开 8 列制表位，不展开则
-// 测量低估导致越界（cleanBlock/compactLine 已处理各自入口，此处兜住其余）。
-func wrapViewText(text string, width int) string {
-	if width <= 0 {
-		return strings.TrimRight(text, "\n")
-	}
-	return lipgloss.NewStyle().Width(width).Render(
-		strings.ReplaceAll(strings.TrimRight(text, "\n"), "\t", tabSpaces))
-}
+

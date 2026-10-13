@@ -3,7 +3,6 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"charm.land/glamour/v2"
@@ -198,11 +197,6 @@ const thinkingFrameW = 2
 // userBarFrameW 用户消息左线占宽：边框(1) + 内边距(1)。
 const userBarFrameW = 2
 
-// glamourTailPad 匹配行尾的"空白 + ANSI 序列"混合填充。glamour 会把标题、表格、
-// 代码块的每一行都补满整行宽度，每个空格还裹一层 SGR：实测 153B 的 markdown
-// 渲染后是 12.7KB，其中 92% 是这种填充。消息区每帧全量重绘、每次重组都要扫
-// 一遍整个 buffer，所以必须剥掉。
-var glamourTailPad = regexp.MustCompile(`(?:\x1b\[[0-9;]*m|[ \t])+$`)
 
 // renderBody 用 glamour 渲染助手正文（crush Markdown StyleConfig）。ANSI 输出
 // 直接进 viewport——bubbletea 渲染器本身就是 ANSI 消费者。
@@ -219,19 +213,10 @@ func renderBody(st *pullState, content string, w int) string {
 	return msgIndent.Render(strings.TrimRight(out, "\n"))
 }
 
-// stripGlamourPad 剥掉 glamour 输出的首尾换行与行尾填充，并补回行尾 reset
-// （剥填充会连带剥掉闭合样式的 SGR，不补则颜色泄漏到后续行）。
+// stripGlamourPad 剥掉 glamour 输出首尾的空行（块级 trim）。
+// 不再剥行尾填充（性能投机层已删，见 HyperBot 5309cc0）。
 func stripGlamourPad(out string) string {
-	out = strings.TrimRight(strings.TrimLeft(out, "\n\r"), "\n\r ")
-	lines := strings.Split(out, "\n")
-	for i, l := range lines {
-		l = glamourTailPad.ReplaceAllString(l, "")
-		if l != "" && !strings.HasSuffix(l, "\x1b[m") {
-			l += "\x1b[m"
-		}
-		lines[i] = l
-	}
-	return strings.Join(lines, "\n")
+	return strings.Trim(out, "\n\r")
 }
 
 // renderNotice 见 engine.go/notice 相关：把通知槽位翻译成带色文本（文案配色

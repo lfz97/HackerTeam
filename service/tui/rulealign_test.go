@@ -22,8 +22,8 @@ const ruleMisalignMD = `| 检查项 | 状态 | 结果 |
 
 func TestTableRuleAlignment(t *testing.T) {
 	st := &pullState{glamRenderer: &glamourCache{}}
-	// 生产路径：renderBody（含 msgIndent 预算）→ wrapViewText
-	final := wrapViewText(renderBody(st, ruleMisalignMD, 116), 116)
+	// 生产路径：renderBody（含 msgIndent 预算），applyViewText 不再改写
+	final := renderBody(st, ruleMisalignMD, 116)
 
 	var pos [][]int
 	for i, ln := range strings.Split(final, "\n") {

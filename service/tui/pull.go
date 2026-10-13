@@ -26,15 +26,16 @@ const (
 // 串行的（同一时刻至多一个 pullCmd 在飞：Init 发一个、applyFrame 每帧续一个，
 // 绝不并发两个，否则这里就是数据竞争），Update 从不触碰。
 type pullState struct {
-	seenVersion  uint64    // 已消费的消息日志版本
-	pending      bool      // 有待重组的视图（节流窗口内推迟，不会丢）
-	lastCompose  time.Time // 上次视图重组时间（节流）
-	banner       string    // 启动横幅（就绪后进视图头部，只渲染一次）
-	bannerDone   bool
-	lastFatal    *wireFatal
-	view         string // 最近一次重组的视图全文（帧恒携带，重复帧交给框架去重）
-	width        int    // 本轮重组用的组件宽度（glamour 按此换行）
-	glamRenderer *glamourCache
+	seenVersion   uint64    // 已消费的消息日志版本
+	pending       bool      // 有待重组的视图（节流窗口内推迟，不会丢）
+	lastCompose   time.Time // 上次视图重组时间（节流）
+	composedWidth int       // 当前 st.view 排版时的宽度（0=尚未排版，变化即强制重组）
+	banner        string    // 启动横幅（就绪后进视图头部，只渲染一次）
+	bannerDone    bool
+	lastFatal     *wireFatal
+	view          string // 最近一次重组的视图全文（帧恒携带，重复帧交给框架去重）
+	width         int    // 本轮重组用的组件宽度（glamour 按此换行）
+	glamRenderer  *glamourCache
 }
 
 func newPullState() *pullState {
@@ -102,9 +103,16 @@ func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 		st.lastFatal = rs.Fatal
 		st.pending = true
 	}
-	if st.pending && time.Since(st.lastCompose) >= composeInterval {
+	// 宽度变化强制重组：resize 后旧宽度排版的帧（尤其表格行）只靠
+	// wrapViewText 词级软换行兜底——表格行被从词边界打断成无分隔符的
+	// 裸续行。pullCmd 续链捕获的新宽度到达时立即按新宽度全量重组
+	// （绕过 composeInterval 节流：resize 是稀疏事件，兜底中间帧本就该
+	// 尽快替换。在途旧宽度 tick 的 w 未变不触发，下一 tick 新宽度触发）。
+	widthChanged := st.composedWidth != w && w > 0
+	if (st.pending && time.Since(st.lastCompose) >= composeInterval) || widthChanged {
 		st.pending = false
 		st.lastCompose = time.Now()
+		st.composedWidth = w
 		st.view = t.composeView(st)
 	}
 

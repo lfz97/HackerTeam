@@ -1,13 +1,14 @@
 package tui
 
 // 全量重放性能基准：真实规模会话（20 轮×重内容）测量 composeView 成本。
-// 实测结论（2026-10-13）：稳态 ~68ms/次（compose 节流 100ms 预算内），
-// 其中 chroma 高亮占 ~35ms——由 hlCache/lexCache 消掉；删缓存实测
-// 103ms（+52%），重会话下顶满节流预算。缓存因此保留（有基准背书，
-// 非投机）。glamour 渲染器缓存重置实测无差异（重建便宜），但 per-message
-// 直建未测，保守保留。真正的成本大头是 glamour 对正文的字位簇级重排版
-// （每次 compose 全量重做）——这是"真出现瓶颈再优化"的对象（届时考虑
-// 按记录内容哈希的结果级缓存）。
+// 消融结论（2026-10-13，稳态数据见下方各微基准）：
+//   - 全帧稳态 ~68ms/次（compose 节流 100ms 预算内）
+//   - chroma 双缓存（hlCache/lexCache）：删后 103ms（+52%），真有影响——保留
+//   - glamour 渲染器缓存：单次构建仅 ~28µs，per-message 直建合计 <1ms/帧，
+//     缓存冗余——已删，改每次直建
+//   - 成本大头是 glamour 对正文的字位簇级重排版（~1.5ms/条 × 每帧全量重放，
+//     profile ~65%）——"真出现瓶颈再优化"的对象（届时考虑按记录内容哈希的
+//     结果级缓存）
 //
 // 运行：go test ./service/tui/ -run XXX -bench BenchmarkCompose -benchtime 5x -count 3
 //

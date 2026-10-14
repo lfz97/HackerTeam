@@ -128,7 +128,11 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 		env.Notices = append(env.Notices, bootNotice{NoticeSuccess, "config folder not found, created default"})
 	}
 
-	// ③ 配置文件：不存在则写入默认模板，本次启动到此为止（须改完配置重启）
+	// ③ 框架日志重定向到文件：尽早静音 stderr——Check 与 TUI 并发启动，重定向越早，
+	// sqlite/gse/框架初始化等后续步骤的日志污染 TUI 的窗口越小（失败则静默跳过，保持默认输出）
+	env.redirectFrameworkLog()
+
+	// ④ 配置文件：不存在则写入默认模板，本次启动到此为止（须改完配置重启）
 	env.HackerTeamConfigPath = filepath.Join(env.ConfigFolderPath, hackerTeamConfig)
 	if _, err := os.Stat(env.HackerTeamConfigPath); err != nil {
 		if !os.IsNotExist(err) {
@@ -147,13 +151,10 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 		return env, nil
 	}
 
-	// ④ 5 个角色的 skills 文件夹：不存在则创建并从嵌入模板复制技能
+	// ⑤ 5 个角色的 skills 文件夹：不存在则创建并从嵌入模板复制技能
 	if err := env.checkRoleSkillFolders(); err != nil {
 		return nil, err
 	}
-
-	// ⑤ 框架日志重定向到文件，避免输出干扰 TUI（失败则静默跳过，保持默认输出）
-	env.redirectFrameworkLog()
 
 	// ⑥ 加载配置文件
 	cfg, err := config.LoadConfig(env.HackerTeamConfigPath)

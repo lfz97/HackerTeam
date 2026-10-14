@@ -35,8 +35,8 @@ func skillTextSize(boxW, boxH int) (textW, textH int) {
 }
 
 // helps 帮助浮层（demo 同款：居中圆角盒、上下选择、enter 插入指令）。
-// 默认项自持；技能项由调用方传入（每次打开时从引擎拉取——loadSkills 在
-// init/refresh 序列里随时可能重建列表，拉取式天然拿到最新版）。
+// 条目全部由调用方传入（每次打开时从引擎拉取，天然拿到最新版）；本结构体
+// 不自持任何默认项，引擎没发布时清单就是空的。
 type skills struct {
 	items   [][2]string
 	index   int
@@ -101,16 +101,32 @@ func (s *skills) toggleVisibility() {
 	s.visible = !s.visible
 }
 
+// moveUp/moveDown 清单为空时必须直接返回：取模的除数是 len(s.items)，
+// 引擎启动未完成（absorb 还没发布条目）时清单就是空的，不判会 panic。
 func (s *skills) moveUp() {
+	if len(s.items) == 0 {
+		return
+	}
 	s.index = (s.index - 1 + len(s.items)) % len(s.items)
 }
 
 func (s *skills) moveDown() {
+	if len(s.items) == 0 {
+		return
+	}
 	s.index = (s.index + 1) % len(s.items)
 }
 
-// refreshItems 重建帮助条目：默认项 + 引擎拉取的技能项（每次打开时调用，
-// 技能项由 engine.go 的 fetchHelpItems 解析好传入）。
+// selectedCmd 返回当前选中条目的指令；清单为空或索引越界时 ok=false。
+func (s *skills) selectedCmd() (string, bool) {
+	if s.index < 0 || s.index >= len(s.items) {
+		return "", false
+	}
+	return s.items[s.index][0], true
+}
+
+// Update 重建帮助条目（每次打开浮层时调用，条目由 engine.go 的
+// fetchSkillItems 解析好传入）。
 func (s *skills) Update(msg tea.Msg) tea.Cmd {
 	switch m := msg.(type) {
 	case []wireSkillItem:

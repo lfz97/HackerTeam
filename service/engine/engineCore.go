@@ -121,6 +121,7 @@ func (e *Engine) absorb(env *BootEnv) {
 	e.SqliteMemoryService = env.SqliteMemoryService
 	e.builtinTools = env.BuiltinTools
 	e.builtinToolsets = env.BuiltinToolsets
+	e.setSkillItems(env.HelpItems)
 	for role, folder := range env.RoleSkillFolders {
 		switch role {
 		case reconSkillsFolder:

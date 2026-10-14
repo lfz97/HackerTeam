@@ -34,9 +34,12 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return t, nil
 
 		} else if input == "enter" {
-			t.ta.InsertString(t.skills.items[t.skills.index][0] + " ") //把当前选中的命令写入到textarea里面去
-			t.skills.toggleVisibility()
-			t.recalcComponentSize()
+			//清单为空时无指令可插入，浮层保持打开（esc/ctrl+k 仍能关）
+			if cmd, ok := t.skills.selectedCmd(); ok {
+				t.ta.InsertString(cmd + " ") //把当前选中的命令写入到textarea里面去
+				t.skills.toggleVisibility()
+				t.recalcComponentSize()
+			}
 			return t, nil
 
 		} else {

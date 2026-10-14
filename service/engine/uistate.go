@@ -68,6 +68,21 @@ type SkillItem struct {
 	Desc string `json:"desc"`
 }
 
+var defaulthelps []SkillItem = []SkillItem{
+	SkillItem{
+		Cmd:  "/exit",
+		Desc: "Exit",
+	},
+	SkillItem{
+		Cmd:  "/new",
+		Desc: "start a new session",
+	},
+	SkillItem{
+		Cmd:  "/clear",
+		Desc: "clear the screen",
+	},
+}
+
 // notice 通知栏槽位内容。SetAt 供消费端计算 TTL（旧契约 4s，语义不变）。
 type notice struct {
 	Kind  string    `json:"kind"`
@@ -141,7 +156,6 @@ func wireMsg(typ string, m model.Message) string {
 	}
 	return string(b)
 }
-
 
 // emitChoice 把框架 Response choice 透传序列化进消息日志——引擎只传原始 message
 // （model.Message 自带 json 标签），增量/完整靠 type 字段区分；怎么渲染是 UI 的事。
@@ -263,7 +277,8 @@ func (e *Engine) setStartupInfo(lines []string) {
 	e.mu.Unlock()
 }
 
-// SkillItemsJSON 返回技能帮助项 JSON（[{"cmd","desc"}]；默认项 /new /exit 由消费端自持）。
+// SkillItemsJSON 返回帮助浮层条目 JSON（[{"cmd","desc"}]；/exit /new /clear
+// 全部条目都由引擎下发，消费端不自持默认项）。
 func (e *Engine) SkillItemsJSON() string {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -277,7 +292,7 @@ func (e *Engine) SkillItemsJSON() string {
 	return string(b)
 }
 
-// setSkillItems 整体替换技能帮助项（loadSkills 每次刷新都重建）。
+// setSkillItems 整体替换帮助浮层条目（absorb 在启动期发布一次）。
 func (e *Engine) setSkillItems(items []SkillItem) {
 	e.mu.Lock()
 	e.skills = append([]SkillItem(nil), items...)

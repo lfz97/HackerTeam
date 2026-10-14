@@ -91,6 +91,8 @@ type BootEnv struct {
 	BuiltinTools        []tool.Tool
 	BuiltinToolsets     map[string]tool.ToolSet //每个执行角色一个常驻 localexec 实例
 
+	HelpItems []SkillItem //帮助浮层条目（此项目不展示 skill，帮助代替）
+
 	Notices []bootNotice
 }
 
@@ -172,6 +174,10 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	}
 	env.BuiltinTools = tools
 	env.BuiltinToolsets = toolsets
+
+	// ⑪ 帮助浮层条目（此项目不展示 skill，固定帮助项代替）。必须在启动期供给：
+	// Ctrl+K 在首条 prompt 跑起来之前就会被按下。
+	env.HelpItems = defaulthelps
 
 	return env, nil
 }

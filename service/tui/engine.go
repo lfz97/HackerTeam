@@ -70,8 +70,8 @@ func (t *TUI) fetchNotice(running bool) string {
 	return composeHint(running)
 }
 
-// fetchHelpItems 拉取并解析技能帮助项（默认项 /new /exit 由 helps 自持，
-// 引擎只提供技能项）。
+// fetchSkillItems 拉取并解析帮助浮层条目（全部条目都由引擎下发，
+// helps 侧不自持默认项）。
 func (t *TUI) fetchSkillItems() []wireSkillItem {
 	var ws []wireSkillItem
 	_ = json.Unmarshal([]byte(t.engine.SkillItemsJSON()), &ws)

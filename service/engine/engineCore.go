@@ -25,7 +25,8 @@ type Agentrunner struct {
 type Engine struct {
 	Config_p             *config.Config  //yaml配置
 	Agentname            string          //Agent名称
-	CWD                  string          //当前工作目录
+	CWD                  string          //当前工作目录（os.Getwd()）
+	ExeDir               string          //可执行文件所在目录，资产锚点
 	ConfigFolderPath     string          //配置文件夹路径
 	HackerTeamConfigPath string          //配置文件路径
 	AgentRunner_p        *Agentrunner    //Runner，全局唯一
@@ -109,6 +110,7 @@ func (e *Engine) Run() {
 // absorb 把 bootstrap 产物拷入引擎字段，并上屏启动期收集的非致命提示。
 func (e *Engine) absorb(env *BootEnv) {
 	e.CWD = env.CWD
+	e.ExeDir = env.ExeDir
 	e.ConfigFolderPath = env.ConfigFolderPath
 	e.HackerTeamConfigPath = env.HackerTeamConfigPath
 	e.FrameworkLogFile_p = env.LogFile

@@ -51,8 +51,8 @@ var spillSeq atomic.Uint64
 
 // spillDir 返回落盘目录，不存在则创建。
 //
-// 路径与 engine 保持一致：engine 用 filepath.Dir(os.Executable()) 作为 CWD，
-// 输出目录是 <CWD>/output。这里独立解析同样的路径，而不是把 engine 的配置层层
+// 路径与 engine 保持一致：engine 用可执行文件所在目录（BootEnv.ExeDir）作资产锚点，
+// 输出目录是 <ExeDir>/output。这里独立解析同样的路径，而不是把 engine 的配置层层
 // 传进工具集——LocalExec() 是无参构造，且被 engine 与 cronagent 两处调用，
 // 改签名的代价远大于在这里重复一次路径推导。
 func spillDir() (string, error) {

@@ -71,7 +71,8 @@ type bootNotice struct {
 
 // BootEnv 环境检查与资产装配的产物，Engine 吸收后即可构造 runner。
 type BootEnv struct {
-	CWD                  string
+	CWD                  string //进程工作目录（os.Getwd()，启动命令时所在的 shell 目录）
+	ExeDir               string //可执行文件所在目录，一切资产的锚点（config/log/output 跟随二进制）
 	ConfigFolderPath     string
 	HackerTeamConfigPath string
 	// 5 个角色的 skills 文件夹路径
@@ -101,15 +102,22 @@ type BootEnv struct {
 func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	env := &BootEnv{RoleSkillFolders: map[string]string{}}
 
-	// ① 可执行文件所在目录：一切路径的锚点
+	// ① 可执行文件所在目录：一切资产的锚点
 	exePath, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("获取可执行文件目录错误: %w", err)
 	}
-	env.CWD = filepath.Dir(exePath)
+	env.ExeDir = filepath.Dir(exePath)
+
+	// 进程工作目录：与资产锚点解耦。极端情况下 Getwd 会失败（如启动目录被删），
+	// 此时回退到 ExeDir，保证 CWD 永远非空。
+	env.CWD, err = os.Getwd()
+	if err != nil {
+		env.CWD = env.ExeDir
+	}
 
 	// ② 配置文件夹：不存在则创建默认的
-	env.ConfigFolderPath = filepath.Join(env.CWD, hackerTeamConfigFolder)
+	env.ConfigFolderPath = filepath.Join(env.ExeDir, hackerTeamConfigFolder)
 	if _, err := os.Stat(env.ConfigFolderPath); err != nil {
 		if !os.IsNotExist(err) {
 			return nil, fmt.Errorf("检查config文件夹错误: %w", err)
@@ -319,9 +327,9 @@ func (env *BootEnv) buildPrompts(agentName string) {
 	prompt = strings.ReplaceAll(prompt, "{{HackerTeamLogFile}}", hackerTeamLogFile)
 	//prompt = strings.ReplaceAll(prompt, "{{OperationRecord}}", operationRecord)
 
-	//输出目录（每次运行按时间戳独立，便于事后审计）
+	//输出目录（每次运行按时间戳独立，便于事后审计；锚定 ExeDir，与 localexec/tooloutput 保持一致）
 	now := time.Now().Format("20060102150405")
-	outDir := filepath.Join(env.CWD, outputDir, now)
+	outDir := filepath.Join(env.ExeDir, outputDir, now)
 	prompt = strings.ReplaceAll(prompt, "{{OUTPUTDIR}}", outDir)
 
 	env.EnvPrompt = prompt

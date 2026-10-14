@@ -31,7 +31,7 @@ func TestLexerFor(t *testing.T) {
 
 func TestHighlightCode(t *testing.T) {
 	src := "func main() { return 42 }"
-	out := highlightCode(src, "x.go")
+	out := highlightCode(src, "x.go", nil)
 	if out == src {
 		t.Fatalf("want ANSI highlighted output, got plain")
 	}
@@ -39,14 +39,22 @@ func TestHighlightCode(t *testing.T) {
 	if got := strings.TrimSpace(ansi.Strip(out)); got != src {
 		t.Errorf("content mangled: %q", got)
 	}
-	// 缓存命中：同输入返回同输出且不重复格式化
-	if out2 := highlightCode(src, "x.go"); out2 != out {
-		t.Errorf("cache miss for same key")
+	// 确定性：同输入返回同输出
+	if out2 := highlightCode(src, "x.go", nil); out2 != out {
+		t.Errorf("non-deterministic output")
 	}
-	// 非 Go 文件不应命中同一缓存条目
-	out3 := highlightCode(src, "x.py")
+	// 非 Go 文件不应产出相同高亮
+	out3 := highlightCode(src, "x.py", nil)
 	if out3 == out {
-		t.Errorf("cache key not separated by filename")
+		t.Errorf("lexer not selected by filename")
+	}
+	// bg 非 nil：底色 SGR 进每个 token（48;2; = 24-bit 背景色）
+	bg := highlightCode(src, "x.go", cDiffAddBg)
+	if !strings.Contains(bg, "48;2;") {
+		t.Errorf("bg not stamped into tokens: %q", bg)
+	}
+	if ansi.Strip(bg) != ansi.Strip(out) {
+		t.Errorf("bg variant changed text content")
 	}
 }
 
@@ -56,8 +64,8 @@ func TestHighlightCodeConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_ = highlightCode("var x = 1", "x.go")
-			_ = highlightCode("print('hi')", "x.py")
+			_ = highlightCode("var x = 1", "x.go", nil)
+			_ = highlightCode("print('hi')", "x.py", nil)
 		}(i)
 	}
 	wg.Wait()
@@ -147,6 +155,48 @@ func TestRenderDiffBlockHunkGap(t *testing.T) {
 	}
 	if !strings.Contains(flat, "- b") || !strings.Contains(flat, "+ d") {
 		t.Errorf("hunk content missing:\n%s", flat)
+	}
+}
+
+func TestRenderDiffBlockBgStripes(t *testing.T) {
+	diff := "--- a/x.go\n+++ b/x.go\n@@ -1,3 +1,3 @@\n ctx line\n-old line\n+new line\n"
+	lines := renderDiffBlock(textBlock{text: diff, isDiff: true}, "x.go", 40)
+	if len(lines) != 3 {
+		t.Fatalf("want 3 lines, got %d:\n%s", len(lines), strings.Join(lines, "\n"))
+	}
+	// add 底 #303a30、del 底 #3a3030（24-bit 背景 SGR 48;2;R;G;B）
+	if !strings.Contains(lines[1], "48;2;58;48;48") {
+		t.Errorf("del line missing red stripe: %q", lines[1])
+	}
+	if !strings.Contains(lines[2], "48;2;48;58;48") {
+		t.Errorf("add line missing green stripe: %q", lines[2])
+	}
+	// ctx 行保持透明（无背景 SGR）
+	if strings.Contains(lines[0], "48;2;") {
+		t.Errorf("ctx line should carry no background: %q", lines[0])
+	}
+	// 条纹铺满整行：add/del 行显示宽 == avail
+	for i := 1; i <= 2; i++ {
+		if w := ansi.StringWidth(lines[i]); w != 40 {
+			t.Errorf("line %d stripe not filled to avail (width %d): %q", i, w, ansi.Strip(lines[i]))
+		}
+	}
+}
+
+func TestRenderDiffBlockStripeWrapKeepsBg(t *testing.T) {
+	// 长 add 行折行：Hardwrap 不跨行重发活跃 SGR，续行须手动补发底色
+	l := "+" + strings.Repeat("x", 60)
+	lines := renderDiffBlock(textBlock{text: l, isDiff: true}, "x.go", 40)
+	if len(lines) < 2 {
+		t.Fatalf("want wrapped lines, got %d", len(lines))
+	}
+	for i, ln := range lines {
+		if !strings.Contains(ln, "48;2;48;58;48") {
+			t.Errorf("line %d lost add bg: %q", i, ln)
+		}
+		if w := ansi.StringWidth(ln); w != 40 {
+			t.Errorf("line %d stripe not filled (width %d)", i, w)
+		}
 	}
 }
 

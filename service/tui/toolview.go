@@ -520,7 +520,9 @@ var diffHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@
 
 // renderDiffBlock unified diff 块：行号列（@@ 头解析并逐行推进，add/del 行
 // 各自只占一侧）+ 行内语法高亮（lexer 取自 path）+ +/- 前缀染色。
-// 语法色与 diff 色分层：前缀承载 +/- 红绿，内容承载 chroma 语法色。
+// add/del 行整行铺底色条纹（crush Insert/DeleteLine 同型）：行号列底色
+// 深一档、内容列底色进每个语法 token，行尾补齐铺满；ctx 行保持透明。
+// 语法色与 diff 色分层：内容承载 chroma 语法色，条纹与标记承载 kind 色。
 // 原始 diff 头行（---/+++/@@）不渲染——行号与染色已是完整信息，原始
 // hunk 语法是噪音；多 hunk 之间以弱化 … 行示意行号跳变；截断只计内容行。
 func renderDiffBlock(b textBlock, path string, avail int) []string {
@@ -602,7 +604,23 @@ func renderDiffBlock(b textBlock, path string, avail int) []string {
 		}
 		return colorText(cFgMostSubtle, fmt.Sprintf("%*d", numW, n))
 	}
+	numText := func(n int) string {
+		if n == 0 {
+			return strings.Repeat(" ", numW)
+		}
+		return fmt.Sprintf("%*d", numW, n)
+	}
 	// 标记列承载 diff kind 色（+ 淡绿 / - 红 / 上下空白）
+	markerChar := func(kind string) string {
+		switch kind {
+		case "add":
+			return "+"
+		case "del":
+			return "-"
+		default:
+			return " "
+		}
+	}
 	diffMarker := func(kind string) string {
 		switch kind {
 		case "add":
@@ -625,28 +643,53 @@ func renderDiffBlock(b textBlock, path string, avail int) []string {
 			out = append(out, blankCol+colorText(cFgMostSubtle, "…"))
 			continue
 		}
+		// add/del 行整行铺条纹：gutter 两档底色、内容列底色进每个语法
+		// token（有 path）或整格承载（无 path）、行尾补齐铺满 limit；
+		// ctx 行无底色保持透明。
+		gutBg, conBg := diffKindBg(e.kind)
+		kindColor := diffKindColor(e.kind)
+		bgSeq := ""
+		if conBg != nil {
+			bgSeq = bgSGRSeq(conBg)
+		}
+
+		var chunks []string
 		if path == "" {
 			// 无文件上下文（如 Diff 工具的裸 diff）：内容整段按 kind 染色，
 			// 折行后每个 chunk 独立染色（kind 贯穿整逻辑行）
-			lineColor := diffKindColor(e.kind)
-			for i, chunk := range hardWrapIf(e.content, limit) {
-				if i == 0 {
-					out = append(out, renderNum(e.num)+" "+diffMarker(e.kind)+" "+colorText(lineColor, chunk))
-				} else {
-					out = append(out, blankCol+colorText(lineColor, chunk))
+			chunks = hardWrapIf(e.content, limit)
+		} else {
+			// 有文件路径：语法色打底、底色随 formatter 进每个 token
+			chunks = hardWrapIf(highlightCode(e.content, path, conBg), limit)
+		}
+		for i, chunk := range chunks {
+			var line string
+			switch {
+			case conBg != nil && i == 0:
+				line = diffCell(kindColor, gutBg, numText(e.num)) +
+					diffCell(kindColor, conBg, " "+markerChar(e.kind)+" ")
+			case conBg != nil:
+				line = bgCell(gutBg, strings.Repeat(" ", numW)) + bgCell(conBg, "   ")
+			case i == 0:
+				line = renderNum(e.num) + " " + diffMarker(e.kind) + " "
+			default:
+				line = blankCol
+			}
+			switch {
+			case path == "":
+				line += diffCell(kindColor, conBg, chunk)
+			case i > 0:
+				// Hardwrap 不跨行重发活跃 SGR：续行手动补发底色
+				line += bgSeq + chunk
+			default:
+				line += chunk
+			}
+			if conBg != nil {
+				if pad := limit - ansi.StringWidth(chunk); pad > 0 {
+					line += bgCell(conBg, strings.Repeat(" ", pad))
 				}
 			}
-			continue
-		}
-		// 有文件路径：语法色打底、标记列承载 diff kind（crush 分层同型）
-		hl := highlightCode(e.content, path)
-		chunks := hardWrapIf(hl, limit)
-		for i, chunk := range chunks {
-			if i == 0 {
-				out = append(out, renderNum(e.num)+" "+diffMarker(e.kind)+" "+chunk)
-			} else {
-				out = append(out, blankCol+chunk)
-			}
+			out = append(out, line)
 		}
 	}
 	if contentTotal > blockMaxLines {

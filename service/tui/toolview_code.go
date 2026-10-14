@@ -7,9 +7,12 @@ package tui
 import (
 	"bytes"
 	"fmt"
+	"image/color"
+	"io"
 	"strings"
 	"sync"
 
+	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -49,8 +52,10 @@ func lexerFor(filename, source string) chroma.Lexer {
 	return l
 }
 
-// highlightCode 源码 → 24-bit ANSI 高亮文本。
-func highlightCode(source, filename string) string {
+// highlightCode 源码 → 24-bit ANSI 高亮文本。bg 非 nil 时每个 token 的
+// SGR 自带底色（diff add/del 行条纹用，crush xchroma.Formatter 同型）——
+// 底色跟着 token 走，chroma 的逐 token reset 冲不掉条纹。
+func highlightCode(source, filename string, bg color.Color) string {
 	l := lexerFor(filename, source)
 	// 不用 TokeniseOptions{EnsureLF: true}：chroma v2.27.0 里它会触发 lexer
 	// 状态机 "unknown state" panic（追加换行后栈状态错乱），nil options 正常。
@@ -58,15 +63,44 @@ func highlightCode(source, filename string) string {
 	if err != nil {
 		return source
 	}
-	f := formatters.Get("terminal16m")
-	if f == nil {
-		f = formatters.Fallback
-	}
 	var buf bytes.Buffer
-	if err := f.Format(&buf, codeStyle(), it); err != nil {
+	if err := chromaFormatter(bg).Format(&buf, codeStyle(), it); err != nil {
 		return source
 	}
 	return buf.String()
+}
+
+// chromaFormatter bg==nil 走 terminal16m；否则逐 token 用 lipgloss 渲染，
+// 语法前景色 + 强制底色（crush internal/ui/xchroma 同款分层）。
+func chromaFormatter(bg color.Color) chroma.Formatter {
+	if bg == nil {
+		if f := formatters.Get("terminal16m"); f != nil {
+			return f
+		}
+		return formatters.Fallback
+	}
+	return chroma.FormatterFunc(func(w io.Writer, style *chroma.Style, it chroma.Iterator) error {
+		for token := it(); token != chroma.EOF; token = it() {
+			entry := style.Get(token.Type)
+			s := lipgloss.NewStyle().Background(bg)
+			if entry.Bold == chroma.Yes {
+				s = s.Bold(true)
+			}
+			if entry.Underline == chroma.Yes {
+				s = s.Underline(true)
+			}
+			if entry.Italic == chroma.Yes {
+				s = s.Italic(true)
+			}
+			if entry.Colour.IsSet() {
+				s = s.Foreground(lipgloss.Color(entry.Colour.String()))
+			}
+			if _, err := io.WriteString(w, s.Render(token.Value)); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 // codeBlockLines 高亮代码块：行号列（most-subtle 右对齐）+ chroma 高亮 +
@@ -81,7 +115,7 @@ func codeBlockLines(path, content string, avail int) []string {
 		lines = lines[:blockMaxLines]
 	}
 	// 高亮整段再按行拆：块内多行 token（块注释等）颜色上下文连续
-	hl := strings.Split(highlightCode(strings.Join(lines, "\n"), path), "\n")
+	hl := strings.Split(highlightCode(strings.Join(lines, "\n"), path, nil), "\n")
 	if len(hl) < len(lines) { // 高亮输出行数异常时兜底原文
 		hl = lines
 	}

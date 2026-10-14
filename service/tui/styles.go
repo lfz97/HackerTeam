@@ -43,6 +43,13 @@ var (
 	// Guac；饱和度低于 success 主色，错误结果的红色内容仍可辨识）。
 	cToolLineIn  = cFgMostSubtle
 	cToolLineOut = cSuccessSubtle
+
+	// diff 行条纹底色（crush DefaultDarkStyle Insert/DeleteLine 同款取值）：
+	// add/del 行整行成条纹，行号列比内容列深一档；ctx 行保持透明。
+	cDiffAddBg    = lipgloss.Color("#303a30")
+	cDiffAddGutBg = lipgloss.Color("#293229")
+	cDiffDelBg    = lipgloss.Color("#3a3030")
+	cDiffDelGutBg = lipgloss.Color("#332929")
 )
 
 // maxTextWidth 消息文本的最大列宽（crush 同款 cap：超宽终端下正文不至于拉满，
@@ -196,4 +203,41 @@ func todoLines(text string) string {
 // colorText 前景色包装。
 func colorText(c color.Color, text string) string {
 	return lipgloss.NewStyle().Foreground(c).Render(text)
+}
+
+// ── diff 条纹（add/del 行底色）────────────────────────────
+
+// diffKindBg add/del 行的条纹底色（行号列、内容列两档深度）；
+// ctx/gap 返回 nil（无底色，保持透明）。
+func diffKindBg(kind string) (gut, con color.Color) {
+	switch kind {
+	case "add":
+		return cDiffAddGutBg, cDiffAddBg
+	case "del":
+		return cDiffDelGutBg, cDiffDelBg
+	}
+	return nil, nil
+}
+
+// diffCell 前景+底色单格；bg 为 nil 退化为纯前景（等价 colorText）。
+// 嵌套 colorText 会被内层 reset 打断底色，条纹内的格子必须走这里。
+func diffCell(fg, bg color.Color, text string) string {
+	s := lipgloss.NewStyle().Foreground(fg)
+	if bg != nil {
+		s = s.Background(bg)
+	}
+	return s.Render(text)
+}
+
+// bgCell 纯底色格（条纹 gutter 与行尾补齐的空格）。
+func bgCell(bg color.Color, text string) string {
+	return lipgloss.NewStyle().Background(bg).Render(text)
+}
+
+// bgSGRSeq 底色起始序列：ansi.Hardwrap 折行不跨行重发活跃 SGR，
+// 续行内容需手动前置。取 lipgloss 渲染 "X" 的前缀段（SGR 只含
+// 数字/分号/字母 m，不会撞上 X）。
+func bgSGRSeq(c color.Color) string {
+	pre, _, _ := strings.Cut(lipgloss.NewStyle().Background(c).Render("X"), "X")
+	return pre
 }

@@ -45,6 +45,7 @@ const (
 	hackerTeamConfig       string = "HackerTeam.yaml"
 	hackerTeamLogFile      string = "HackerTeam.log"
 	memoryDBFileName       string = "memory.db"
+	sessionDBFileName      string = "session.db"
 	operationRecord        string = "OperationRecord.md"
 	outputDir              string = "output"
 )
@@ -91,8 +92,6 @@ type BootEnv struct {
 	SqliteMemoryService framememory.Service
 	BuiltinTools        []tool.Tool
 	BuiltinToolsets     map[string]tool.ToolSet //每个执行角色一个常驻 localexec 实例
-
-	HelpItems []SkillItem //帮助浮层条目（此项目不展示 skill，帮助代替）
 
 	Notices []bootNotice
 }
@@ -166,8 +165,9 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	// ⑦ 环境提示词与共享共识提示词（模板占位符替换）
 	env.buildPrompts(agentName)
 
-	// ⑧ 会话服务（摘要展示经 sink 注入）
-	env.SessionService = session.NewMemorySessionService(env.Config.Model, sink)
+	// ⑧ 会话服务：默认 SQLite（<CWD>/.HackerTeam/session.db），会话跨进程持久化；
+	// 创建失败按原因降级内存服务（降级不阻断启动，原因经 Notices 上屏）
+	env.SessionService = env.buildSessionService(sink)
 
 	// ⑨ sqlite 记忆服务
 	memoryService, err := memory.NewSQLiteMemoryService(filepath.Join(env.ConfigFolderPath, memoryDBFileName))
@@ -184,11 +184,43 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	env.BuiltinTools = tools
 	env.BuiltinToolsets = toolsets
 
-	// ⑪ 帮助浮层条目（此项目不展示 skill，固定帮助项代替）。必须在启动期供给：
-	// Ctrl+K 在首条 prompt 跑起来之前就会被按下。
-	env.HelpItems = defaulthelps
-
 	return env, nil
+}
+
+// buildSessionService 构建会话服务：默认 SQLite 持久化（<CWD>/.HackerTeam/session.db）。
+// session 按工作目录归属——分布式设计：不同 CWD 启动的实例各持独立会话空间，同 CWD 的
+// 多实例共享同一 db（WAL + busy_timeout + txlock=immediate 支撑多进程并发读写）；
+// CWD 取不到时回退 ExeDir，会话落回二进制目录，保证永远有非空锚点。
+// 创建失败按原因降级，降级不致命——会话只是从"跨进程持久化"退化为"进程内存"，不阻断启动：
+//   - 失败原因是目录不存在（常态：新工作目录首启，CWD/.HackerTeam 尚未建立）：创建目录后重试一次；
+//     目录创建失败或重试仍失败 → 降级内存会话服务
+//   - 其它原因失败 → 直接降级内存会话服务
+//
+// "是否路径不存在"用 os.Stat 判定而非解析驱动错误文案：mattn/go-sqlite3 的 CantOpen
+// 错误不保证能 errors.Is 链到 fs.ErrNotExist，Stat 目录是稳定的判定依据。
+func (env *BootEnv) buildSessionService(sink summarySink) framsession.Service {
+	dbPath := filepath.Join(env.CWD, hackerTeamConfigFolder, sessionDBFileName)
+
+	svc, err := session.NewSQLiteSessionService(dbPath, env.Config.Model, sink)
+	if err == nil {
+		return svc
+	}
+
+	if _, statErr := os.Stat(filepath.Dir(dbPath)); os.IsNotExist(statErr) {
+		if mkErr := os.MkdirAll(filepath.Dir(dbPath), os.ModePerm); mkErr != nil {
+			env.Notices = append(env.Notices, bootNotice{NoticeWarning, fmt.Sprintf(
+				"sqlite session db directory create failed (%v), fallback to in-memory session service", mkErr)})
+			return session.NewMemorySessionService(env.Config.Model, sink)
+		}
+		svc, err = session.NewSQLiteSessionService(dbPath, env.Config.Model, sink)
+		if err == nil {
+			return svc
+		}
+	}
+
+	env.Notices = append(env.Notices, bootNotice{NoticeWarning, fmt.Sprintf(
+		"sqlite session service failed (%v), fallback to in-memory session service", err)})
+	return session.NewMemorySessionService(env.Config.Model, sink)
 }
 
 // checkRoleSkillFolders 检查 5 个角色的 skills 文件夹，不存在则创建并从

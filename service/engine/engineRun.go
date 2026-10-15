@@ -3,48 +3,11 @@ package engine
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
-
-// ---------- 输入识别层 ----------
-
-// inputCmdKind 用户输入的类别。
-type inputCmdKind int
-
-const (
-	cmdPrompt inputCmdKind = iota //普通对话输入
-	cmdExit                       //退出程序
-	cmdNew                        //开始新对话
-	cmdEmpty                      //空输入
-	cmdClear                      //清除历史消息
-)
-
-type inputCmd struct {
-	Kind   inputCmdKind
-	Prompt string //普通输入的原文；斜杠命令时是规范化后的命令文本
-}
-
-// parseInput 把原始输入归类为引擎指令。斜杠命令是引擎的输入协议
-// （无头场景同样适用），识别集中在此处。纯函数，可直接单测。
-func parseInput(raw string) inputCmd {
-	check := strings.ReplaceAll(raw, "\n", "")
-	check = strings.ReplaceAll(check, " ", "")
-	switch check {
-	case "/exit":
-		return inputCmd{Kind: cmdExit, Prompt: check}
-	case "/new":
-		return inputCmd{Kind: cmdNew, Prompt: check}
-	case "/clear":
-		return inputCmd{Kind: cmdClear, Prompt: check}
-	case "":
-		return inputCmd{Kind: cmdEmpty}
-	}
-	return inputCmd{Kind: cmdPrompt, Prompt: raw}
-}
 
 // ---------- 一轮对话 ----------
 

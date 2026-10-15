@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -35,10 +34,10 @@ func skillTextSize(boxW, boxH int) (textW, textH int) {
 }
 
 // helps 帮助浮层（demo 同款：居中圆角盒、上下选择、enter 插入指令）。
-// 条目全部由调用方传入（每次打开时从引擎拉取，天然拿到最新版）；本结构体
-// 不自持任何默认项，引擎没发布时清单就是空的。
+// 条目就是 commands.go 的斜杠命令注册表，NewHelps 播种后运行期不变——清单
+// 在前端自持，启动第一刻即非空，不再有"引擎还没发布条目"的空窗。
 type skills struct {
-	items   [][2]string
+	items   []slashCommand
 	index   int
 	visible bool
 	vp      viewport.Model
@@ -72,7 +71,7 @@ func (s *skills) renderItems() string {
 	//描述列起点 = 最长指令名 + 2（对齐留白）；指令超长者退化为紧跟 +1 空格
 	descCol := 0
 	for _, v := range s.items {
-		descCol = max(descCol, lipgloss.Width(v[0])+2)
+		descCol = max(descCol, lipgloss.Width(v.cmd)+2)
 	}
 
 	var b strings.Builder
@@ -81,8 +80,8 @@ func (s *skills) renderItems() string {
 		if i == s.index { //如果index指向了这个索引值，说明是被用户选中了，加一个箭头标识
 			prefix = "▶ "
 		}
-		gap := max(1, descCol-lipgloss.Width(v[0]))
-		line := v[0] + strings.Repeat(" ", gap) + v[1]
+		gap := max(1, descCol-lipgloss.Width(v.cmd))
+		line := v.cmd + strings.Repeat(" ", gap) + v.desc
 		if i == s.index {
 			line = prefix + lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true).Render(line) //换行不要进render，render后再加
 		} else {
@@ -101,8 +100,9 @@ func (s *skills) toggleVisibility() {
 	s.visible = !s.visible
 }
 
-// moveUp/moveDown 清单为空时必须直接返回：取模的除数是 len(s.items)，
-// 引擎启动未完成（absorb 还没发布条目）时清单就是空的，不判会 panic。
+// moveUp/moveDown 清单为空时必须直接返回：取模的除数是 len(s.items)。
+// 清单现在是 commands.go 的编译期常量、恒非空，这两道守卫只为"注册表被清空"
+// 这种改动静默退化成 panic 时留一条命。
 func (s *skills) moveUp() {
 	if len(s.items) == 0 {
 		return
@@ -122,27 +122,14 @@ func (s *skills) selectedCmd() (string, bool) {
 	if s.index < 0 || s.index >= len(s.items) {
 		return "", false
 	}
-	return s.items[s.index][0], true
+	return s.items[s.index].cmd, true
 }
 
-// Update 重建帮助条目（每次打开浮层时调用，条目由 engine.go 的
-// fetchSkillItems 解析好传入）。
-func (s *skills) Update(msg tea.Msg) tea.Cmd {
-	switch m := msg.(type) {
-	case []wireSkillItem:
-		s.items = [][2]string{}
-		for _, it := range m {
-			s.items = append(s.items, [2]string{it.Cmd, it.Desc})
-		}
-		s.index = 0
-		return nil
-	}
-	return nil
-}
-
+// NewHelps 组装帮助浮层：条目直接取斜杠命令注册表（commands.go 的编译期常量，
+// 无需运行期刷新，也不存在拉取失败/尚未发布的中间态）。
 func NewHelps() *skills {
-
 	return &skills{
-		vp: NewPrettyViewport(0, 1),
+		items: slashCommands,
+		vp:    NewPrettyViewport(0, 1),
 	}
 }

@@ -34,7 +34,6 @@ import (
 	"strings"
 	"testing"
 
-
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -43,15 +42,21 @@ type fakeView struct {
 	records []string
 }
 
-func (f *fakeView) Version() uint64                 { return 1 }
-func (f *fakeView) Records() []string               { return f.records }
-func (f *fakeView) RunStateJSON() string            { return `{"running":false}` }
-func (f *fakeView) TodoText() string                { return "" }
-func (f *fakeView) NoticeJSON() string              { return `{"kind":"none"}` }
-func (f *fakeView) StartupInfo() ([]string, bool)   { return nil, false }
-func (f *fakeView) SkillItemsJSON() string          { return "[]" }
-func (f *fakeView) SubmitInput(line string) bool    { return true }
-func (f *fakeView) Interrupt() bool                 { return true }
+func (f *fakeView) Version() uint64               { return 1 }
+func (f *fakeView) Records() []string             { return f.records }
+func (f *fakeView) RunStateJSON() string          { return `{"running":false}` }
+func (f *fakeView) TodoText() string              { return "" }
+func (f *fakeView) NoticeJSON() string            { return `{"kind":"none"}` }
+func (f *fakeView) StartupInfo() ([]string, bool) { return nil, false }
+func (f *fakeView) SubmitInput(line string) bool  { return true }
+func (f *fakeView) Interrupt() bool               { return true }
+
+// ── 斜杠命令的能力接口（注册表与分发在前端 commands.go）──
+func (f *fakeView) Shutdown()                       {}
+func (f *fakeView) NewConversation() bool           { return true }
+func (f *fakeView) ClearRecords() bool              { return true }
+func (f *fakeView) ListResumeItems() string         { return "[]" }
+func (f *fakeView) CheckoutSession(id string) error { return nil }
 
 // buildSession 构造真实规模的会话：20 轮对话 ×
 // （用户输入 + 思考 + 正文含表格 + 3 个工具调用 + 工具结果含 diff/代码/长输出）。

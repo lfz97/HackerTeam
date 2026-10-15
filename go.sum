@@ -225,5 +225,7 @@ trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.1-0.20260820131707-cdaece
 trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.1-0.20260820131707-cdaece75b478/go.mod h1:4OHwKEDQ9SEROfx/oBYO8XuGojoLqTTy4oSz6Ea4JEM=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.11.0 h1:LcPJfT3j1hW6x1sCAX6sBEqDQ+PpUzpl4+MupqIkgqM=
 trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.11.0/go.mod h1:LiYT/8ghHGAeF+bufCuoSSitXRhQwRRQb17i78Z0v6I=
+trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.11.0 h1:LI5KVBWuG4JBt7advdO6osb+DmyqA9WvH8bxJ2E6uW8=
+trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.11.0/go.mod h1:CQOZ2lSwpwkYnN0hOWZLIOb4NMIhYZMd9n8gScfTnyw=
 trpc.group/trpc-go/trpc-mcp-go v0.0.18 h1:i454kLT1ND8zXfp1D4BDUnCHfn6Q1+PXRYErdqoy6/0=
 trpc.group/trpc-go/trpc-mcp-go v0.0.18/go.mod h1:OT6rLglkdaQ17D2T1Y87Y/ckItzdsEldDbw7dHAbGEA=

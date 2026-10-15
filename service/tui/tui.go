@@ -9,10 +9,11 @@ package tui
 //   pull.go     拉取订阅（tea.Tick 链：pullState/pullCmd/pullOnce）
 //   frame.go    帧落地操作（applyFrame/applyViewText/componentWidth/wrapViewText）
 //   handler.go  按键语义（keyMsgHandler）
+//   commands.go 斜杠命令注册表与分发（slashCommands/dispatchSlash）
 //   component.go 组件构建与整屏拼版（NewPrettyXxx/recalcComponentSize/draw/浮层）
 //   render.go   渲染类（composeView 记录重放、glamour、通知/终态文本翻译）
 //   styles.go   上色（lipgloss 颜色与文本样式 helpers）
-//   helps.go / bottom.go / spinner.go / banner.go  各组件自持结构体与方法
+//   skills.go / resumelist.go / bottom.go / spinner.go / banner.go  各组件自持结构体与方法
 
 import (
 	"time"
@@ -40,6 +41,7 @@ type TUI struct {
 
 	skills *skills
 	bottom *bottom
+	resume *resumeList // /resume 弹框（会话恢复选择）
 
 	// pull 是拉取循环的私有状态（见 pull.go 的 pullState 注释）。
 	pull *pullState
@@ -65,6 +67,7 @@ func NewTui(view EngineView) *TUI {
 				60*time.Millisecond),
 		},
 		engine: view,
+		resume: newResumeList(),
 		pull:   newPullState(),
 	}
 }

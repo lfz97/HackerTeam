@@ -96,20 +96,23 @@ func (t *TUI) draw() string {
 
 	//水平方向组合padding栏
 	content = lipgloss.JoinHorizontal(lipgloss.Left, leftPaddingView, content, rightPaddingView)
-	//帮助弹窗：官方 Compositor —— 主界面是底层 Layer，帮助盒 X/Y 定位、Z=1 悬浮其上
+	//浮层：官方 Compositor —— 主界面是底层 Layer，浮层盒 X/Y 定位、Z=1 悬浮其上
 	if t.skills.isVisible() {
-		content = t.overlayCentered(content, t.skills.View(t.width, t.height))
+		content = t.overlayCentered(skillBoxWidth, skillBoxHeight, content, t.skills.View(t.width, t.height))
+	}
+	if t.resume.isVisible() {
+		content = t.overlayCentered(resumeBoxWidth, resumeBoxHeight, content, t.resume.View(t.width, t.height))
 	}
 	return content
 }
 
 // overlayCentered 在原内容上增加居中悬浮框（demo 同款：圆角 + 紫色 62）。
-// 盒子样式与尺寸常量统一在 skills.go 定义（skillBoxStyle / skillBoxWidth /
-// skillBoxHeight），此处只夹取、渲染、定位。
-func (t *TUI) overlayCentered(back string, front string) string {
-	boxW := min(skillBoxWidth, t.width) //终端过小就夹到屏幕内
-	//盒高跟内容动态走：vp 实际渲染行数 + 边框/内边距，上限已由 skills.View 夹过
-	boxH := min(lipgloss.Height(front)+skillBoxStyle.GetVerticalFrameSize(), t.height)
+// 盒子样式统一在 skills.go 定义（skillBoxStyle，各浮层共用保证 frame 尺寸一致），
+// 尺寸由调用方传入（各浮层自持常量），此处只夹取、渲染、定位。
+func (t *TUI) overlayCentered(boxW, boxH int, back string, front string) string {
+	boxW = min(boxW, t.width) //终端过小就夹到屏幕内
+	//盒高跟内容动态走：vp 实际渲染行数 + 边框/内边距，上限已由各浮层 View 夹过
+	boxH = min(lipgloss.Height(front)+skillBoxStyle.GetVerticalFrameSize(), boxH, t.height)
 
 	box := skillBoxStyle.
 		Width(boxW).

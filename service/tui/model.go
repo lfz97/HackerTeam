@@ -29,10 +29,13 @@ type wireNotice struct {
 	SetAt string `json:"setAt"` // RFC3339
 }
 
-// wireHelpItem 帮助页一行。
-type wireSkillItem struct {
-	Cmd  string `json:"cmd"`
-	Desc string `json:"desc"`
+// wireResumeItem 会话恢复弹框条目（与引擎侧 uistate.go 的 ResumeItem 对齐）。
+// 数据由 ListResumeItems 一次性同步拉取，不经帧通道。
+type wireResumeItem struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`     // 会话内首条用户输入（引擎已截断）
+	UpdatedAt string `json:"updatedAt"` // 已格式化 "01-02 15:04"
+	Current   bool   `json:"current"`   // 是否当前会话
 }
 
 // wireRecord 消息日志记录：type 承载消息类型。

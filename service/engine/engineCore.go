@@ -65,7 +65,6 @@ type Engine struct {
 	notice    notice
 	startup   []string
 	startupOK bool
-	skills    []SkillItem
 	inputCh   chan string
 
 	interruptCh chan struct{}
@@ -123,7 +122,6 @@ func (e *Engine) absorb(env *BootEnv) {
 	e.SqliteMemoryService = env.SqliteMemoryService
 	e.builtinTools = env.BuiltinTools
 	e.builtinToolsets = env.BuiltinToolsets
-	e.setSkillItems(env.HelpItems)
 	for role, folder := range env.RoleSkillFolders {
 		switch role {
 		case reconSkillsFolder:
@@ -150,43 +148,69 @@ func (e *Engine) AgentStart() {
 	go e.agentLoop()
 }
 
-// agentLoop 主循环本体：读用户输入、分类分发，直到退出。
+// agentLoop 主循环本体：读对话输入、逐轮执行，直到退出。
 func (e *Engine) agentLoop() {
 	e.randomStartID()
 	// 启动横幅只在此组装一次（bootstrap/newRunner 均已完成）。
 	(*e).setStartupInfo((*e).startupInfoLines())
 	for {
-		cmd := parseInput(<-(*e).inputCh)
-		(*e).errBudget.recharge() //任何用户输入都充值（斜杠/空输入也是，无害）
+		line := <-(*e).inputCh
+		(*e).errBudget.recharge() //任何用户输入都充值（空输入也是，无害）
 
-		switch cmd.Kind {
-		case cmdExit: //用户主动结束对话：释放资源，置终态并永久驻留
-			(*e).appendTyped("slash", cmd.Prompt)
-			//关闭AgentRunner，释放资源
-			(*(*e).AgentRunner_p).Runner.Close()
-			for _, ts := range (*e).mcpToolsets {
-				ts.Close() //关闭MCP连接，释放stdio子进程
-			}
-			for _, ts := range (*e).builtinToolsets {
-				ts.Close() //localexec：kill残留运行命令并清空注册表
-			}
-			(*e).parkWithFatal(FatalExit, "", false)
-
-		case cmdNew: //用户开始新对话：重置SessionId, RequestId
-			(*e).appendTyped("slash", cmd.Prompt)
-			e.randomStartID()
-			(*e).setNotice(NoticeNewConversation, "")
-		case cmdClear: //清除历史消息：记录全部丢弃（连本条 /clear 也不留痕），通知栏提示
-			(*e).clearRecords()
-			(*e).setNotice(NoticeClear, "")
-
-		case cmdPrompt: //普通对话输入
-			(*e).appendTyped("user", cmd.Prompt)
-			e.turn(cmd.Prompt)
-
-		case cmdEmpty: //空输入，重新等待
+		if strings.TrimSpace(line) == "" { //空输入，重新等待（前端已兜底，双保险）
+			continue
 		}
+		//斜杠命令不经过这里：语义与注册表在前端（service/tui/commands.go 的
+		//dispatchSlash），后端只暴露能力接口——字符串 magic word 已废除。
+		(*e).appendTyped(RecUser, line)
+		e.turn(line)
 	}
+}
+
+// ── 斜杠命令的后端能力接口（前端注册表见 service/tui/commands.go）──────
+
+// Shutdown /exit 的引擎侧收尾：释放 runner、MCP 连接与 localexec 工具集。
+// 置终态与退出由前端接管（tea.Quit 直接结束进程），引擎不再依赖“观察 fatal”的退出路径。
+//
+// 刻意不加 isRunning 守卫：长任务运行中 /exit 是常态，加了守卫会整段跳过清理，
+// MCP stdio 子进程与 localexec 的 PTY 作业就会活过进程。localexec.Close() 非阻塞
+// （拷作业 ID → Kill → 清注册表），不会挂住退出；关闭运行中的 runner 是紧随
+// tea.Quit 的竞态，与上游同型、刻意接受。
+func (e *Engine) Shutdown() {
+	if (*e).AgentRunner_p != nil {
+		(*(*e).AgentRunner_p).Runner.Close()
+	}
+	for _, ts := range (*e).mcpToolsets {
+		ts.Close() //关闭MCP连接，释放stdio子进程
+	}
+	for _, ts := range (*e).builtinToolsets {
+		ts.Close() //localexec：kill残留运行命令并清空注册表
+	}
+}
+
+// NewConversation /new：重置 SessionId 与 RequestId 开新对话。running 时拒绝——
+// SessionId 读写无锁，turn 进行中重置是 data race；旧版命令经 inputCh 排队自然
+// 避开，命令前移到前端后这里显式兜底，拒绝即最小正确实现。
+func (e *Engine) NewConversation() bool {
+	if e.isRunning() {
+		e.setNotice(NoticeWarning, "对话进行中，请稍后再开新对话")
+		return false
+	}
+	(*e).appendTyped(RecSlash, "/new")
+	e.randomStartID()
+	(*e).setNotice(NoticeNewConversation, "")
+	return true
+}
+
+// ClearRecords /clear：丢弃全部消息记录（连命令本身也不留痕）。running 拒绝同 NewConversation。
+func (e *Engine) ClearRecords() bool {
+	if e.isRunning() {
+		e.setNotice(NoticeWarning, "对话进行中，请稍后再清屏")
+		return false
+	}
+	e.clearRecords()
+	e.setNotice(NoticeClear, "")
+	return true
 }
 
 func (e *Engine) randomStartID() {

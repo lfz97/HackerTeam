@@ -23,6 +23,7 @@ require (
 	trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0
 	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.1-0.20260820131707-cdaece75b478
 	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.11.0
+	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.11.0
 	trpc.group/trpc-go/trpc-mcp-go v0.0.18
 )
 

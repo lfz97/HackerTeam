@@ -62,27 +62,6 @@ type RunState struct {
 	Fatal   *Fatal `json:"fatal"` // 非 nil 表示进程应结束
 }
 
-// SkillItem 帮助页的一行（JSON 形状 {"cmd","desc"}）。
-type SkillItem struct {
-	Cmd  string `json:"cmd"`
-	Desc string `json:"desc"`
-}
-
-var defaulthelps []SkillItem = []SkillItem{
-	SkillItem{
-		Cmd:  "/exit",
-		Desc: "Exit",
-	},
-	SkillItem{
-		Cmd:  "/new",
-		Desc: "start a new session",
-	},
-	SkillItem{
-		Cmd:  "/clear",
-		Desc: "clear the screen",
-	},
-}
-
 // notice 通知栏槽位内容。SetAt 供消费端计算 TTL（旧契约 4s，语义不变）。
 type notice struct {
 	Kind  string    `json:"kind"`
@@ -277,28 +256,6 @@ func (e *Engine) setStartupInfo(lines []string) {
 	e.mu.Unlock()
 }
 
-// SkillItemsJSON 返回帮助浮层条目 JSON（[{"cmd","desc"}]；/exit /new /clear
-// 全部条目都由引擎下发，消费端不自持默认项）。
-func (e *Engine) SkillItemsJSON() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.skills == nil {
-		return "[]" // nil 切片会 marshal 成 null，契约上空就是 []
-	}
-	b, err := json.Marshal(e.skills)
-	if err != nil {
-		return "[]"
-	}
-	return string(b)
-}
-
-// setSkillItems 整体替换帮助浮层条目（absorb 在启动期发布一次）。
-func (e *Engine) setSkillItems(items []SkillItem) {
-	e.mu.Lock()
-	e.skills = append([]SkillItem(nil), items...)
-	e.mu.Unlock()
-}
-
 // ── 消费端 → 引擎 ────────────────────────────────────────
 
 // SubmitInput 提交一行用户输入。引擎忙（无人接收）时返回 false，
@@ -326,3 +283,21 @@ func (e *Engine) Interrupt() bool {
 
 // InterruptChan 返回中断信号通道（桥接 goroutine 读取）。
 func (e *Engine) InterruptChan() <-chan struct{} { return e.interruptCh }
+
+// ── 会话恢复弹框 ──────────────────────────────────────────
+
+// ResumeItem 会话恢复候选列表的一行（JSON 形状，消费端见 service/tui）。
+// 数据经 ListResumeItems 同步拉取，引擎不持有弹框 UI 状态。
+type ResumeItem struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`     // 会话内首条用户输入（截断）
+	UpdatedAt string `json:"updatedAt"` // 已格式化 "01-02 15:04"
+	Current   bool   `json:"current"`   // 是否当前会话
+}
+
+// isRunning 是否有对话在跑（turn 内/重试中）。命令类接口据此拒绝并发操作。
+func (e *Engine) isRunning() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.runState.Running
+}

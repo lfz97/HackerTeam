@@ -23,9 +23,14 @@ type EngineView interface {
 	TodoText() string
 	NoticeJSON() string
 	StartupInfo() ([]string, bool)
-	SkillItemsJSON() string
 	SubmitInput(line string) bool
 	Interrupt() bool
+	// ── 斜杠命令的能力接口（命令注册表与分发都在前端 commands.go）──
+	Shutdown()                       // /exit：释放 runner/MCP/localexec，前端随后自行退出
+	NewConversation() bool           // /new：running 时拒绝（false）
+	ClearRecords() bool              // /clear：running 时拒绝（false）
+	ListResumeItems() string         // /resume 候选 JSON（"[]"=无可恢复，引擎已附提示）
+	CheckoutSession(id string) error // 提交弹框选择；失败弹框保持可重选
 }
 
 // noticeTTL 临时通知的停留时长，到期回落兜底提示。TTL 从引擎写入槽位的
@@ -70,14 +75,6 @@ func (t *TUI) fetchNotice(running bool) string {
 	return composeHint(running)
 }
 
-// fetchSkillItems 拉取并解析帮助浮层条目（全部条目都由引擎下发，
-// helps 侧不自持默认项）。
-func (t *TUI) fetchSkillItems() []wireSkillItem {
-	var ws []wireSkillItem
-	_ = json.Unmarshal([]byte(t.engine.SkillItemsJSON()), &ws)
-	return ws
-}
-
 // submitInput 提交一行用户输入。引擎忙（无人接收）时返回 false，
 // 调用方应保留输入框内容——用户输入永不丢失。
 func (t *TUI) submitInput(line string) bool { return t.engine.SubmitInput(line) }
@@ -85,3 +82,22 @@ func (t *TUI) submitInput(line string) bool { return t.engine.SubmitInput(line) 
 // interrupt 提交一次中断信号（运行期 Esc）。非运行期无接收方，返回
 // false 可安全忽略。
 func (t *TUI) interrupt() bool { return t.engine.Interrupt() }
+
+// openResume /resume：同步拉候选开弹框（数据在手，无需槽位/逐帧拉取）；
+// 空列表不开（引擎侧已附 notice），弹框显隐与选中态由前端自持。
+func (t *TUI) openResume() {
+	var items []wireResumeItem
+	if json.Unmarshal([]byte(t.engine.ListResumeItems()), &items) != nil {
+		return
+	}
+	if len(items) == 0 {
+		return
+	}
+	t.resume.setItems(items)
+	t.resume.visible = true
+}
+
+// checkoutSession 提交弹框选择（enter 选中后调用）。错误引擎侧已自行
+// 记录（appendTyped/notice），调用方无需处理；true=成功（据此关框），
+// false=失败（弹框保持可重选）。
+func (t *TUI) checkoutSession(id string) bool { return t.engine.CheckoutSession(id) == nil }

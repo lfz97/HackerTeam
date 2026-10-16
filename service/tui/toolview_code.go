@@ -127,7 +127,7 @@ func codeBlockLines(path, content string, avail int) []string {
 		out = append(out, num+"  "+body)
 	}
 	if total > blockMaxLines {
-		note := fmt.Sprintf("… 共 %d 行，显示前 %d 行", total, blockMaxLines)
+		note := fmt.Sprintf("… %d lines total, showing first %d", total, blockMaxLines)
 		out = append(out, colorText(cFgMostSubtle,
 			fmt.Sprintf("%*s  %s", numW, "", truncateRunes(note, avail-numW-2))))
 	}

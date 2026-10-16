@@ -104,7 +104,7 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	// ① 可执行文件所在目录：一切资产的锚点
 	exePath, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("获取可执行文件目录错误: %w", err)
+		return nil, fmt.Errorf("failed to get executable directory: %w", err)
 	}
 	env.ExeDir = filepath.Dir(exePath)
 
@@ -119,10 +119,10 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	env.ConfigFolderPath = filepath.Join(env.ExeDir, hackerTeamConfigFolder)
 	if _, err := os.Stat(env.ConfigFolderPath); err != nil {
 		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("检查config文件夹错误: %w", err)
+			return nil, fmt.Errorf("failed to check config directory: %w", err)
 		}
 		if err := os.MkdirAll(env.ConfigFolderPath, os.ModePerm); err != nil {
-			return nil, fmt.Errorf("创建默认config文件夹错误: %w", err)
+			return nil, fmt.Errorf("failed to create default config directory: %w", err)
 		}
 		env.Notices = append(env.Notices, bootNotice{NoticeSuccess, "config folder not found, created default"})
 	}
@@ -135,16 +135,16 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	env.HackerTeamConfigPath = filepath.Join(env.ConfigFolderPath, hackerTeamConfig)
 	if _, err := os.Stat(env.HackerTeamConfigPath); err != nil {
 		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("检查配置文件错误: %w", err)
+			return nil, fmt.Errorf("failed to check config file: %w", err)
 		}
 		fd, err := os.OpenFile(env.HackerTeamConfigPath, os.O_RDWR|os.O_CREATE, 0644)
 		if err != nil {
-			return nil, fmt.Errorf("创建默认配置文件错误: %w", err)
+			return nil, fmt.Errorf("failed to create default config file: %w", err)
 		}
 		defer fd.Close()
 		cfg := strings.ReplaceAll(config.Template, "{USERID}", uuid.New().String())
 		if _, err := fd.WriteString(cfg); err != nil {
-			return nil, fmt.Errorf("写入默认配置文件错误: %w", err)
+			return nil, fmt.Errorf("failed to write default config file: %w", err)
 		}
 		env.NeedRestart = true
 		return env, nil
@@ -158,7 +158,7 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	// ⑥ 加载配置文件
 	cfg, err := config.LoadConfig(env.HackerTeamConfigPath)
 	if err != nil {
-		return nil, fmt.Errorf("加载配置文件错误: %w", err)
+		return nil, fmt.Errorf("failed to load config file: %w", err)
 	}
 	env.Config = cfg
 
@@ -172,7 +172,7 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	// ⑨ sqlite 记忆服务
 	memoryService, err := memory.NewSQLiteMemoryService(filepath.Join(env.ConfigFolderPath, memoryDBFileName))
 	if err != nil {
-		return nil, fmt.Errorf("初始化sqlite记忆服务错误: %w", err)
+		return nil, fmt.Errorf("failed to initialize sqlite memory service: %w", err)
 	}
 	env.SqliteMemoryService = memoryService
 
@@ -243,18 +243,18 @@ func (env *BootEnv) checkRoleSkillFolders() error {
 		if _, err := os.Stat(roleFolder); err == nil {
 			continue
 		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("检查%s文件夹错误: %w", pf.roleFolder, err)
+			return fmt.Errorf("failed to check %s folder: %w", pf.roleFolder, err)
 		}
 		if err := os.MkdirAll(roleFolder, os.ModePerm); err != nil {
-			return fmt.Errorf("创建默认%s文件夹错误: %w", pf.roleFolder, err)
+			return fmt.Errorf("failed to create default %s folder: %w", pf.roleFolder, err)
 		}
 		if pf.presetName != "" {
 			if err := copy.Copy("skillsTemplates/"+pf.presetName, roleFolder, copy.Options{FS: ToolSkills}); err != nil {
-				return fmt.Errorf("复制技能模板到%s文件夹错误: %w", pf.roleFolder, err)
+				return fmt.Errorf("failed to copy skill templates into %s folder: %w", pf.roleFolder, err)
 			}
 			// embedFS 源文件只读(0444)，复制后修正权限保证 skill 可编辑
 			if err := makeSkillsWritable(roleFolder); err != nil {
-				return fmt.Errorf("修正%s文件夹权限错误: %w", pf.roleFolder, err)
+				return fmt.Errorf("failed to fix %s folder permissions: %w", pf.roleFolder, err)
 			}
 		}
 		env.Notices = append(env.Notices, bootNotice{NoticeSuccess, fmt.Sprintf("%s folder not found, created default", pf.roleFolder)})

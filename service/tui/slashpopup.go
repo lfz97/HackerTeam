@@ -1,5 +1,11 @@
 package tui
 
+// 斜杠命令浮层：输入框里打出 "/" 后弹出的候选清单（demo 同款：居中圆角盒、
+// 上下选择、enter 补全）。条目由 handler.refilterSlashItems 每次按键按前缀从
+// slashRegistry 过滤后传入；显隐同样是派生的——由输入框内容决定，无独立开关、
+// 无打开快捷键。盒样式、标题行高与文本可用宽高推导都是浮层通用件，定义在
+// component.go（overlayBoxStyle/titleHeight/overlayTextSize，resume 弹框共用）。
+
 import (
 	"strings"
 
@@ -7,48 +13,32 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// 帮助浮层尺寸。盒子样式（overlayCentered 的 Border+Padding(1,2)）决定
-// 「边框+内边距」占多少：lipgloss v2 的 Width/Height 连边框一起算，
-// 文本可用宽/高 = 总宽/高 - 样式的水平/垂直 frame size。全部从样式推导，
-// 改 padding 或边框时这里自动跟上，不再手写魔法数字。
+// 浮层盒尺寸。lipgloss v2 的 Width/Height 连边框一起算，文本可用宽高由
+// overlayTextSize 从盒样式反推，不写魔法数字。
 const (
-	skillBoxWidth  = 100 //盒子总宽（含边框、padding）
-	skillBoxHeight = 20  //盒子总高（含边框、padding）
+	slashBoxWidth  = 100 //盒子总宽（含边框、padding）
+	slashBoxHeight = 20  //盒子总高（含边框、padding）
 
-	skillMinTextWidth = 10 //终端极窄时的兜底文本宽，防止负宽 panic
-	titleHeight       = 2
-	skillsTitle       = "Skills"
+	slashMinTextWidth = 10 //终端极窄时的兜底文本宽，防止负宽 panic
+	slashTitle        = "Commands  (↑/↓ select · enter complete · esc dismiss)"
 )
 
-// skillBoxStyle 帮助浮层盒样式，唯一定义处。skills 和 overlayCentered 共用，
-// 保证内容排版与盒子 frame 尺寸永远一致。
-var skillBoxStyle = lipgloss.NewStyle().
-	Border(lipgloss.RoundedBorder()).
-	BorderForeground(lipgloss.Color("62")).
-	Padding(1, 2)
-
-// skillTextSize 计算给定盒子总宽高下，文本真正可用的宽高。
-func skillTextSize(boxW, boxH int) (textW, textH int) {
-	st := skillBoxStyle.Width(boxW).Height(boxH)
-	return boxW - st.GetHorizontalFrameSize(), boxH - st.GetVerticalFrameSize()
-}
-
-// helps 帮助浮层（demo 同款：居中圆角盒、上下选择、enter 插入指令）。
-// 条目就是 commands.go 的斜杠命令注册表，NewHelps 播种后运行期不变——清单
-// 在前端自持，启动第一刻即非空，不再有"引擎还没发布条目"的空窗。
-type skills struct {
-	items   []slashCommand
+// slashPopup 斜杠命令浮层（结构同 resumeList：viewport + 选中索引）。
+type slashPopup struct {
+	items   []slashCmd
 	index   int
 	visible bool
 	vp      viewport.Model
 }
 
-func (s *skills) View(termWidth, termHeight int) string {
+func newSlashPopup() *slashPopup { return &slashPopup{vp: NewPrettyViewport(0, 1)} }
+
+func (s *slashPopup) View(termWidth, termHeight int) string {
 	//终端过小时盒子整体夹到屏幕内，再从盒子尺寸反推文本可用宽高
-	boxW := min(skillBoxWidth, termWidth)
-	boxH := min(skillBoxHeight, termHeight)
-	textW, textH := skillTextSize(boxW, boxH)
-	textW = max(textW, skillMinTextWidth)
+	boxW := min(slashBoxWidth, termWidth)
+	boxH := min(slashBoxHeight, termHeight)
+	textW, textH := overlayTextSize(boxW, boxH)
+	textW = max(textW, slashMinTextWidth)
 
 	//高度动态：跟内容走（标题+空行 2 + 条目数），上限为盒子文本区高度
 	contentH := len(s.items) + titleHeight
@@ -58,7 +48,7 @@ func (s *skills) View(termWidth, termHeight int) string {
 	//（lipgloss 的 Height 是最小高度，不截断）
 	s.vp.SetWidth(textW)
 	s.vp.SetHeight(vpH)
-	s.vp.SetContent(skillsTitle + strings.Repeat("\n", titleHeight) + s.renderItems()) //标题也进 viewport，一起滚动
+	s.vp.SetContent(slashTitle + strings.Repeat("\n", titleHeight) + s.renderItems()) //标题也进 viewport，一起滚动
 	//选中项跟随滚动：掉出视口就平移窗口，选中行贴顶（官方 EnsureVisible 语义）
 	s.vp.EnsureVisible(s.index+titleHeight, 0, 0)
 	return s.vp.View()
@@ -67,7 +57,7 @@ func (s *skills) View(termWidth, termHeight int) string {
 // renderItems 把条目渲染成左对齐两列表格：描述固定从「最长指令名 + 2」
 // 列开始，全表统一，呈现整齐的两列。描述超宽不截断，viewport SoftWrap
 // 默认 false 按宽度横向裁切，一行永远不会变两行。选中行加 "▶ " 前缀并高亮。
-func (s *skills) renderItems() string {
+func (s *slashPopup) renderItems() string {
 	//描述列起点 = 最长指令名 + 2（对齐留白）；指令超长者退化为紧跟 +1 空格
 	descCol := 0
 	for _, v := range s.items {
@@ -92,25 +82,30 @@ func (s *skills) renderItems() string {
 	return b.String()
 }
 
-func (s *skills) isVisible() bool {
-	return s.visible
+func (s *slashPopup) isVisible() bool { return s.visible }
+
+// switchVisibility 只有"设为某值"、没有"翻转"：可见性是输入框内容的派生结果，
+// 翻转语义会让调用点隐式依赖当前状态。
+func (s *slashPopup) switchVisibility(visible bool) { s.visible = visible }
+
+// setItems 整体替换浮层条目并把选中项归零（新清单从首项开始选中）。
+// 每次按键都会被调用，所以复用底层数组（append 的是值，与 slashRegistry 无别名）。
+func (s *slashPopup) setItems(items []slashCmd) {
+	s.items = s.items[:0]
+	s.items = append(s.items, items...)
+	s.index = 0
 }
 
-func (s *skills) toggleVisibility() {
-	s.visible = !s.visible
-}
-
-// moveUp/moveDown 清单为空时必须直接返回：取模的除数是 len(s.items)。
-// 清单现在是 commands.go 的编译期常量、恒非空，这两道守卫只为"注册表被清空"
-// 这种改动静默退化成 panic 时留一条命。
-func (s *skills) moveUp() {
+// moveUp/moveDown 清单为空时必须直接返回：取模的除数是 len(s.items)，不判会
+// panic。（refilterSlashItems 不会用空清单开框，但 setItems 是包内公开入口。）
+func (s *slashPopup) moveUp() {
 	if len(s.items) == 0 {
 		return
 	}
 	s.index = (s.index - 1 + len(s.items)) % len(s.items)
 }
 
-func (s *skills) moveDown() {
+func (s *slashPopup) moveDown() {
 	if len(s.items) == 0 {
 		return
 	}
@@ -118,18 +113,9 @@ func (s *skills) moveDown() {
 }
 
 // selectedCmd 返回当前选中条目的指令；清单为空或索引越界时 ok=false。
-func (s *skills) selectedCmd() (string, bool) {
+func (s *slashPopup) selectedCmd() (string, bool) {
 	if s.index < 0 || s.index >= len(s.items) {
 		return "", false
 	}
 	return s.items[s.index].cmd, true
-}
-
-// NewHelps 组装帮助浮层：条目直接取斜杠命令注册表（commands.go 的编译期常量，
-// 无需运行期刷新，也不存在拉取失败/尚未发布的中间态）。
-func NewHelps() *skills {
-	return &skills{
-		items: slashCommands,
-		vp:    NewPrettyViewport(0, 1),
-	}
 }

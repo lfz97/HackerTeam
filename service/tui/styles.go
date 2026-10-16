@@ -117,7 +117,7 @@ func slashEcho(text string) string {
 
 // summaryText 摘要提示（淡绿）。
 func summaryText(text string) string {
-	return colorText(cSuccessSubtle, "已生成摘要：\n"+text)
+	return colorText(cSuccessSubtle, "summary generated:\n"+text)
 }
 
 // ── 工具块头部行（crush toolHeader：状态图标 + info 工具名）──

@@ -8,12 +8,13 @@ package tui
 //   engine.go   引擎交互单一出入口（EngineView 接口 + 全部 t.engine 调用）
 //   pull.go     拉取订阅（tea.Tick 链：pullState/pullCmd/pullOnce）
 //   frame.go    帧落地操作（applyFrame/applyViewText/componentWidth/wrapViewText）
-//   handler.go  按键语义（keyMsgHandler）
-//   commands.go 斜杠命令注册表与分发（slashCommands/dispatchSlash）
+//   handler.go  按键语义（keyMsgHandler/slashToken/refilterSlashItems）
+//   slash.go    斜杠命令注册表与分发（slashRegistry/dispatchSlash）
 //   component.go 组件构建与整屏拼版（NewPrettyXxx/recalcComponentSize/draw/浮层）
 //   render.go   渲染类（composeView 记录重放、glamour、通知/终态文本翻译）
 //   styles.go   上色（lipgloss 颜色与文本样式 helpers）
-//   skills.go / resumelist.go / bottom.go / spinner.go / banner.go  各组件自持结构体与方法
+//   slashpopup.go / resumelist.go  两个浮层各自的渲染与选中态
+//   bottom.go / spinner.go / banner.go / toolview*.go  各组件自持结构体与方法
 
 import (
 	"time"
@@ -39,9 +40,9 @@ type TUI struct {
 	leftPadding  int
 	rightPadding int
 
-	skills *skills
-	bottom *bottom
-	resume *resumeList // /resume 弹框（会话恢复选择）
+	slashPopup *slashPopup // 斜杠命令补全浮层（显隐由输入框内容派生）
+	bottom     *bottom
+	resume     *resumeList // /resume 弹框（会话恢复选择）
 
 	// pull 是拉取循环的私有状态（见 pull.go 的 pullState 注释）。
 	pull *pullState
@@ -61,7 +62,7 @@ func NewTui(view EngineView) *TUI {
 		leftPadding:  2,
 		rightPadding: 2,
 		vp:           NewPrettyViewport(0, 1),
-		skills:       NewHelps(),
+		slashPopup:   newSlashPopup(),
 		bottom: &bottom{
 			spinner: NewSpinner(defaultDynamicSpinner, defaultStaticSpinner,
 				60*time.Millisecond),
@@ -124,7 +125,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return t, nil
 }
 
-// View 组合整屏画面（viewport + todo + textarea + bottom，帮助浮层叠加其上）。
+// View 组合整屏画面（viewport + todo + textarea + bottom，浮层叠加其上）。
 func (t *TUI) View() tea.View {
 	v := tea.NewView(t.draw())
 	v.MouseMode = tea.MouseModeCellMotion //启用主要鼠标事件，不含鼠标悬停

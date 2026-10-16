@@ -54,6 +54,26 @@ func NewPrettyViewport(width int, height int) viewport.Model {
 	return vp
 }
 
+// ── 浮层通用件（斜杠命令浮层与 resume 弹框共用）───────────────
+
+// titleHeight 浮层标题占的行数（标题本身 + 空行）。
+const titleHeight = 2
+
+// overlayBoxStyle 浮层盒样式，唯一定义处。overlayCentered 用它算 frame 尺寸、
+// 各浮层用它排版内容，保证两者永远一致（改 padding 或边框时自动跟上）。
+var overlayBoxStyle = lipgloss.NewStyle().
+	Border(lipgloss.RoundedBorder()).
+	BorderForeground(lipgloss.Color("62")).
+	Padding(1, 2)
+
+// overlayTextSize 计算给定盒子总宽高下，文本真正可用的宽高。lipgloss v2 的
+// Width/Height 连边框一起算，所以要减掉样式的 frame size；全部从
+// overlayBoxStyle 推导，改 padding 或边框时自动跟上，不写魔法数字。
+func overlayTextSize(boxW, boxH int) (textW, textH int) {
+	st := overlayBoxStyle.Width(boxW).Height(boxH)
+	return boxW - st.GetHorizontalFrameSize(), boxH - st.GetVerticalFrameSize()
+}
+
 // recalcComponentSize 重算所有组件尺寸（demo 范式 + 清单栏）。
 func (t *TUI) recalcComponentSize() {
 	// 窗口尺寸未就绪(启动早期,engine 的消息可能抢在第一条 WindowSizeMsg 之前到达)时,
@@ -78,7 +98,7 @@ func (t *TUI) recalcComponentSize() {
 }
 
 // draw 组合组件并绘制（demo 范式：viewport + todo + textarea + bottom，
-// 两侧 padding，帮助浮层 Compositor 叠加）。
+// 两侧 padding，浮层 Compositor 叠加）。
 func (t *TUI) draw() string {
 	messageView := t.vp.View()
 	textAreaView := t.ta.View()
@@ -97,8 +117,8 @@ func (t *TUI) draw() string {
 	//水平方向组合padding栏
 	content = lipgloss.JoinHorizontal(lipgloss.Left, leftPaddingView, content, rightPaddingView)
 	//浮层：官方 Compositor —— 主界面是底层 Layer，浮层盒 X/Y 定位、Z=1 悬浮其上
-	if t.skills.isVisible() {
-		content = t.overlayCentered(skillBoxWidth, skillBoxHeight, content, t.skills.View(t.width, t.height))
+	if t.slashPopup.isVisible() {
+		content = t.overlayCentered(slashBoxWidth, slashBoxHeight, content, t.slashPopup.View(t.width, t.height))
 	}
 	if t.resume.isVisible() {
 		content = t.overlayCentered(resumeBoxWidth, resumeBoxHeight, content, t.resume.View(t.width, t.height))
@@ -107,14 +127,14 @@ func (t *TUI) draw() string {
 }
 
 // overlayCentered 在原内容上增加居中悬浮框（demo 同款：圆角 + 紫色 62）。
-// 盒子样式统一在 skills.go 定义（skillBoxStyle，各浮层共用保证 frame 尺寸一致），
-// 尺寸由调用方传入（各浮层自持常量），此处只夹取、渲染、定位。
+// 盒样式统一在本文件定义（overlayBoxStyle），尺寸由调用方传入
+//（各浮层自持常量），此处只夹取、渲染、定位。
 func (t *TUI) overlayCentered(boxW, boxH int, back string, front string) string {
 	boxW = min(boxW, t.width) //终端过小就夹到屏幕内
 	//盒高跟内容动态走：vp 实际渲染行数 + 边框/内边距，上限已由各浮层 View 夹过
-	boxH = min(lipgloss.Height(front)+skillBoxStyle.GetVerticalFrameSize(), boxH, t.height)
+	boxH = min(lipgloss.Height(front)+overlayBoxStyle.GetVerticalFrameSize(), boxH, t.height)
 
-	box := skillBoxStyle.
+	box := overlayBoxStyle.
 		Width(boxW).
 		Height(boxH).
 		Render(front)
@@ -123,7 +143,7 @@ func (t *TUI) overlayCentered(boxW, boxH int, back string, front string) string 
 
 	content := lipgloss.NewCompositor(
 		lipgloss.NewLayer(back),               //z=0 底层：主界面
-		lipgloss.NewLayer(box).X(x).Y(y).Z(1), //z=1 悬浮层：帮助盒
+		lipgloss.NewLayer(box).X(x).Y(y).Z(1), //z=1 悬浮层：浮层盒
 	).Render()
 
 	return content

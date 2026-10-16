@@ -90,7 +90,7 @@ func (e *Engine) Init() {
 	}
 	if env.NeedRestart {
 		// 首跑创建了默认配置文件：须改完配置重启，本次启动到此为止。
-		e.parkWithFatal(FatalSuccess, "检查到配置文件不存在，已创建默认配置文件。请根据实际情况修改配置文件后重新启动程序！", true)
+		e.parkWithFatal(FatalSuccess, "Config file not found; a default one has been created. Please review it and restart.", true)
 		return
 	}
 	e.absorb(env)
@@ -193,7 +193,7 @@ func (e *Engine) Shutdown() {
 // 避开，命令前移到前端后这里显式兜底，拒绝即最小正确实现。
 func (e *Engine) NewConversation() bool {
 	if e.isRunning() {
-		e.setNotice(NoticeWarning, "对话进行中，请稍后再开新对话")
+		e.setNotice(NoticeWarning, "agent is running, try /new later")
 		return false
 	}
 	(*e).appendTyped(RecSlash, "/new")
@@ -205,7 +205,7 @@ func (e *Engine) NewConversation() bool {
 // ClearRecords /clear：丢弃全部消息记录（连命令本身也不留痕）。running 拒绝同 NewConversation。
 func (e *Engine) ClearRecords() bool {
 	if e.isRunning() {
-		e.setNotice(NoticeWarning, "对话进行中，请稍后再清屏")
+		e.setNotice(NoticeWarning, "agent is running, try /clear later")
 		return false
 	}
 	e.clearRecords()

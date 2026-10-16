@@ -10,11 +10,14 @@ import (
 //
 // 按键优先级从高到低：
 //  1. 终态等键模式（fatal.waitKey）——任意键退出
-//  2. 帮助浮层打开——ctrl+k/esc/ctrl+c 关浮层，up/down 选条目，enter 插入指令
+//  2. 斜杠命令浮层打开——esc/ctrl+c 关浮层，up/down 选条目，enter 补全指令
 //  3. /resume 弹框打开——up/down 选会话，enter 恢复，esc 取消，其余键吞掉
-//  4. ctrl+c 退出、enter 提交（斜杠命令先经 dispatchSlash 分发）、ctrl+k 开浮层、
-//     esc 中断（仅运行态）
-//  5. 其余转发给 textarea 自行处理
+//  4. ctrl+c 退出、enter 提交（斜杠命令先经 dispatchSlash 分发）、esc 中断（仅运行态）
+//  5. 其余转发给 textarea，再按输入框内容重算浮层
+//
+// 浮层没有独立的打开快捷键：它是输入框内容的派生状态——输入 "/" 起前缀匹配
+//（单敲 "/" 就是全量清单，slashRegistry 的 cmd 一律以 "/" 开头），失去斜杠前缀
+// 自动收起。派生而非独立模态，可见性只有一个决定点（refilterSlashItems）。
 func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	input := m.String()
@@ -24,30 +27,38 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return t, tea.Quit
 	}
 
-	if t.skills.isVisible() {
-		if input == "ctrl+k" || input == "esc" || input == "ctrl+c" {
-			t.skills.toggleVisibility()
+	if t.slashPopup.isVisible() {
+		if input == "esc" || input == "ctrl+c" {
+			t.slashPopup.switchVisibility(false)
 			return t, nil
 
 		} else if input == "down" {
-			t.skills.moveDown()
+			t.slashPopup.moveDown()
 			return t, nil
 
 		} else if input == "up" {
-			t.skills.moveUp()
+			t.slashPopup.moveUp()
 			return t, nil
 
 		} else if input == "enter" {
-			//清单为空时无指令可插入，浮层保持打开（esc/ctrl+k 仍能关）
-			if cmd, ok := t.skills.selectedCmd(); ok {
-				t.ta.InsertString(cmd + " ") //把当前选中的命令写入到textarea里面去
-				t.skills.toggleVisibility()
-				t.recalcComponentSize()
+			//清单为空时无指令可补全，浮层保持打开（esc 仍能关）
+			sel, ok := t.slashPopup.selectedCmd()
+			if !ok {
+				return t, nil
 			}
+			//整段替换而非 InsertString：输入框里还留着半截 "/re"，插入会拼成
+			//"/re/resume "。补全后带个空格，光标停在命令末尾等用户接参数。
+			t.ta.SetValue(sel + " ")
+			t.slashPopup.switchVisibility(false)
+			t.recalcComponentSize()
 			return t, nil
 
 		} else {
-			return t, nil
+			var cmd tea.Cmd
+			t.ta, cmd = t.ta.Update(m)
+			t.refilterSlashItems() //浮层开着时继续打字也要重新过滤，否则清单永远停在第一次的结果
+			t.recalcComponentSize()
+			return t, cmd
 		}
 
 	} else if t.resume.isVisible() {
@@ -103,10 +114,6 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			t.recalcComponentSize()
 			return t, nil
 
-		} else if input == "ctrl+k" {
-			t.skills.toggleVisibility() //清单是本地静态注册表，开浮层无需刷新
-			return t, nil
-
 		} else if input == "esc" {
 			// esc 优先级：浮层开着上面已处理；运行期 → 中断 agent。
 			// 非运行期无操作（放行给 textarea 也无绑定，等价 no-op）。
@@ -117,10 +124,46 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		} else {
 			var cmd tea.Cmd
-			t.ta, cmd = t.ta.Update(m) //只需把消息转发就行，textarea内部会自己处理
+			t.ta, cmd = t.ta.Update(m) //把按键更新到textarea里面。
+			t.refilterSlashItems()
 			t.recalcComponentSize()
 			return t, cmd
 		}
 	}
 
+}
+
+// slashToken 返回输入框里正在输入的半截斜杠命令（以 "/" 开头且不含空白）；
+// 不在输入命令时 ok=false。含空白说明用户已经在写命令参数（或根本就是普通
+// 消息），此时补全没有意义。
+func slashToken(text string) (string, bool) {
+	if !strings.HasPrefix(text, "/") || strings.ContainsAny(text, " \t\n") {
+		return "", false
+	}
+	return text, true
+}
+
+// refilterSlashItems 按输入框当前内容重算斜杠命令浮层：正在输入斜杠命令且存在
+// 前缀匹配才显示，否则收起。必须在按键已交给 textarea 之后调用——用旧值匹配
+// 会永远差一个字符。
+// 条目源是 slashRegistry（编译期常量），过滤是纯内存操作，每次按键跑一遍无成本。
+func (t *TUI) refilterSlashItems() {
+	tok, ok := slashToken(t.ta.Value())
+	if !ok {
+		t.slashPopup.switchVisibility(false)
+		return
+	}
+
+	var matched []slashCmd
+	for _, sc := range slashRegistry {
+		if strings.HasPrefix(sc.cmd, tok) {
+			matched = append(matched, sc)
+		}
+	}
+	if len(matched) == 0 {
+		t.slashPopup.switchVisibility(false)
+		return
+	}
+	t.slashPopup.setItems(matched) //内部重置 index=0，新清单从首项开始选中
+	t.slashPopup.switchVisibility(true)
 }

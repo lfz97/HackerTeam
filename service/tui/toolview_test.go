@@ -56,7 +56,7 @@ func TestArgRowsArrayCount(t *testing.T) {
 		"todo_write": {Name: "todo_write", In: []string{}, Out: []string{"message"}},
 	})
 	rows := argRows("todo_write", []byte(`[{"id":1},{"id":2},{"id":3}]`))
-	if len(rows) != 1 || rows[0].val != "共 3 项" {
+	if len(rows) != 1 || rows[0].val != "3 items" {
 		t.Fatalf("want array count row, got %#v", rows)
 	}
 }
@@ -317,7 +317,7 @@ func TestRenderBlockTruncation(t *testing.T) {
 		t.Fatalf("want 41 lines, got %d", len(lines))
 	}
 	last := lines[len(lines)-1]
-	if !strings.Contains(last, "共 45 行") || !strings.Contains(last, "前 40 行") {
+	if !strings.Contains(last, "45 lines total") || !strings.Contains(last, "showing first 40") {
 		t.Fatalf("truncation note wrong: %q", last)
 	}
 }

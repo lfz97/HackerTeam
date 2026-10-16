@@ -360,7 +360,7 @@ func setAgent(agentName agentName, m config.Model, opts []llmagent.Option, sink 
 		return Agent_p, nil
 
 	} else {
-		return nil, errors.New("不支持的API类型，请检查配置文件中的 Model.APIType 字段")
+		return nil, errors.New("unsupported API type, check the Model.APIType field in your config")
 	}
 }
 

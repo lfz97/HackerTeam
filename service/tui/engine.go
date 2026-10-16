@@ -25,7 +25,7 @@ type EngineView interface {
 	StartupInfo() ([]string, bool)
 	SubmitInput(line string) bool
 	Interrupt() bool
-	// ── 斜杠命令的能力接口（命令注册表与分发都在前端 commands.go）──
+	// ── 斜杠命令的能力接口（命令注册表与分发都在前端 slash.go）──
 	Shutdown()                       // /exit：释放 runner/MCP/localexec，前端随后自行退出
 	NewConversation() bool           // /new：running 时拒绝（false）
 	ClearRecords() bool              // /clear：running 时拒绝（false）

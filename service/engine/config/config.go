@@ -46,11 +46,11 @@ func LoadConfig(path string) (*Config, error) {
 	YamlConfig := Config{}
 	yamlFile, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("读取配置文件错误：%v", err)
+		return nil, fmt.Errorf("failed to read config file: %v", err)
 	}
 	err = yaml.Unmarshal(yamlFile, &YamlConfig)
 	if err != nil {
-		return nil, fmt.Errorf("解析配置文件错误：%v", err)
+		return nil, fmt.Errorf("failed to parse config file: %v", err)
 	}
 	if YamlConfig.Model.MaxTokens == 0 { // maxtokens 未配置时使用默认值 12800
 		YamlConfig.Model.MaxTokens = 12800

@@ -239,11 +239,12 @@ func renderNotice(kind, text string) string {
 
 // composeHint 常驻兜底提示。esc to interrupt 只在运行态出现——
 // ESC 中断仅在 agent 运行期间有效，平时显示它是噪音。
+// 措辞用 commands 而非 slashes：slash 是字符名，不是命令类别名。
 func composeHint(running bool) string {
 	if running {
-		return noticeSub("esc to interrupt · ctrl+k for help")
+		return noticeSub("esc to interrupt · type / for commands")
 	}
-	return noticeSub("ctrl+k for help")
+	return noticeSub("type / for commands")
 }
 
 // renderFatal 把终态消息按样式上色（引擎只存语义原文与 style 字符串）。

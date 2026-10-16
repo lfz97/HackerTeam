@@ -95,7 +95,7 @@ func argRows(name string, args []byte) []kvRow {
 		return rowsFromKeys(obj, orderedKeys(name, obj, true))
 	}
 	if n, isArray := decodeJSONArray(args); isArray {
-		return []kvRow{{key: "args", val: fmt.Sprintf("共 %d 项", n)}}
+		return []kvRow{{key: "args", val: fmt.Sprintf("%d items", n)}}
 	}
 	// 非法 JSON：截断原文兜底，宁可朴素不可消失
 	s := truncateRunes(compactLine(string(args)), argValueMaxRunes)
@@ -507,7 +507,7 @@ func renderBlock(b textBlock, avail int, path string) []string {
 		}
 	}
 	if total > blockMaxLines {
-		note := fmt.Sprintf("… 共 %d 行，显示前 %d 行", total, blockMaxLines)
+		note := fmt.Sprintf("… %d lines total, showing first %d", total, blockMaxLines)
 		for _, chunk := range hardWrapIf(note, avail) {
 			out = append(out, colorText(cFgMostSubtle, "  "+chunk))
 		}
@@ -693,7 +693,7 @@ func renderDiffBlock(b textBlock, path string, avail int) []string {
 		}
 	}
 	if contentTotal > blockMaxLines {
-		note := fmt.Sprintf("… 共 %d 行，显示前 %d 行", contentTotal, blockMaxLines)
+		note := fmt.Sprintf("… %d lines total, showing first %d", contentTotal, blockMaxLines)
 		for _, chunk := range hardWrapIf(note, limit) {
 			out = append(out, blankCol+colorText(cFgMostSubtle, chunk))
 		}

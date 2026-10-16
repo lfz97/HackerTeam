@@ -30,11 +30,11 @@ import (
 func (e *Engine) ListResumeItems() string {
 	items, err := e.listResumeItems()
 	if err != nil {
-		(*e).appendTyped(RecError, "读取会话列表失败："+err.Error())
+		(*e).appendTyped(RecError, "failed to read session list: "+err.Error())
 		return "[]"
 	}
 	if len(items) == 0 {
-		(*e).setNotice(NoticeWarning, "当前目录还没有历史会话")
+		(*e).setNotice(NoticeWarning, "no previous sessions in this directory")
 		return "[]"
 	}
 	b, err := json.Marshal(items)
@@ -51,14 +51,14 @@ func (e *Engine) ListResumeItems() string {
 // 拒绝/失败时弹框保持，用户可重选。Esc 关闭是纯前端状态，不经这里。
 func (e *Engine) CheckoutSession(id string) error {
 	if e.isRunning() {
-		(*e).setNotice(NoticeWarning, "对话进行中，请稍后再恢复会话")
-		return fmt.Errorf("对话进行中")
+		(*e).setNotice(NoticeWarning, "agent is running, try /resume later")
+		return fmt.Errorf("conversation in progress")
 	}
 	if err := e.switchSession(id); err != nil {
-		(*e).appendTyped(RecError, "恢复会话失败："+err.Error())
+		(*e).appendTyped(RecError, "failed to restore session: "+err.Error())
 		return err // 弹框保持，用户可重选
 	}
-	(*e).setNotice(NoticeSuccess, "已恢复会话 "+shortID(id))
+	(*e).setNotice(NoticeSuccess, "resumed session "+shortID(id))
 	return nil
 }
 
@@ -124,7 +124,7 @@ func firstUserText(s *session.Session) string {
 			return text
 		}
 	}
-	return "(无文本消息)"
+	return "(no text message)"
 }
 
 // switchSession 切到目标会话并重放事件到 records（给前端画历史）。
@@ -141,7 +141,7 @@ func (e *Engine) switchSession(id string) error {
 		return err
 	}
 	if sess == nil {
-		return fmt.Errorf("会话 %s 不存在", id)
+		return fmt.Errorf("session %s does not exist", id)
 	}
 	(*e).SessionId = id
 	(*e).RequestId = uuid.New().String()

@@ -50,11 +50,11 @@ func (e *Engine) turn(prompt string) {
 		if exhausted {
 			// 放弃自动重试，把控制权交还用户：Run 循环回到等输入，下一次提交
 			// 用户输入时充值。预算不在这里充值——耗尽只可能由零输出失败触发。
-			(*e).appendTyped("error", fmt.Sprintf("连续 %d 次失败，已停止自动重试。请检查网络/配置后重新输入。", n))
+			(*e).appendTyped("error", fmt.Sprintf("failed %d times in a row, auto-retry stopped. Check network/config and try again.", n))
 			return
 		}
 		// 必须在 Sleep 之前打：sleep 期间引擎不收输入，用户需要知道程序在等什么。
-		(*e).appendTyped("warn", fmt.Sprintf("%d 秒后重试（第 %d/%d 次）...", (*e).errBudget.backoff()/time.Second, n, (*e).errBudget.limit()))
+		(*e).appendTyped("warn", fmt.Sprintf("retrying in %ds (attempt %d/%d)...", (*e).errBudget.backoff()/time.Second, n, (*e).errBudget.limit()))
 		time.Sleep((*e).errBudget.backoff())
 		// 纠正 prompt：把错误与已产出的部分输出喂回去，让模型调整后续输出。
 		if err.PartialOutput != "" {
@@ -82,7 +82,7 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 		agent.WithToolCallArgumentsJSONRepairEnabled(true), //开启工具调用参数的JSON修复功能，解决因模型输出格式不规范导致的工具调用失败问题
 	)
 	if err != nil {
-		err = fmt.Errorf("AgentRunner.Run发生错误: %v", err)
+		err = fmt.Errorf("AgentRunner.Run failed: %v", err)
 		// 在源头打印，与下面的 TerminalError 分支保持一致：每类错误只打一次。
 		(*e).appendTyped("error", err.Error())
 		return &AgentError{
@@ -98,7 +98,7 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 		if event.Error != nil {
 			if event.IsTerminalError() {
 				//填充err，使得返回的err不为nil，表示对话发生了错误
-				err = fmt.Errorf("Event发生TerminalError: %v", event.Error)
+				err = fmt.Errorf("event returned TerminalError: %v", event.Error)
 				(*e).appendTyped("error", err.Error())
 				return &AgentError{
 					Error:         err,

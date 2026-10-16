@@ -133,7 +133,7 @@ func (e *Engine) LoadConfig() {
 	//加载配置文件
 	c, err := config.LoadConfig((*e).HackerTeamConfigPath)
 	if err != nil {
-		(*e).parkWithFatal(FatalError, fmt.Sprintf("加载配置文件错误: %v,按任意键退出", err), true)
+		(*e).parkWithFatal(FatalError, fmt.Sprintf("Failed to load config: %v (press any key to exit)", err), true)
 	}
 	(*e).Config_p = c
 }

@@ -51,7 +51,7 @@ func (f *fakeView) StartupInfo() ([]string, bool) { return nil, false }
 func (f *fakeView) SubmitInput(line string) bool  { return true }
 func (f *fakeView) Interrupt() bool               { return true }
 
-// ── 斜杠命令的能力接口（注册表与分发在前端 commands.go）──
+// ── 斜杠命令的能力接口（注册表与分发在前端 slash.go）──
 func (f *fakeView) Shutdown()                       {}
 func (f *fakeView) NewConversation() bool           { return true }
 func (f *fakeView) ClearRecords() bool              { return true }

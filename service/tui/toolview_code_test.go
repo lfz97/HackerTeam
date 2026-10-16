@@ -82,7 +82,7 @@ func TestCodeBlockLines(t *testing.T) {
 		t.Errorf("missing line number: %q", lines[0])
 	}
 	last := ansi.Strip(lines[40])
-	if !strings.Contains(last, "共 45 行") || !strings.Contains(last, "前 40 行") {
+	if !strings.Contains(last, "45 lines total") || !strings.Contains(last, "showing first 40") {
 		t.Errorf("truncation note wrong: %q", last)
 	}
 	// 不足 40 行全显：无尾注
@@ -201,7 +201,7 @@ func TestRenderDiffBlockStripeWrapKeepsBg(t *testing.T) {
 }
 
 func TestRenderDiffBlockTruncationCountsContent(t *testing.T) {
-	// 3 头行 + 45 内容行：截断计数只算内容行（头行不计入"共 X 行"）
+	// 3 头行 + 45 内容行：截断计数只算内容行（头行不计入"X lines total"）
 	var b strings.Builder
 	b.WriteString("--- a/x.go\n+++ b/x.go\n@@ -1,45 +1,45 @@\n")
 	for i := 0; i < 45; i++ {
@@ -212,7 +212,7 @@ func TestRenderDiffBlockTruncationCountsContent(t *testing.T) {
 		t.Fatalf("want 41 lines, got %d", len(lines))
 	}
 	last := ansi.Strip(lines[len(lines)-1])
-	if !strings.Contains(last, "共 45 行") {
+	if !strings.Contains(last, "45 lines total") {
 		t.Errorf("truncation note should count content lines only: %q", last)
 	}
 }

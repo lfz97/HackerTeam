@@ -1,6 +1,6 @@
 package tui
 
-// /resume 弹框：会话恢复候选列表（帮助浮层同款：居中圆角盒、上下选择、
+// /resume 弹框：会话恢复候选列表（斜杠命令浮层同款：居中圆角盒、上下选择、
 // enter 确认）。数据在 /resume 命令分发时由 openResume 同步拉取
 //（ListResumeItems），显隐与选中态由前端自持；选择经 checkoutSession
 // 提交，esc 本地收起。按键语义在 handler.go——本文件只管渲染与选中态。
@@ -17,13 +17,13 @@ const (
 	resumeBoxHeight = 18 //盒子总高（含边框、padding）
 
 	resumeMinTextW = 20 //终端极窄时的兜底文本宽，防止负宽 panic
-	resumeTitle    = "Resume Session  (↑/↓ 选择 · enter 恢复 · esc 取消)"
+	resumeTitle    = "Resume Session  (↑/↓ select · enter restore · esc cancel)"
 
 	currentSuffix = "  · current" //当前会话标记（缀在时间列后）
 	timeColMinGap = 2             //标题列与时间列的最小间隔
 )
 
-// resumeList 会话恢复弹框（结构同 skills 浮层：viewport + 选中索引）。
+// resumeList 会话恢复弹框（结构同 slashPopup：viewport + 选中索引）。
 type resumeList struct {
 	items   []wireResumeItem
 	index   int
@@ -68,7 +68,7 @@ func (r *resumeList) selectedID() (string, bool) {
 func (r *resumeList) View(termWidth, termHeight int) string {
 	boxW := min(resumeBoxWidth, termWidth)
 	boxH := min(resumeBoxHeight, termHeight)
-	textW, textH := skillTextSize(boxW, boxH) //复用帮助浮层的盒样式推导
+	textW, textH := overlayTextSize(boxW, boxH) //复用浮层通用件（component.go）
 	textW = max(textW, resumeMinTextW)
 
 	//高度动态：跟内容走（标题+空行 2 + 条目数），上限为盒子文本区高度
@@ -102,7 +102,7 @@ func (r *resumeList) renderItems(textW int) string {
 		gap := max(1, maxTitle-usedW)
 		line := title + strings.Repeat(" ", gap) + meta
 		if i == r.index {
-			//换行不要进 render，render 后再拼（与 skills.renderItems 一致）
+			//换行不要进 render，render 后再拼（与 slashPopup.renderItems 一致）
 			line = prefix + lipgloss.NewStyle().Foreground(lipgloss.Color("62")).Bold(true).Render(line)
 		} else {
 			line = prefix + line

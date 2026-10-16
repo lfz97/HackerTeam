@@ -9,7 +9,7 @@ description: Test HackerTeam startup and bounded offline artifact routing throug
 - Launch the built executable in a maximized GUI terminal when recording. Do not run a TUI through a noninteractive shell pipe.
 - Runtime state lives in `.HackerTeam/` beside the executable, not beside the shell's working directory. Avoid `go run` for persistent test configuration.
 - On a fresh installation, startup creates `HackerTeam.yaml`, displays a notice asking for configuration changes, and waits for a keypress to exit. Preserve existing user configuration rather than deleting it to recreate this condition.
-- Restarting with the default placeholder configuration can reach the new-conversation input without submitting a model request. Ctrl+K opens/closes help; `/exit` followed by Enter exits.
+- Restarting with the default placeholder configuration can reach the new-conversation input without submitting a model request. The command list is derived from the input box: typing `/` opens it, further typing filters it, Esc dismisses it (the old Ctrl+K help page is gone). Exiting takes two Enters after `/exit` - the first completes the popup selection, the second submits.
 - Label these checks as regression/startup coverage. They cannot verify Captain scheduling, agent dispatch, mode prerequisites, or task completion.
 - Never submit tasks with placeholder credentials merely to demonstrate an expected authentication failure. With no configured model, report routing coverage as blocked.
 - For benign routing tests with a configured model, use narrowly scoped offline file-processing tasks and independently verify their outputs. Do not use real targets or infer skipped stages from absence of activity before a task is submitted.

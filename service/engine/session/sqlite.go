@@ -19,7 +19,7 @@ import (
 // _txlock=immediate 把写锁提到事务开头，规避框架延迟事务中途升级撞锁时
 // BUSY 不走 busy handler 的问题；busy_timeout 兜底等待。
 // 以上参数由 mattn/go-sqlite3 在每条新连接建立时自动 PRAGMA，框架不参与。
-func NewSQLiteSessionService(dbPath string, m config.Model, sink msgPrinter) (*sqlitesession.Service, error) {
+func NewSQLiteSessionService(dbPath string, m config.Model, sink summarySink) (*sqlitesession.Service, error) {
 	dsn := dbPath + "?_journal_mode=WAL&_busy_timeout=15000&_txlock=immediate"
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {

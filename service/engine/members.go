@@ -120,6 +120,7 @@ func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Call
 		llmagent.WithAddSessionSummary(true),                             // 启用上下文压缩注入
 		llmagent.WithSyncSummaryIntraRun(true),                           //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                       // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),          // Pass 1 预算：历史 tool result >8K 才换 placeholder
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                         // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithPreloadMemory(10),                                   // 预加载记忆到上下文中
@@ -156,6 +157,7 @@ func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Recon Agent — information gathering ONLY. Use for reconnaissance: subdomain enumeration, DNS records, port scanning, service/OS fingerprinting, web tech-stack and sensitive-path discovery, passive intel (Shodan/Fofa/WHOIS/GitHub leaks). Does NOT scan for vulnerabilities or exploit. Dispatch by passing the task in the `request` field."),
@@ -198,6 +200,7 @@ func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Exploit Agent — hands-on verification, controlled exploitation, and bounded general execution. Pentest mode requires target context plus a concrete finding or attack hypothesis. General Execution / CTF mode instead requires a bounded objective, supplied artifacts or endpoints, and an explicit success condition; it does not require Recon/Scanner reports or a vulnerability hypothesis. Use this fallback only when no other specialist fits. Dispatch by passing the task in the `request` field."),
@@ -241,6 +244,7 @@ func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("PostExploit Agent — one-objective post-exploitation from existing valid access. Use only when a session/credential/foothold already exists, and assign one explicit objective at a time: privilege escalation assessment, scoped internal recon, approved credential/data collection, authorized lateral movement, persistence, exfiltration, or cleanup. Provide current session/privilege info and the single authorized objective in the task. Dispatch by passing the task in the `request` field."),
@@ -283,6 +287,7 @@ func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Scanner Agent — automated vulnerability scanning ONLY (breadth over accuracy). Use for nuclei, sqlmap --batch detection, nikto, and non-invasive service/path-scoped vulnerability checks against concrete targets. Does NOT do asset discovery, tech/WAF fingerprinting, directory enumeration, weak-credential attempts, verification, rating, or exploitation. Dispatch by passing the task in the `request` field."),
@@ -324,6 +329,7 @@ func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
 		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
 		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
 		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
 		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
 		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
 		llmagent.WithDescription("Reproducer Agent — generates standalone Python PoC/Exploit scripts from reviewed vulnerability evidence. Provide MD report paths, raw-output paths, or other Captain-reviewed evidence in prior_results so it can extract complete structured vulnerability data. Never attacks targets. Dispatch by passing the task in the `request` field."),

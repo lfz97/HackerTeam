@@ -38,11 +38,19 @@ func initSummarizerPrompts() {
 
 // summarySink 本包对展示端的全部需求：摘要生成后投一条摘要记录（pull 契约，
 // 展示端以 AppendSummary 实现，渲染是消费端的事）。
-type msgPrinter interface {
+// 注意：本包不 import 任何展示端（TUI）类型——依赖方向是展示端实现本接口。
+type summarySink interface {
 	AppendSummary(text string)
 }
 
-func NewSummarizer(m config.Model, tui msgPrinter) summary.SessionSummarizer {
+// NewSummarizer 构造摘要器，sink 用于摘要生成后投递展示（可传 nil，跳过投递）。
+func NewSummarizer(m config.Model, sink summarySink) summary.SessionSummarizer {
+	return NewSummarizerWithThreshold(m, sink, CheckTokenThresholdPercent)
+}
+
+// NewSummarizerWithThreshold 与 NewSummarizer 相同，但用调用方给定的
+// 阈值百分比替代包级默认 CheckTokenThresholdPercent（相对 m.ContextWindow）。
+func NewSummarizerWithThreshold(m config.Model, sink summarySink, thresholdPercent float64) summary.SessionSummarizer {
 	initSummarizerPrompts()
 	//设置tiktoken计算方式，默认的方式太不准确了
 	counter, _ := tiktoken.New(m.Model)
@@ -55,10 +63,14 @@ func NewSummarizer(m config.Model, tui msgPrinter) summary.SessionSummarizer {
 		summarizerModel = models.Anthropic(m)
 	}
 	// ── 创建 summarizer阈值 ───────────────
-	sum := summary.NewSummarizer(
-		summarizerModel,
-		summary.WithChecksAny( // 只按 token 阈值触发；时间阈值已删：挂机不发消息也压摘要，只会白白压掉活跃会话的上下文
-			summary.CheckTokenThreshold(int(CheckTokenThresholdPercent*float64(m.ContextWindow))), // 新增 n 个 token 后触发
+	// 触发条件：请求总占用超过 contextwindow 的 thresholdPercent（v1.11 语义）。
+	// 请求上下文可得时用最终请求的本地计数（框架注入 model-visible view），无上下文时
+	// 退回 delta 估算——与旧 CheckTokenThreshold 数值一致；fallback 不显式设置，
+	// 框架自动用 summarizer 模型（models.Openai 带的 yaml contextwindow）兜底。
+	// 注意：两机制同时挂会被 s.checks 的 AND 短路求值叠加成"两者都过才触发"，勿混用。
+	opts := []summary.Option{
+		summary.WithContextThreshold(
+			summary.WithContextThresholdRatio(thresholdPercent),
 		),
 		summary.WithMaxSummaryWords(maxSummaryWords),     //设置摘要的最大长度，单位为词
 		summary.WithSystemPrompt(systemSummarizerPrompt), //设置系统提示词，指导模型如何进行摘要，默认为空，可以根据需要自定义
@@ -83,11 +95,18 @@ func NewSummarizer(m config.Model, tui msgPrinter) summary.SessionSummarizer {
 			}
 			return fmt.Sprintf("[%s returned: %s]", msg.ToolName, content)
 		}),
-		summary.WithPostSummaryHook(func(s *summary.PostSummaryHookContext) error {
+	}
+	if sink != nil { // 无展示端（如后台 agent 传 nil）时跳过投递，防 panic
+		opts = append(opts, summary.WithPostSummaryHook(func(s *summary.PostSummaryHookContext) error {
 			cleanSummary := reThink.ReplaceAllString(s.Summary, "") //将摘要内容中的<think>...</think>部分去掉
-			tui.AppendSummary(fmt.Sprintf("%v", cleanSummary))
+			sink.AppendSummary(cleanSummary)
 			return nil
-		}),
+		}))
+	}
+	// ── 创建 summarizer ───────────────
+	sum := summary.NewSummarizer(
+		summarizerModel,
+		opts...,
 	)
 	return sum
 

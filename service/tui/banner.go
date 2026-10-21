@@ -271,8 +271,8 @@ func clampWidth(s string, w int) string {
 }
 
 // composeBanner 组装启动横幅文本（StartupInfo 就绪后调用一次）。
-// 横幅是"死文本"：写入后随对话滚动、resize 由 viewport 软换行兜底——
-// 启动横幅本就是一次性历史记录。
+// 横幅是"死文本"：写入后随对话滚动、resize 不重排（viewport SoftWrap=false
+// 只横向裁切不换行，超宽部分被裁）——启动横幅本就是一次性历史记录。
 func composeBanner(infoLines []string, width int) string {
 	b := newBanner(infoLines)
 	//banner 与输入框之间只留 1 行空行（对齐 Claude Code 的紧凑观感）

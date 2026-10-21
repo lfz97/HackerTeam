@@ -87,20 +87,67 @@ func thinkingQuote(w int) lipgloss.Style {
 var errorTag = lipgloss.NewStyle().Padding(0, 1).Background(cError).Foreground(cOnPrimary)
 
 // ── 状态/生命周期消息（无装饰符号，语义由颜色承载——沿用项目规则）──
+//
+// 本组消息与正文/思考/工具块共享"compose 阶段排完版、viewport 零改写"契约
+// （viewport SoftWrap=false 只横向裁切不换行）：宽度作参数传入，进 viewport
+// 前自己折行。
 
-// errText 错误消息：ERROR 徽章 + 弱化正文。
-func errText(text string) string {
-	return errorTag.Render("ERROR") + " " + colorText(cFgSubtle, text)
+// wrapStatusText 状态消息正文的清洗与折行：剥 ANSI、\r\n 归一、tab 展开
+// 4 空格（宽度测量把 \t 计 0 列而终端展开到制表位，不清洗会"测量达标、
+// 实际超宽"，同 cleanBlock 的坑），再按 limit 词级折行（超长无空格词回退
+// 按列硬折，行宽不超 limit）。limit 兜底 10（同思考块/工具块的防负宽）。
+func wrapStatusText(s string, limit int) string {
+	s = ansi.Strip(s)
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\t", tabSpaces)
+	s = strings.TrimSpace(s)
+	if limit < 10 {
+		limit = 10
+	}
+	return ansi.Wrap(s, limit, "")
 }
 
-// successText 成功消息（淡绿正文）。
-func successText(text string) string {
-	return colorText(cSuccessSubtle, text)
+// colorLines 多行文本逐行上色：每行独立成对的 SGR/reset，行间不共享活跃
+// 序列（SGR 跨行残留会串色，同 stripGlamourPad 注释的坑）。
+func colorLines(c color.Color, s string) string {
+	lines := strings.Split(s, "\n")
+	for i, ln := range lines {
+		lines[i] = colorText(c, ln)
+	}
+	return strings.Join(lines, "\n")
 }
 
-// warnText 警告消息（黄）。
-func warnText(text string) string {
-	return colorText(cWarning, text)
+// errorTagW ERROR 徽章占宽（含两侧 padding，现值 7）。
+var errorTagW = lipgloss.Width(errorTag.Render("ERROR"))
+
+// errText 错误消息：ERROR 徽章 + 弱化正文（按 w 词级折行）。
+// 徽章只出首行，续行悬挂缩进对齐首行正文。
+func errText(text string, w int) string {
+	limit := w - errorTagW - 1 // 扣徽章与随后的空格
+	if limit < 10 {
+		limit = 10
+	}
+	indent := strings.Repeat(" ", errorTagW+1)
+	var lines []string
+	for i, ln := range strings.Split(wrapStatusText(text, limit), "\n") {
+		if i == 0 {
+			lines = append(lines, errorTag.Render("ERROR")+" "+colorText(cFgSubtle, ln))
+		} else {
+			lines = append(lines, indent+colorText(cFgSubtle, ln))
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// successText 成功消息（淡绿正文，按 w 词级折行）。
+func successText(text string, w int) string {
+	return colorLines(cSuccessSubtle, wrapStatusText(text, w))
+}
+
+// warnText 警告消息（黄，按 w 词级折行）。
+func warnText(text string, w int) string {
+	return colorLines(cWarning, wrapStatusText(text, w))
 }
 
 // slashEcho 斜杠指令回显（弱化，弱到不抢对话内容的视觉权重）。
@@ -108,9 +155,9 @@ func slashEcho(text string) string {
 	return colorText(cFgMuted, text)
 }
 
-// summaryText 摘要提示（淡绿）。
-func summaryText(text string) string {
-	return colorText(cSuccessSubtle, "summary generated:\n"+text)
+// summaryText 摘要提示（淡绿，按 w 词级折行）。
+func summaryText(text string, w int) string {
+	return colorLines(cSuccessSubtle, wrapStatusText("summary generated:\n"+text, w))
 }
 
 // ── 工具块头部行（crush toolHeader：状态图标 + info 工具名）──

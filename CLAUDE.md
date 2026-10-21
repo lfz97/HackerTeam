@@ -53,7 +53,7 @@
   - `tools/parammapper.go` — `ParamMapper{Name,In,Out}` + `Mappers` 具体切片 + `GetParamMapper()`（聚合各工具包的 `InjectMapper`）
   - `tools/toolsets/localexec/` — LocalExec toolset（command execution subsystem；`Close()` 先 kill 未结束命令再清注册表；`mapper.go` 自注册同形 `Mappers` 接口 + `InjectMapper`，工具名常量、带前缀名构造）
   - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、10s timeout)
-- `service/tui/` — bubbletea TUI: `tui.go` (model/update/view 生命周期), `pull.go` (tea.Tick 拉取链), `render.go` (消息日志重放渲染), `engine.go` (EngineView 接口), `handler.go` (按键), `banner.go` (欢迎盒), `skills.go` (帮助浮层), `bottom.go`/`spinner.go`/`styles.go`
+- `service/tui/` — bubbletea TUI: `tui.go` (model/update/view 生命周期), `pull.go` (tea.Tick 拉取链), `render.go` (消息日志重放渲染 + boundaryViews 边界记录分发表), `engine.go` (EngineView 接口), `handler.go` (按键), `banner.go` (欢迎盒), `skills.go` (帮助浮层), `bottom.go`/`spinner.go`/`styles.go` (状态消息宽度感知折行)
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
 
 ## Dependencies
@@ -172,6 +172,6 @@ HackerTeam uses three complementary mechanisms to prevent context overflow:
 - **错误自动重试（errorStreak 语义 = "配置层健康检查"，非"有界重试预算"）** — `engineCore.go` 常量 `errorMaxTimes=3`/`errorSleepGap=3s` + `Engine.errorStreak`。归零时机：收到任何带 Choices 的 Response 事件（第一个 token 即归，含流式部分块——能吐 token = key/端点/鉴权/本地网络全通，故障只剩传输层抖动，随机性强、重试期望为正，自动重试到成功为止）、/new、ESC(Int)、`AgentStart` 的 else 兜底；**手动提交输入不归零**。耗尽只可能由零输出失败（401/连接拒绝/上下文超限 400）触发，"连续 N 次失败"的实际含义是"检查配置"；中途死亡类失败（流式出字后断）永不耗尽——确定性中途失败（超时、内容过滤）会无限自动重试是刻意接受的代价，配套动作是把主模型 `httptimeout` 调大。耗尽后 Code 保持 Error、streak 不归零、整个复用 `*EndTurn_p`。`agentRunIteratively` 输入循环是"Error 优先 + else 兜底"结构，不要改回列举式（新增 turnCode 会落进安全兜底）。
 - **启动横幅** — `service/tui/banner.go`。挂在 `Startup` turnCode 上（该 code 永远不会被 `agentRunIteratively` 返回，横幅必然只打一次）；Engine 侧 `startupInfoLines()` 决定内容（skills 数为 5 个角色文件夹子目录计数），TUI 侧 `compose(width)` 决定拼版；横幅是"死文本"，resize 不重排。
 - **输入复用** — `InputChan` 改为未导出 `inputChan`；`ReadInputAreaPromptWithEnter()+InputChannel()` 合并为 `ListenUserInput() chan string`。引擎循环 `select { case userPrompt = <-(*e).tui.ListenUserInput(): }`。unbuffered + select-default 投递语义不变。
-- **系统消息不带装饰符号** — `pretty.go` 状态消息/生命周期两节去掉 `✗ ✓ ⚠ ◈` 前缀与 `::b`，语义由颜色承载；对话内容标记（▶ ● ↪ ⮡ »«）保留。新增 bar 版 helper：`TBarNewConversation/TBarCancelled/TBarSuccess`（无首尾换行）。
+- **系统消息不带装饰符号** — 语义由颜色承载（红=错误、黄=警告、绿=成功、青=信息）。样式 helpers 在 `service/tui/styles.go`（charmtone 调色板）：`errText`（ERROR 徽章 + 弱化正文）/`successText`/`warnText`/`summaryText`（状态消息）与 `noticeXxx`（通知栏）不带符号。状态消息与正文同签"**compose 阶段排完版、viewport 零改写**"契约（viewport SoftWrap=false 只横向裁切不换行）：宽度作参数（error/warn/summary 经 render.go 的 boundaryViews 分发表扣 `msgIndentW`，fatal 整行宽），经 `wrapStatusText` 清洗（剥 ANSI、\r 归一、tab 展开——tab 测宽为 0 而终端展开到制表位，含 tab 行会"测量达标、实际超宽"越界）后按 `ansi.Wrap` 词级折行、超长无空格词回退按列硬折；`errText` 徽章只出首行、续行悬挂缩进 8 列；多行文本经 `colorLines` 逐行独立 SGR（成对 reset，防跨行串色）。
 - **每类事件只打一次** — 错误在 `agentRunOnce` 源头各打一次（RunError/TerminalError），中断在 `Ctx.Done` 分支打一次；`agentRunIteratively` 顶部只处理 Startup（横幅）与 New（通知），Error/Int 不再重复打印。
 - **接口收敛** — `init.go` 的 tuiService 是 Engine 专属门面（新增 ListenUserInput/SetAgentRunning/ShowNotice/ShowStartupBanner/SetTodoText；移除 ReadInputAreaPromptWithEnter/InputChannel/ShowSuccessInMsgView/StatusBar*）；session 包持有单方法 `msgPrinter` 小接口。`ShowSuccessInMsgView` 已删除（职责迁去 NoticeBar），`ShowSuccessInMsgViewAndExit` 保留。

@@ -70,21 +70,9 @@ func (t *TUI) composeView(st *pullState) string {
 				out = strings.Join(body, "\n\n")
 			}
 
-		} else if rec.Type == "user" {
-			// 流式尾段先于边界记录上屏，并清空累积。
-			out = flushTail(st, tailReasoning, tailContent, w) + userBlock(st, rec.Text, w)
-
-		} else if rec.Type == "slash" {
-			out = flushTail(st, tailReasoning, tailContent, w) + slashEcho(rec.Text)
-
-		} else if rec.Type == "warn" {
-			out = flushTail(st, tailReasoning, tailContent, w) + msgIndent.Render(warnText(rec.Text))
-
-		} else if rec.Type == "error" {
-			out = flushTail(st, tailReasoning, tailContent, w) + msgIndent.Render(errText(rec.Text))
-
-		} else if rec.Type == "summary" {
-			out = flushTail(st, tailReasoning, tailContent, w) + msgIndent.Render(summaryText(rec.Text))
+		} else if view := boundaryViews[rec.Type]; view != nil {
+			// 边界记录：流式尾段先于它上屏并清空累积，再拼本块渲染。
+			out = flushTail(st, tailReasoning, tailContent, w) + view(rec.Text, w)
 		}
 		if out != "" {
 			parts = append(parts, out)
@@ -99,9 +87,34 @@ func (t *TUI) composeView(st *pullState) string {
 	}
 	// 终态消息拼在最后（引擎置 fatal 后 park，不再有新记录）
 	if st.lastFatal != nil && st.lastFatal.Text != "" {
-		parts = append(parts, renderFatal(st.lastFatal.Text, st.lastFatal.Style))
+		parts = append(parts, renderFatal(st.lastFatal.Text, st.lastFatal.Style, w))
 	}
 	return strings.Join(parts, "\n\n") + "\n"
+}
+
+// ── 边界记录渲染（签名统一：文本 + 可用宽 w，一个块一个函数）──
+
+// slashView 斜杠回显：单行弱化文本，无宽度概念（参数仅为对齐签名）。
+func slashView(text string, _ int) string { return slashEcho(text) }
+
+// warnView 警告块：清洗折行上色后统一 msgIndent 左缩进。
+func warnView(text string, w int) string { return msgIndent.Render(warnText(text, w-msgIndentW)) }
+
+// errView 错误块：ERROR 徽章 + 折行正文，统一 msgIndent 左缩进。
+func errView(text string, w int) string { return msgIndent.Render(errText(text, w-msgIndentW)) }
+
+// summaryView 摘要块：summary generated 头 + 折行正文，统一 msgIndent 左缩进。
+func summaryView(text string, w int) string { return msgIndent.Render(summaryText(text, w-msgIndentW)) }
+
+// boundaryViews 边界记录（自描述文本型：user/slash/warn/error/summary）的
+// 渲染分发表。共同形态：流式尾段先于边界记录上屏（flushTail），再拼本块。
+// 宽度预算在各 view 内自理（user 扣左线、状态类扣 msgIndent、slash 不用宽）。
+var boundaryViews = map[string]func(text string, w int) string{
+	"user":    userBlock,
+	"slash":   slashView,
+	"warn":    warnView,
+	"error":   errView,
+	"summary": summaryView,
 }
 
 // bufferToolCalls 缓冲工具调用（等结果到达后拼工具行）。
@@ -168,7 +181,7 @@ func flushTail(st *pullState, tailReasoning, tailContent *strings.Builder, w int
 
 // userBlock 用户消息：primary 左线 + markdown 渲染。保留换行，
 // 避免渲染后与输入时所见不一致。
-func userBlock(st *pullState, text string, w int) string {
+func userBlock(text string, w int) string {
 	gw := w - userBarFrameW
 	if gw < 10 {
 		gw = 10
@@ -239,15 +252,16 @@ func composeHint(running bool) string {
 	return noticeSub("type / for commands")
 }
 
-// renderFatal 把终态消息按样式上色（引擎只存语义原文与 style 字符串）。
+// renderFatal 把终态消息按样式上色并折行（引擎只存语义原文与 style 字符串）。
+// 终态无 msgIndent，宽度预算为整行 w。
 // "exit"（/exit 终态）无文案、不再走这里渲染。
-func renderFatal(text, style string) string {
+func renderFatal(text, style string, w int) string {
 	if style == "success" {
-		return successText(text)
+		return successText(text, w)
 	} else if style == "error" {
-		return errText(text)
+		return errText(text, w)
 	} else {
-		return text
+		return wrapStatusText(text, w)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"HackerTeam/service/engine/tools/modeltext"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
 )
@@ -20,30 +21,39 @@ import (
 // 返回，调用方的 `if err != nil { return nil, err }` 会把整个结果 map 丢掉，
 // agent 连文件路径都拿不到，MCP 层还会把这次调用标记为失败。
 func deliver(res map[string]string, data []byte, id string) error {
-	total := len(data)
-	if total <= inlineMaxBytes {
-		res["output"] = string(data)
+	// 内联判定以序列化后的大小为准（见 modeltext 包），内容原样返回不转换——
+	// 模型看到的本来就是框架序列化时替换后的结果。
+	text := string(data)
+	if modeltext.Size(text) <= inlineMaxBytes {
+		res["output"] = text
 		return nil
 	}
+	return deliverSpilled(res, data, id)
+}
+
+// deliverSpilled 把完整输出落盘，只内联头部预览并附上文件路径与提示。
+// note/totalBytes 里报给 agent 的是文件的真实字节数（read 按 offset/bytes
+// 分页读的是原始文件）。
+func deliverSpilled(res map[string]string, data []byte, id string) error {
 	path, err := spill(id, data)
 	if err != nil {
 		return err
 	}
 	head := preview(data)
 	// 尾部偏移直接算好给 agent，省掉它自己做减法（也避免它算错）
-	tailOffset := total - 4096
+	tailOffset := len(data) - 4096
 	if tailOffset < 0 {
 		tailOffset = 0
 	}
 	res["output"] = string(head)
 	res["outputFile"] = path
-	res["totalBytes"] = strconv.Itoa(total)
+	res["totalBytes"] = strconv.Itoa(len(data))
 	res["note"] = fmt.Sprintf(
 		"Output is %d bytes, over the %d-byte inline limit; the full content has been saved to outputFile. "+
 			"The output above is only a %d-byte head preview and does not represent the whole output. "+
 			"Failure reasons, test summaries and stack traces are usually at the end: pass offset=%d to `read` to read the tail directly, "+
 			"or use `search` to look for keywords.",
-		total, inlineMaxBytes, len(head), tailOffset,
+		len(data), inlineMaxBytes, len(head), tailOffset,
 	)
 	return nil
 }

@@ -12,9 +12,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"HackerTeam/service/engine/tools/modeltext"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
 	"trpc.group/trpc-go/trpc-agent-go/tool/function"
-	"unicode/utf8"
 )
 
 func WriteFile(ctx context.Context, req struct {
@@ -53,11 +53,13 @@ func WriteFile(ctx context.Context, req struct {
 	}, nil
 }
 
-func ReadFile(ctx context.Context, req struct {
+type readFileRequest struct {
 	Path   string `json:"path" jsonschema:"description=要读取的文件路径。"`
 	Bytes  int    `json:"bytes" jsonschema:"description=读取文件的窗口大小，单位为字节。默认为1024字节。"`
 	Offset int    `json:"offset" jsonschema:"description=读取文件的偏移位置，单位为字节。默认为0，即从文件开头开始读取。"`
-}) (map[string]string, error) {
+}
+
+func ReadFile(ctx context.Context, req readFileRequest) (map[string]string, error) {
 
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
@@ -81,27 +83,45 @@ func ReadFile(ctx context.Context, req struct {
 		return nil, err
 	}
 	total := fi.Size()
-	// Seek 的错误必须检查：Offset 非法时若忽略返回值，文件指针会停在 0，随后读到的
-	// 是文件开头——调用方以为读的是自己指定的位置，拿到错数据却毫无提示。
-	if _, err := fd.Seek(int64(req.Offset), io.SeekStart); err != nil {
-		return nil, fmt.Errorf("failed to seek to offset %d: %w", req.Offset, err)
+	// 窗口上限同时约束缓冲区分配：bytes 是模型给的，不设防的话一个超大请求会
+	// 直接按它分配缓冲区。窗口随后还会按序列化大小收缩（见下）。
+	window := req.Bytes
+	if window > modeltext.MaxInlineBytes {
+		window = modeltext.MaxInlineBytes
 	}
-	buf := make([]byte, req.Bytes) //根据请求的窗口大小创建缓冲区
-	// 用 ReadFull 而不是单次 Read：Read 不保证填满缓冲区（short read 是合法的），
-	// 文件正被后台任务写入时会被误判成 EOF。读到文件末尾时返回 EOF/ErrUnexpectedEOF 属正常。
-	n, err := io.ReadFull(fd, buf)
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
-		return nil, err
-	}
-	// 按实际读取长度截取，否则窗口大于剩余内容时会带出多余的空字节填充；
-	// 再对齐到 rune 边界，去掉被字节窗口劈开的半个多字节字符（中文输出尤其明显）。
-	// 被去掉的半个字符会在下次从 nextOffset 读取时重新取回，不丢数据。
-	content := trimPartialRune(buf[:n])
-	// 读到了字节但整个窗口都不是合法 UTF-8（二进制文件尾部很常见）时不能再 trim：
-	// 否则 content 为空、nextOffset 原地不动、eof 又是 false，调用方会卡在同一
-	// offset 上无限重读。这种情况下原样返回，进度优先于编码整洁。
-	if len(content) == 0 && n > 0 {
-		content = buf[:n]
+	var content []byte
+	for {
+		// Seek 的错误必须检查：Offset 非法时若忽略返回值，文件指针会停在 0，随后读到的
+		// 是文件开头——调用方以为读的是自己指定的位置，拿到错数据却毫无提示。
+		// 窗口收缩后重读也要重新 Seek。
+		if _, err := fd.Seek(int64(req.Offset), io.SeekStart); err != nil {
+			return nil, fmt.Errorf("failed to seek to offset %d: %w", req.Offset, err)
+		}
+		buf := make([]byte, window) //根据请求的窗口大小创建缓冲区
+		// 用 ReadFull 而不是单次 Read：Read 不保证填满缓冲区（short read 是合法的），
+		// 文件正被后台任务写入时会被误判成 EOF。读到文件末尾时返回 EOF/ErrUnexpectedEOF 属正常。
+		n, err := io.ReadFull(fd, buf)
+		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+			return nil, err
+		}
+		// 按实际读取长度截取，否则窗口大于剩余内容时会带出多余的空字节填充；
+		// 再对齐到 rune 边界，去掉被字节窗口劈开的半个多字节字符（中文输出尤其明显）。
+		// 被去掉的半个字符会在下次从 nextOffset 读取时重新取回，不丢数据。
+		content = modeltext.TrimPartialRune(buf[:n])
+		// 读到了字节但整个窗口都不是合法 UTF-8（二进制文件尾部很常见）时不能再 trim：
+		// 否则 content 为空、nextOffset 原地不动、eof 又是 false，调用方会卡在同一
+		// offset 上无限重读。这种情况下原样返回，进度优先于编码整洁。
+		if len(content) == 0 && n > 0 {
+			content = buf[:n]
+		}
+		// content 经 JSON 序列化后才发给模型，非法 UTF-8/控制字符会成倍膨胀
+		//（见 modeltext），所以一页的体量按序列化后的大小设防：超限就把窗口
+		// 减半重读，分页语义不变（nextOffset 始终指向未读位置，数据不丢，只是
+		// 这页变小）。窗口收到 1 字节时序列化后必不超限，循环必然终止。
+		if window == 1 || modeltext.Size(string(content)) <= modeltext.MaxInlineBytes {
+			break
+		}
+		window /= 2
 	}
 	next := req.Offset + len(content)
 	return map[string]string{
@@ -180,10 +200,12 @@ type matchInfo struct {
 }
 
 // 通过正则表达式在指定文件中搜索内容，返回所有匹配项的行号和内容。使用Go RE2语法，不支持lookahead/lookbehind/backreference。`.`默认不匹配换行，跨行匹配用`(?s)`。`^`和`$`默认匹配文本首尾，匹配行首行尾用`(?m)`。
-func SearchInFile(ctx context.Context, req struct {
+type searchInFileRequest struct {
 	Path  string `json:"path" jsonschema:"description=要搜索的文件路径。"`
 	Regex string `json:"regex" jsonschema:"description=要搜索的正则表达式。"`
-}) (map[string]string, error) {
+}
+
+func SearchInFile(ctx context.Context, req searchInFileRequest) (map[string]string, error) {
 	if req.Path == "" {
 		return nil, errors.New("`Path` cannot be empty")
 	}
@@ -200,7 +222,12 @@ func SearchInFile(ctx context.Context, req struct {
 	}
 	m := map[string]string{}
 	matches := re_p.FindAllIndex(contentBytes, -1)
+	// 匹配列表无上限的话，一个宽松的正则就能把整个文件（序列化后再放大数倍）
+	// 塞进模型上下文。按 modeltext 的内联预算逐条累计，超限即截断并告知总数，
+	// 剩余的匹配让 agent 收窄正则或用 read 分页去取。
 	index := 0
+	total := 0
+	truncated := false
 	for _, match := range matches {
 		startOffset := match[0]
 		endOffset := match[1]
@@ -219,9 +246,25 @@ func SearchInFile(ctx context.Context, req struct {
 		if err != nil {
 			return nil, err
 		}
+		// 值是内层 JSON 的字符串形式，外层序列化时引号还会再转义，所以按最终形式
+		// 度量：条目的完整开销 = 值 + `"N":` 键与冒号 + 逗号分隔符。预算按完整
+		// 开销累计，保证最终序列化结果贴近预算而不明显超出。
+		cost := modeltext.Size(strconv.Itoa(index)) + 2 + modeltext.Size(string(infoBytes))
+		if total+cost > modeltext.MaxInlineBytes {
+			truncated = true
+			break
+		}
 		m[strconv.Itoa(index)] = string(infoBytes)
+		total += cost
 		index++
-
+	}
+	if truncated {
+		m["truncated"] = "true"
+		m["totalMatches"] = strconv.Itoa(len(matches))
+		m["note"] = fmt.Sprintf(
+			"Result truncated at the %d-byte inline budget after %d matches; %d matches in total. "+
+				"Narrow the regex or read the file with `read` instead.",
+			modeltext.MaxInlineBytes, index, len(matches))
 	}
 	return m, nil
 }
@@ -319,7 +362,7 @@ func GetFileOperationsTools() []tool.Tool {
 	rftool := function.NewFunctionTool(
 		ReadFile,
 		function.WithName(readFileToolName),
-		function.WithDescription("从指定文件读取内容，支持设置读取窗口大小和偏移量。"),
+		function.WithDescription("从指定文件读取内容，支持设置读取窗口大小和偏移量。页大小受内联预算约束：请求的窗口经 JSON 序列化后超预算（如二进制或控制字符）时窗口会收缩，返回的一页比请求的小，用 nextOffset 续读。"),
 	)
 	eftool := function.NewFunctionTool(
 		EditFile,
@@ -329,7 +372,7 @@ func GetFileOperationsTools() []tool.Tool {
 	sftool := function.NewFunctionTool(
 		SearchInFile,
 		function.WithName(searchInFileToolName),
-		function.WithDescription("通过正则表达式在指定文件中搜索内容，返回所有匹配项的行号和内容。使用Go RE2语法，不支持lookahead/lookbehind/backreference。`.`默认不匹配换行，跨行匹配用`(?s)`。`^`和`$`默认匹配文本首尾，匹配行首行尾用`(?m)`。"),
+		function.WithDescription("通过正则表达式在指定文件中搜索内容，返回所有匹配项的行号和内容。使用Go RE2语法，不支持lookahead/lookbehind/backreference。`.`默认不匹配换行，跨行匹配用`(?s)`。`^`和`$`默认匹配文本首尾，匹配行首行尾用`(?m)`。结果受内联预算约束：截断时 truncated 为 true，totalMatches 报总匹配数。"),
 	)
 	dftool := function.NewFunctionTool(
 		DeleteFile,
@@ -349,20 +392,5 @@ func GetFileOperationsTools() []tool.Tool {
 	return []tool.Tool{wftool, rftool, eftool, sftool, dftool, fitool, difftool}
 }
 
-// trimPartialRune 去掉末尾被字节窗口劈开的半个 UTF-8 字符，ReadFile 按字节分页时
-// 用它保证返回的内容是合法 UTF-8。被去掉的部分会在下次从 nextOffset 读取时重新
-// 取回，不丢数据。
-func trimPartialRune(b []byte) []byte {
-	// 从末尾往前找最近的 rune 起点；UTF-8 单字符最长 4 字节，回退 4 次足够。
-	for i := len(b) - 1; i >= 0 && i >= len(b)-4; i-- {
-		if !utf8.RuneStart(b[i]) {
-			continue // 10xxxxxx，是延续字节，继续往前找
-		}
-		// b[i:] 是一个 rune 的开头；不合法说明这个 rune 被截断了，整段丢弃
-		if !utf8.Valid(b[i:]) {
-			return b[:i]
-		}
-		return b
-	}
-	return b
-}
+// trimPartialRune 已上收到 modeltext 包（TrimPartialRune），与 localexec 的落盘
+// 预览共用同一份实现。

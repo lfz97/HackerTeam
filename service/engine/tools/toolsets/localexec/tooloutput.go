@@ -11,8 +11,8 @@ package localexec
 // ——否则上层 `if err != nil { return nil, err }` 会把整个结果丢掉，agent 连文件
 // 路径都拿不到，MCP 层还会把这次调用标记为失败。
 //
-// 这套机制只有 localexec 用，所以是包内私有、不单独成包。functions/file.go 的
-// ReadFile 只需要其中的 rune 边界裁剪，那边自带一份同名的 trimPartialRune。
+// 内联上限与序列化度量统一取自 modeltext 包，functions/file.go 的 ReadFile、
+// SearchInFile 也用同一套预算。
 
 import (
 	"fmt"
@@ -22,12 +22,14 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
+
+	"HackerTeam/service/engine/tools/modeltext"
 )
 
 const (
-	// inlineMaxBytes 是内联返回的上限，超过则落盘 + 只给预览。
-	inlineMaxBytes = 64 << 10 // 64 KB
+	// inlineMaxBytes 是内联返回的上限，按框架 JSON 序列化后的实际大小计（见
+	// modeltext 包），超过则落盘 + 只给预览。预算与 ReadFile、SearchInFile 共用。
+	inlineMaxBytes = modeltext.MaxInlineBytes
 	// previewBytes 是落盘后内联返回的预览长度（取头部）。
 	previewBytes = 2 << 10 // 2 KB
 	// spillDirName 是落盘目录名，位于 <exeDir>/output 下。
@@ -103,24 +105,7 @@ func preview(data []byte) []byte {
 	if len(data) <= previewBytes {
 		return data
 	}
-	return trimPartialRune(data[:previewBytes])
-}
-
-// trimPartialRune 去掉末尾被字节窗口劈开的半个 UTF-8 字符。
-// 被去掉的部分由调用方在下次读取时重新取回，不丢数据。
-func trimPartialRune(b []byte) []byte {
-	// 从末尾往前找最近的 rune 起点；UTF-8 单字符最长 4 字节，回退 4 次足够。
-	for i := len(b) - 1; i >= 0 && i >= len(b)-4; i-- {
-		if !utf8.RuneStart(b[i]) {
-			continue // 10xxxxxx，是延续字节，继续往前找
-		}
-		// b[i:] 是一个 rune 的开头；不合法说明这个 rune 被截断了，整段丢弃
-		if !utf8.Valid(b[i:]) {
-			return b[:i]
-		}
-		return b
-	}
-	return b
+	return modeltext.TrimPartialRune(data[:previewBytes])
 }
 
 // gcSpillDir 删除落盘目录下创建时间早于 maxAge 的文件，返回删除数量。

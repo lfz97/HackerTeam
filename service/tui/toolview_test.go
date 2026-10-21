@@ -459,8 +459,8 @@ func TestToolViewSearchInFileFallback(t *testing.T) {
 	}
 }
 
-// 回归：显示层 re-marshal 禁用 HTML 转义——默认 json.Marshal 会把 & < > 变成
-// \u0026 等，40 字符截断切在转义序列中间显示成 "\u002"（现场：echo '…' && date）。
+// 回归：显示层 re-marshal 禁用 HTML 转义——默认会把 & < > 变 \u0026 等，
+// 截断切在转义序列中间显示乱码。
 func TestStringValueNoHTMLEscape(t *testing.T) {
 	got := stringValue([]any{"-c", "echo 'Hello from HyperBot!' && date && whoami && hostname"})
 	if strings.Contains(got, `\u00`) {

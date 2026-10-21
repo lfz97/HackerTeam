@@ -2,14 +2,9 @@ package tui
 
 // ── 斜杠命令注册表与分发 ─────────────────────────────────
 //
-// 命令语义与维护都在前端：清单（浮层的条目来源）与分发（dispatchSlash）同处
-// 一地、共用同一条目，引擎只暴露能力接口（见 engine.go 的 EngineView）——
-// 不再有经 inputCh 的字符串 magic word。
-//
-// 一张表两种用途是刻意的：清单与分发若各持一份（旧形态是 slashCommands 列表 +
-// dispatchSlash 的 switch），新增命令时漏改一边就会出现"浮层里能选到、分发却不认"
-// （或反之）的静默漂移。新增一条命令只改本文件：slashRegistry 加一行，引擎侧按需
-// 补一个能力接口。
+// 命令语义与维护都在前端，引擎只暴露能力接口（见 engine.go 的 EngineView）
+// ——不再有经 inputCh 的字符串 magic word。清单与分发共用 slashRegistry
+// 同一条目：分成两份会出现「浮层能选到、分发不认」的静默错配。
 
 import (
 	tea "charm.land/bubbletea/v2"

@@ -1,9 +1,8 @@
 package tui
 
-// /resume 弹框：会话恢复候选列表（斜杠命令浮层同款：居中圆角盒、上下选择、
-// enter 确认）。数据在 /resume 命令分发时由 openResume 同步拉取
-//（ListResumeItems），显隐与选中态由前端自持；选择经 checkoutSession
-// 提交，esc 本地收起。按键语义在 handler.go——本文件只管渲染与选中态。
+// /resume 弹框：会话恢复候选列表（斜杠命令浮层同款）。数据由 openResume
+// 同步拉取，选择经 checkoutSession 提交；按键语义在 handler.go，
+// 本文件只管渲染与选中态。
 
 import (
 	"strings"
@@ -35,13 +34,13 @@ func newResumeList() *resumeList { return &resumeList{vp: NewPrettyViewport(0, 1
 
 func (r *resumeList) isVisible() bool { return r.visible }
 
-// setItems 重建候选（openResume 在 /resume 分发时调用），选中归零。
+// setItems 重建候选，选中归零。
 func (r *resumeList) setItems(items []wireResumeItem) {
 	r.items = append([]wireResumeItem(nil), items...)
 	r.index = 0
 }
 
-// moveUp/moveDown 空列表直接返回：取模的除数是 len(r.items)，不判会 panic。
+// moveUp/moveDown 空列表直接返回：取模除数是 len(r.items)，不判会 panic。
 func (r *resumeList) moveUp() {
 	if len(r.items) == 0 {
 		return
@@ -68,7 +67,7 @@ func (r *resumeList) selectedID() (string, bool) {
 func (r *resumeList) View(termWidth, termHeight int) string {
 	boxW := min(resumeBoxWidth, termWidth)
 	boxH := min(resumeBoxHeight, termHeight)
-	textW, textH := overlayTextSize(boxW, boxH) //复用浮层通用件（component.go）
+	textW, textH := overlayTextSize(boxW, boxH)
 	textW = max(textW, resumeMinTextW)
 
 	//高度动态：跟内容走（标题+空行 2 + 条目数），上限为盒子文本区高度
@@ -77,7 +76,7 @@ func (r *resumeList) View(termWidth, termHeight int) string {
 	r.vp.SetWidth(textW)
 	r.vp.SetHeight(vpH)
 	r.vp.SetContent(resumeTitle + strings.Repeat("\n", titleHeight) + r.renderItems(textW))
-	//选中项跟随滚动：掉出视口就平移窗口，选中行贴顶（官方 EnsureVisible 语义）
+	//选中项跟随滚动：掉出视口就平移窗口，选中行贴顶
 	r.vp.EnsureVisible(r.index+titleHeight, 0, 0)
 	return r.vp.View()
 }

@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// 任务状态
 const (
 	StatusPending = "pending"
 	StatusRunning = "running"
@@ -21,22 +20,19 @@ const (
 	StatusKilled  = "killed"
 )
 
-// 提交选项
 type SubmitOptions struct {
 	Command string
 	Args    []string
 }
 
-// 输出选项
 type OutputOptions struct {
 	Stream string // stdout 或 stderr
 }
 
-// 状态信息
 type StatusInfo struct {
 	ID        string    `json:"id"`
 	Status    string    `json:"status"`
-	PID       int       `json:"pid,omitempty"` // 进程PID
+	PID       int       `json:"pid,omitempty"`
 	ExitCode  int       `json:"exitCode"`
 	Error     string    `json:"error,omitempty"`
 	Command   string    `json:"command"`
@@ -46,7 +42,6 @@ type StatusInfo struct {
 	EndedAt   time.Time `json:"endedAt,omitempty"`
 }
 
-// Job结构
 type Job struct {
 	SubmitOptions
 	ID string
@@ -69,7 +64,7 @@ type Job struct {
 	mu sync.Mutex
 }
 
-// Manager 管理所有任务
+// Manager 管理所有命令任务的生命周期与输出缓存。
 type Manager struct {
 	mu   sync.RWMutex
 	jobs map[string]*Job

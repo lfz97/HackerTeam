@@ -6,7 +6,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session/inmemory"
 )
 
-// NewMemorySessionService 创建一个基于内存的 SessionService 实例，使用自动摘要功能来管理会话上下文。
+// NewMemorySessionService 创建基于内存的 SessionService（自动摘要管理上下文）。
 // NewMemorySessionService 创建一个基于内存的 SessionService 实例，使用自动摘要功能来管理会话上下文。
 // sink 只用于摘要生成后投一条摘要记录，见 summarySink。
 func NewMemorySessionService(m config.Model, sink summarySink) *inmemory.SessionService {

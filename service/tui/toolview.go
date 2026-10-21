@@ -1,10 +1,7 @@
 package tui
 
-// 工具块渲染（设计文档：docs/superpowers/specs/2026-10-13-tui-tool-block-rendering-design.md）。
-// 纯函数模块：composeView 每帧全量重放，无状态、无副作用。
-//
-// 数据流：args/result JSON → ParamMapper 字段提取（无登记走兜底）→
-// 参数渲染 key value 行、结果按内容类型路由（diff 双色块 / 多行文本块 / 标量行）。
+// 工具块渲染。纯函数模块：composeView 每帧全量重放，无状态、无副作用。
+// 数据流：args/result JSON → ParamMapper 提取（无登记走兜底）→ 参数行 / 结果按内容类型路由。
 
 import (
 	"bytes"
@@ -25,15 +22,13 @@ const (
 	argValueMaxRunes = 80 // 参数/标量值单行截断
 	blockMaxLines    = 40 // diff/长文本/代码块默认显示行数（用户指定：概览多看一点）
 
-	// tabSpaces tab 展开宽度：ANSI 宽度测量把 \t 计 0 列而终端展开到
-	// 8 列制表位，不展开则含 tab 的行"测量达标、实际越界"（crush
-	// diffview 的 replaceTabs 同款处理，取 4 列保持紧凑）。
+	// tab 展开宽度：ANSI 宽度测量把 \t 计 0 列而终端展开 8 列制表位，
+	// 不展开则含 tab 的行"测量达标、实际越界"。
 	tabSpaces = "    "
 )
 
-// codeArgFields 工具参数中的"代码内容"字段：仅从参数值行中摘除（避免与
-// 响应 content 代码块重复展示，响应为准——参数侧不再渲染兜底块）。
-// 渲染知识留在 UI 层（同 crush per-tool renderer 思路），工具本身零改动。
+// codeArgFields 工具参数中的"代码内容"字段：从参数值行摘除，避免与响应
+// content 代码块重复展示（响应为准）。
 var codeArgFields = map[string]string{
 	"write": "content",
 }
@@ -61,8 +56,7 @@ func resultObjectOf(result string) map[string]any {
 	return obj
 }
 
-// paramMappers 工具名 → 字段登记，包级一次性索引（查询 O(1)）。
-// 测试可整体替换后恢复。
+// paramMappers 工具名 → 字段登记索引；测试可整体替换后恢复。
 var paramMappers = indexMappers(tools.GetParamMapper())
 
 // indexMappers 线性登记表建按名索引。
@@ -168,11 +162,9 @@ func allDigits(keys []string) bool {
 
 // ── 值与 JSON 工具函数 ───────────────────────────────────
 
-// stringValue 标量值转显示文本：字符串原样，其余紧凑 JSON。
 // marshalCompact 值 → 紧凑 JSON（显示用）。必须 SetEscapeHTML(false)：
-// 默认 marshal 会把 & < > 转成 \u0026/\u003c/\u003e，argValueMaxRunes 截断
-// 恰好切在转义序列中间时显示成 "\u002" 这样的乱码（真实现场：
-// echo 'Hello from HyperBot!' && date 的命令行参数行）。
+// 默认转义把 & < > 变 \u0026 等，argValueMaxRunes 截断切在转义序列
+// 中间时显示成 "\u002" 这样的乱码。
 func marshalCompact(v any) (string, bool) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -183,6 +175,7 @@ func marshalCompact(v any) (string, bool) {
 	return strings.TrimRight(buf.String(), "\n"), true
 }
 
+// stringValue 标量值转显示文本：字符串原样，其余紧凑 JSON。
 func stringValue(v any) string {
 	if s, ok := v.(string); ok {
 		return s
@@ -255,8 +248,7 @@ func resultParts(name string, result string) ([]kvRow, []textBlock) {
 			}
 			str := stringValue(v)
 			if expanded, ok := expandJSONList(str); ok {
-				// 值本身是 JSON 数组（ls/glob 的"JSON 套 JSON"形态）：展开成
-				// 每元素一行，走多行块渲染
+				// 值本身是 JSON 数组（ls/glob 的"JSON 套 JSON"形态）：展开成每元素一行
 				blocks = append(blocks, textBlock{text: expanded})
 				continue
 			}
@@ -295,10 +287,9 @@ func isDiff(s string) bool {
 		strings.HasPrefix(t, "@@ ")
 }
 
-// expandJSONList 结果值本身是 JSON 数组字符串（工具返回 map[string]string 装
-// 序列化好的列表——ls 的 Files、glob 的 Matches）时展开成每元素一行的文本：
-// 标量元素取裸值（glob 的路径列表去引号），其余紧凑序列化（ls 的文件对象）。
-// 非数组/空数组/解析失败返回 false，走原渲染路径。
+// expandJSONList 结果值本身是 JSON 数组字符串（ls 的 Files、glob 的 Matches——
+// 工具返回 map[string]string 装序列化好的列表）时展开成每元素一行：
+// 标量元素取裸值，其余紧凑序列化。非数组/空数组/解析失败返回 false。
 func expandJSONList(s string) (string, bool) {
 	t := strings.TrimSpace(s)
 	if len(t) < 2 || t[0] != '[' {
@@ -334,9 +325,8 @@ func diffLineKind(l string) string {
 }
 
 // cleanBlock 多行内容清洗：剥 ANSI 色码（PTY 输出防串色）、\r\n 归一、tab
-// 展开为 4 空格、去首尾空白。与 compactLine 的区别：保留换行结构。
-// tab 必须展开：ANSI 宽度测量把 \t 计为 0 列而终端展开到 8 列制表位，
-// 含 tab 的行会"测量达标、实际超宽"，越过 padding 被终端硬换行。
+// 展开 4 空格、去首尾空白。与 compactLine 的区别：保留换行结构。
+// tab 必须展开：宽度测量把 \t 计 0 列而终端展开 8 列，不展开会超宽硬换行。
 func cleanBlock(s string) string {
 	s = ansi.Strip(s)
 	s = strings.ReplaceAll(s, "\r\n", "\n")
@@ -347,24 +337,21 @@ func cleanBlock(s string) string {
 
 // ── 组装与块渲染 ────────────────────────────────────────
 
-// lineWrap 体区行加左侧竖线前缀（与思考块/用户消息同款视觉语言）：
-// 参数区/结果区竖线异色区分段（颜色承载段语义，正文保持明暗层级）。
-// 竖线占 2 显示列，内容折行预算（avail = w - msgIndentW - 4）已含冗余，
-// 加前缀后总宽仍 ≤ w。
+// lineWrap 体区行加左侧竖线前缀（与思考块/用户消息同款视觉语言），
+// 参数区/结果区竖线异色区分段。
 func lineWrap(line string, c color.Color) string {
 	return colorText(c, "│ ") + line
 }
 
-// diffHeaderVerbs 有 diff 结果的工具的块头动词（"← Edit <path>" 形式）。
-// 块头承载路径后，参数区的 Path 行与之重复，toolView 会摘除。
+// diffHeaderVerbs 有 diff 结果的工具的块头动词（"← Edit <path>" 形式），
+// 块头承载路径后 Path 参数行被摘除。
 var diffHeaderVerbs = map[string]string{
 	"edit": "Edit",
 	"diff": "Diff",
 }
 
-// toolView 工具块总装：头部行（✓ name）→ 参数字段行（most-subtle，最暗）→
-// 空行分段 → 结果标量行 + 多行内容块（muted，亮一档）。参数与结果行同列
-// 对齐，仅靠空行与明暗区分段。w 为块可用总宽（msgIndent 的缩进已扣）。
+// toolView 工具块总装：头部行（✓ name）→ 参数行（most-subtle）→ 空行分段
+// → 结果行与内容块（muted）。参数与结果同列对齐，w 为块可用总宽（缩进已扣）。
 func toolView(name string, args []byte, result string, w int) string {
 	avail := w - msgIndentW - 4 // 扣 msgIndent(2) 与块内容 4 空格缩进
 	if avail < 10 {
@@ -377,9 +364,8 @@ func toolView(name string, args []byte, result string, w int) string {
 	argRowList := argRows(name, args)
 	resRows, blocks := resultParts(name, result)
 
-	// 代码内容：响应侧字段（WriteFile/ReadFile 的 content/Content）渲染为
-	// 高亮代码块——实际写入/读出的内容，响应为准。参数侧同名字段不再渲染
-	// 兜底，仅在下方从参数值行摘除（同一数据不重复展示）。
+	// 代码内容取响应侧字段渲染为高亮代码块（响应为准）；参数侧同名字段
+	// 从参数值行摘除，避免重复展示。
 	var codeLines []string
 	if resCode := codeResultFields[name]; resCode != "" {
 		if obj := resultObjectOf(result); obj != nil {
@@ -412,8 +398,7 @@ func toolView(name string, args []byte, result string, w int) string {
 		}
 	}
 
-	// diff 块头（← Edit <path>）：有 diff 结果且路径已知时渲染，参数区的
-	// Path 行与块头重复，一并摘除
+	// diff 块头（← Edit <path>）与参数区 Path 行重复，一并摘除
 	diffHeader := ""
 	if verb := diffHeaderVerbs[name]; verb != "" && path != "" {
 		for _, b := range blocks {
@@ -431,8 +416,8 @@ func toolView(name string, args []byte, result string, w int) string {
 		}
 	}
 
-	// 体区（头部行之外）：参数区行（暗灰竖线）→ 空行 → 结果区行（淡绿竖线）。
-	// 代码块（响应侧 content）归属结果区，接在标量行/内容块之后。
+	// 体区：参数区行（暗灰竖线）→ 空行 → 结果区行（淡绿竖线）；
+	// 代码块归属结果区，接在标量行/内容块之后。
 	var inLines, outLines []string
 	for _, r := range argRowList {
 		inLines = append(inLines, kvRowLines(r, kw, avail, cFgMostSubtle)...)
@@ -453,8 +438,7 @@ func toolView(name string, args []byte, result string, w int) string {
 	for _, l := range inLines {
 		lines = append(lines, lineWrap(l, cToolLineIn))
 	}
-	// 段间空行不带竖线：参数段/结果段的竖线在此断开、各自成段
-	// （段内空行——如参数行与代码块之间——仍带竖线保持段内连续）
+	// 段间空行不带竖线（两段竖线在此断开）；段内空行仍带竖线保持连续
 	if len(inLines) > 0 && len(outLines) > 0 {
 		lines = append(lines, "")
 	}
@@ -484,10 +468,8 @@ func kvRowLines(r kvRow, kw, avail int, c color.Color) []string {
 	return lines
 }
 
-// renderBlock 多行内容块：每行 4 空格缩进、muted 色；diff 块分流到
-// renderDiffBlock（行号列 + 行内语法高亮）；行内容按 avail 硬折行；
-// 超过 blockMaxLines 截断并加最暗色尾注。path 为编辑目标文件路径（diff
-// 块选 lexer 用，空则不高亮）。
+// renderBlock 多行内容块：4 空格缩进 muted 色；diff 块分流 renderDiffBlock；
+// 超 blockMaxLines 截断并加尾注。path 为 diff 块选 lexer 用（空则不高亮）。
 func renderBlock(b textBlock, avail int, path string) []string {
 	if b.isDiff {
 		return renderDiffBlock(b, path, avail)
@@ -518,13 +500,11 @@ func renderBlock(b textBlock, avail int, path string) []string {
 // diffHunkHeader 匹配 unified diff hunk 头，提取 old/new 起始行号。
 var diffHunkHeader = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 
-// renderDiffBlock unified diff 块：行号列（@@ 头解析并逐行推进，add/del 行
-// 各自只占一侧）+ 行内语法高亮（lexer 取自 path）+ +/- 前缀染色。
-// add/del 行整行铺底色条纹（crush Insert/DeleteLine 同型）：行号列底色
-// 深一档、内容列底色进每个语法 token，行尾补齐铺满；ctx 行保持透明。
-// 语法色与 diff 色分层：内容承载 chroma 语法色，条纹与标记承载 kind 色。
-// 原始 diff 头行（---/+++/@@）不渲染——行号与染色已是完整信息，原始
-// hunk 语法是噪音；多 hunk 之间以弱化 … 行示意行号跳变；截断只计内容行。
+// renderDiffBlock unified diff 块：单列行号（@@ 头解析推进，add/del 各占
+// 一侧）+ 行内语法高亮（lexer 取自 path）+ +/- 染色。add/del 行整行铺底色
+// 条纹（行号列深一档、底色进每个语法 token），ctx 行透明；内容承载 chroma
+// 语法色、条纹与标记承载 kind 色。原始头行（---/+++/@@）不渲染；多 hunk
+// 间以弱化 … 行示意行号跳变；截断只计内容行。
 func renderDiffBlock(b textBlock, path string, avail int) []string {
 	if avail < 10 {
 		avail = 10
@@ -643,9 +623,8 @@ func renderDiffBlock(b textBlock, path string, avail int) []string {
 			out = append(out, blankCol+colorText(cFgMostSubtle, "…"))
 			continue
 		}
-		// add/del 行整行铺条纹：gutter 两档底色、内容列底色进每个语法
-		// token（有 path）或整格承载（无 path）、行尾补齐铺满 limit；
-		// ctx 行无底色保持透明。
+		// add/del 行整行铺条纹：底色进每个语法 token（有 path）或整格承载
+		// （无 path），行尾补齐铺满 limit；ctx 行无底色。
 		gutBg, conBg := diffKindBg(e.kind)
 		kindColor := diffKindColor(e.kind)
 		bgSeq := ""
@@ -655,8 +634,7 @@ func renderDiffBlock(b textBlock, path string, avail int) []string {
 
 		var chunks []string
 		if path == "" {
-			// 无文件上下文（如 Diff 工具的裸 diff）：内容整段按 kind 染色，
-			// 折行后每个 chunk 独立染色（kind 贯穿整逻辑行）
+			// 无文件上下文（如 Diff 工具的裸 diff）：kind 色贯穿折行后的每个 chunk
 			chunks = hardWrapIf(e.content, limit)
 		} else {
 			// 有文件路径：语法色打底、底色随 formatter 进每个 token
@@ -701,7 +679,6 @@ func renderDiffBlock(b textBlock, path string, avail int) []string {
 	return out
 }
 
-// diffKindColor diff 行分类配色。
 // diffKindColor diff 行分类配色。
 func diffKindColor(kind string) color.Color {
 	switch kind {

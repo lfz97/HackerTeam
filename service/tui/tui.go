@@ -2,19 +2,11 @@ package tui
 
 // ── 文件布局 ─────────────────────────────────────────────
 //
-// 本文件只放主 model：TUI 结构体与生命周期（NewTui/Init/Update/View/Run）。
-// 其余按职责分文件：
-//   model.go    wire JSON 形状 + 事件循环消息（frameMsg/pullSkipMsg）
-//   engine.go   引擎交互单一出入口（EngineView 接口 + 全部 t.engine 调用）
-//   pull.go     拉取订阅（tea.Tick 链：pullState/pullCmd/pullOnce）
-//   frame.go    帧落地操作（applyFrame/applyViewText/componentWidth/wrapViewText）
-//   handler.go  按键语义（keyMsgHandler/slashToken/refilterSlashItems）
-//   slash.go    斜杠命令注册表与分发（slashRegistry/dispatchSlash）
-//   component.go 组件构建与整屏拼版（NewPrettyXxx/recalcComponentSize/draw/浮层）
-//   render.go   渲染类（composeView 记录重放、glamour、通知/终态文本翻译）
-//   styles.go   上色（lipgloss 颜色与文本样式 helpers）
-//   slashpopup.go / resumelist.go  两个浮层各自的渲染与选中态
-//   bottom.go / spinner.go / banner.go / toolview*.go  各组件自持结构体与方法
+// 本文件只放主 model（TUI 结构体与生命周期）；其余按职责分文件：
+// model.go wire JSON/消息、engine.go 引擎交互单一出入口、pull.go 拉取订阅、
+// frame.go 帧落地、handler.go 按键语义、slash.go 斜杠命令注册表与分发、
+// component.go 组件与整屏拼版、render.go/styles.go 渲染与上色、
+// slashpopup.go/resumelist.go 两个浮层，其余为各组件自持文件。
 
 import (
 	"time"
@@ -48,7 +40,7 @@ type TUI struct {
 	pull *pullState
 
 	// 以下全部是事件循环的私有状态（只在 Update 里写；v2 的 Update 与
-	// View 在 eventLoop 上串行执行，所以 draw() 读它们是安全的）。
+	// View 在 eventLoop 上串行执行，draw() 读它们是安全的）。
 	viewText     string // 最近一次上屏的视图全文
 	todoText     string
 	running      bool
@@ -93,10 +85,10 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.ta, cmd = t.ta.Update(m)
 		return t, cmd
 
-	case tea.KeyPressMsg: //按键（只处理按下；kitty 协议终端还有 release 事件，裸匹配 String() 会把 enter 的 release 也当提交）
+	case tea.KeyPressMsg: //按键（kitty 协议终端还有 release 事件，裸匹配 String() 会把 enter 的 release 也当提交）
 		return t.keyMsgHandler(m)
 
-	case tea.PasteMsg: // 粘贴：v2 默认开启 bracketed paste，终端粘贴的整段文本（含换行）以 PasteMsg 到达。
+	case tea.PasteMsg: // v2 默认开启 bracketed paste，整段文本（含换行）以 PasteMsg 到达
 		t.ta, cmd = t.ta.Update(m)
 		t.recalcComponentSize()
 		return t, cmd
@@ -104,7 +96,7 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg: //窗口变化
 		t.width = m.Width
 		t.height = m.Height
-		t.recalcPadding() // 内容列封顶居中：先定 padding，applyViewText 按其重排
+		t.recalcPadding()           // 先定 padding，applyViewText 按其重排
 		t.applyViewText(t.viewText) // 按新宽度整体重排
 		t.recalcComponentSize()
 		return t, nil

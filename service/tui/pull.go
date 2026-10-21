@@ -2,12 +2,9 @@ package tui
 
 // ── pull 链（tea.Tick 订阅）──────────────────────────────
 //
-// 心跳与旧 drawLoop 相同：固定帧率拉引擎五类状态（横幅一次、消息日志按版本、
-// 运行态、清单、通知）+ 终态观察。交付方式是 Elm 订阅的自续形式：tea.Tick
-// 到点产出 frameMsg 送进 Update，Update 处理完返回下一个 pullCmd 续链
-// （与 spinner 的 Tick 续链同构），不经过 program.Send。
-//
-// 引擎数据的拉取与解析走 engine.go 的封装，本文件只做状态记账与帧组装。
+// 固定帧率拉引擎五类状态 + 终态观察。tea.Tick 到点产出 frameMsg 送进
+// Update，Update 处理完返回下一个 pullCmd 续链，不经过 program.Send。
+// 拉取与解析走 engine.go 的封装，本文件只做状态记账与帧组装。
 
 import (
 	"time"
@@ -22,9 +19,8 @@ const (
 	composeInterval = 100 * time.Millisecond
 )
 
-// pullState pull 链的私有状态。只被 pullCmd 的 goroutine 读写——cmd 链是
-// 串行的（同一时刻至多一个 pullCmd 在飞：Init 发一个、applyFrame 每帧续一个，
-// 绝不并发两个，否则这里就是数据竞争），Update 从不触碰。
+// pullState pull 链的私有状态。cmd 链是串行的（同一时刻至多一个 pullCmd
+// 在飞，绝不并发两个，否则这里就是数据竞争），只被 pullCmd 的 goroutine 读写。
 type pullState struct {
 	seenVersion   uint64    // 已消费的消息日志版本
 	pending       bool      // 有待重组的视图（节流窗口内推迟，不会丢）
@@ -42,17 +38,15 @@ func newPullState() *pullState {
 }
 
 // pullCmd 是 pull 链的 Elm 载体：tea.Tick 到点后在 cmd goroutine 上执行一轮
-// 拉取、产出 frameMsg 送进 Update；Update 处理完返回下一个 pullCmd 续链
-// （与 spinner 的 Tick 续链同构）。重活（重组、glamour）都在 cmd 的 goroutine
-// 上，事件循环只收轻量帧，按键永不被渲染阻塞；重复帧的渲染去重交给 renderer
-// （viewEquals + cell diff）。
+// 拉取、产出 frameMsg 送进 Update，Update 返回下一个 pullCmd 续链。重活
+// （重组、glamour）都在 cmd 的 goroutine 上，事件循环只收轻量帧，按键永不被
+// 渲染阻塞；重复帧的渲染去重交给 renderer。
 //
 // 宽度在续链时（事件循环上）读取并捕获进闭包——cmd goroutine 拿到的是不可变
-// 快照，不碰 model 字段，无需任何同步。快照最多滞后一个 pullInterval，且只
-// 影响"新重组的帧"；resize 的即时重排由 Update 的 applyViewText 负责。
+// 快照，不碰 model 字段，无需同步。resize 的即时重排由 applyViewText 负责。
 //
 // ⚠️ fn 绝不能返回 nil：nil 不会触发 Update 的续链分支，链就静默断掉。
-// 坏帧（RunStateJSON 解析失败，理论死路的防御性兜底）用 pullSkipMsg 保活。
+// 坏帧用 pullSkipMsg 保活。
 func (t *TUI) pullCmd() tea.Cmd {
 	w := max(0, t.componentWidth())
 	return tea.Tick(pullInterval, func(time.Time) tea.Msg {
@@ -64,15 +58,12 @@ func (t *TUI) pullCmd() tea.Cmd {
 }
 
 // pullOnce 执行一轮拉取：按需重组视图、组装帧并返回。false 仅在
-// RunStateJSON 解析失败时出现（坏帧不致盲：下一轮重拉）。
+// RunStateJSON 解析失败时出现（下一轮重拉）。
 //
-// 刻意不做帧级去重——重复帧（30ms 一帧、重组 100ms 节流）是常态，脏活
-// 框架做：renderer 的 flush 有 viewEquals 整帧相等短路，内部是 cell 级
-// 双缓冲 diff，重复帧不会产生任何终端 I/O。自己再去重只会引入状态与
-// bug 面（上一版 lastSent 的先赋值后比较曾让流式输出一个字都刷不出来）。
+// 刻意不做帧级去重——重复帧是常态，去重脏活交给 renderer（viewEquals
+// 整帧短路 + cell diff，不产生终端 I/O），自己再去重只引入状态与 bug 面。
 //
-// w 是 pullCmd 续链时捕获的宽度快照（事件循环上读取），供 glamour 换行
-// 与横幅拼版使用。
+// w 是 pullCmd 续链时捕获的宽度快照，供 glamour 换行与横幅拼版使用。
 func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 	st := t.pull
 	st.width = w
@@ -82,8 +73,7 @@ func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 		return frameMsg{}, false // 坏帧不致盲：下一轮重拉
 	}
 
-	// 启动横幅：引擎就绪且宽度已知后组装一次（宽度未就绪时等下一轮，
-	// 否则 0 宽度会把横幅永久降级成堆叠版）。
+	// 启动横幅：宽度就绪后组装一次（0 宽度会把横幅永久降级成堆叠版）。
 	if !st.bannerDone && w > 0 {
 		if lines, ok := t.fetchStartupInfo(); ok {
 			st.bannerDone = true
@@ -102,11 +92,8 @@ func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 		st.lastFatal = rs.Fatal
 		st.pending = true
 	}
-	// 宽度变化强制重组：applyViewText 不改写内容（宽度只有一个权威），
-	// resize 后旧宽度帧原样显示，pullCmd 续链捕获的新宽度到达时立即
-	// 按新宽度全量重组
-	// （绕过 composeInterval 节流：resize 是稀疏事件，兜底中间帧本就该
-	// 尽快替换。在途旧宽度 tick 的 w 未变不触发，下一 tick 新宽度触发）。
+	// 宽度变化强制重组（绕过节流）：applyViewText 不改写内容，resize 后
+	// 旧排版尽快被新宽度重组替换。
 	widthChanged := st.composedWidth != w && w > 0
 	if (st.pending && time.Since(st.lastCompose) >= composeInterval) || widthChanged {
 		st.pending = false

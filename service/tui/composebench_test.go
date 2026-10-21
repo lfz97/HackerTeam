@@ -1,31 +1,12 @@
 package tui
 
 // 全量重放性能基准：真实规模会话（20 轮×重内容）测量 composeView 成本。
-// 消融结论（2026-10-13，口径：人的感知，不是秒表）：
-//   - ms 级差异人不可感知——LLM 流式节奏是秒级，网络抖动远大于任何单项成本，
-//     因此所有缓存（chroma 双缓存、glamour 渲染器缓存）全部删除，渲染管线
-//     无全局可变状态。合成重负载（20 轮×重内容）全帧 ~100ms，真实会话通常
-//     个位数到十几 ms，均远低于感知阈值
-//   - compose 节流 + version 跳过保留：那是"没变化就不干活"的架构机制，
-//     不是微优化
-//   - 本基准的真正用途：诊断规模化悬崖——全量重放成本随会话长度线性增长，
-//     数百轮重会话时若真感到卡顿，解法是按记录内容哈希的结果级缓存，
-//     先跑这里拿基线再动手
-
-// 全量重放性能基准：真实规模会话（20 轮×重内容）测量 composeView 成本。
-// 消融结论（2026-10-13，稳态数据见下方各微基准）：
-//   - 全帧稳态 ~68ms/次（compose 节流 100ms 预算内）
-//   - chroma 双缓存（hlCache/lexCache）：删后 103ms（+52%），真有影响——保留
-//   - glamour 渲染器缓存：单次构建仅 ~28µs，per-message 直建合计 <1ms/帧，
-//     缓存冗余——已删，改每次直建
-//   - 成本大头是 glamour 对正文的字位簇级重排版（~1.5ms/条 × 每帧全量重放，
-//     profile ~65%）——"真出现瓶颈再优化"的对象（届时考虑按记录内容哈希的
-//     结果级缓存）
+// ms 级差异人不可感知，缓存已全部删除；本基准的真正用途是诊断规模化悬崖
+// （全量重放随会话长度线性增长）——数百轮重会话感到卡顿时先跑这里拿基线。
 //
 // 运行：go test ./service/tui/ -run XXX -bench BenchmarkCompose -benchtime 5x -count 3
-//
-// 帧预算参考：composeInterval = 100ms（重组节流），pullInterval = 30ms。
-// 单次 compose 冷成本 < 30ms 即流畅；> 100ms 会可感知卡顿。
+// 帧预算参考：单次 compose 冷成本 < 30ms 流畅；> 100ms 可感知卡顿
+//（composeInterval=100ms、pullInterval=30ms）。
 
 import (
 	"encoding/json"
@@ -58,8 +39,7 @@ func (f *fakeView) ClearRecords() bool              { return true }
 func (f *fakeView) ListResumeItems() string         { return "[]" }
 func (f *fakeView) CheckoutSession(id string) error { return nil }
 
-// buildSession 构造真实规模的会话：20 轮对话 ×
-// （用户输入 + 思考 + 正文含表格 + 3 个工具调用 + 工具结果含 diff/代码/长输出）。
+// buildSession 构造真实规模的会话：20 轮 ×（用户输入 + 思考 + 表格正文 + 工具调用与结果）。
 func buildSession() []string {
 	var recs []string
 	wire := func(typ string, m model.Message) string {

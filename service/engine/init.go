@@ -73,7 +73,6 @@ func (e *Engine) diffMCPtoolsets(latestmcps []tool.ToolSet) {
 
 	common := []tool.ToolSet{}
 	new := []tool.ToolSet{}
-	//先取新旧的共同清单
 	for _, latestItem := range latestmcps {
 		for _, runningItem := range (*e).mcpToolsets {
 			if runningItem.Name() == latestItem.Name() {
@@ -82,19 +81,15 @@ func (e *Engine) diffMCPtoolsets(latestmcps []tool.ToolSet) {
 		}
 	}
 
-	//如果无共同清单，直接以新的清单为准，当前的全关闭
-	//注意 if/else 互斥不能省：common 为空时下面两段循环体一次都不会执行
-	//（Close 永不发生 → 泄漏；new 组装不出任何东西 → 空清单）
+	//无共同清单：当前的全关闭，直接以新清单为准。
+	//if/else 互斥不能省：common 为空时 else 分支的循环一次都匹配不上，Close 永不发生（泄漏）。
 	if len(common) == 0 {
 		for _, ts := range (*e).mcpToolsets {
 			ts.Close()
 		}
 		(*e).mcpToolsets = latestmcps
-
-		//有共同清单的情况
 	} else {
-		//用当前的清单和共同清单做对比，匹配到同名的就break；遍历到最后都没匹配上，
-		//说明是当前清单独有的，直接关闭
+		//遍历完共同清单都没匹配上 → 当前清单独有，关闭
 		for _, running := range (*e).mcpToolsets {
 			for i := 0; i < len(common); i++ {
 				if common[i].Name() == running.Name() {
@@ -105,8 +100,7 @@ func (e *Engine) diffMCPtoolsets(latestmcps []tool.ToolSet) {
 				}
 			}
 		}
-		//用最新的清单和共同清单做对比，匹配到同名的就break；遍历到最后都没匹配上，
-		//说明是新增的，追加到new
+		//遍历完共同清单都没匹配上 → 新增，追加到 new
 		for _, latest := range latestmcps {
 			for i := 0; i < len(common); i++ {
 				if common[i].Name() == latest.Name() {
@@ -130,7 +124,6 @@ func (e *Engine) refreshMCPFromConfig() {
 }
 
 func (e *Engine) LoadConfig() {
-	//加载配置文件
 	c, err := config.LoadConfig((*e).HackerTeamConfigPath)
 	if err != nil {
 		(*e).parkWithFatal(FatalError, fmt.Sprintf("Failed to load config: %v (press any key to exit)", err), true)

@@ -53,17 +53,13 @@ func (m *Manager) startCmdWithPipe(id string) error {
 		return errors.New("job not in pending status")
 	}
 	cmd := buildCmd(job.SubmitOptions)
-	// 用 lockedWriter 接管 stdout/stderr，而不是 StdoutPipe + 自建拷贝 goroutine。
-	// StdoutPipe 的读端归 Wait 关（标准库文档原话：incorrect to call Wait before all
-	// reads from the pipe have completed），Wait 一返回 fd 就没了，copyStream 还没
-	// 排空的输出被静默丢弃——状态照样是 done、退出码 0，谁都看不出被截断过。
-	// 赋值成非 *os.File 的 writer 后 exec 自己起拷贝 goroutine，Wait 会等它们全部
-	// 跑完才返回，于是「状态为 done 时输出必然完整」由结构保证，不需要额外编排。
+	// 用非 *os.File 的 writer 让 exec 自己起拷贝 goroutine，而不是 StdoutPipe +
+	// 自建拷贝：StdoutPipe 的读端归 Wait 关，Wait 一返回未排空的输出就被静默丢弃；
+	// 这样 Wait 会等拷贝全部结束，「状态为 done 时输出必然完整」由结构保证。
 	cmd.Stdout = lockedWriter{mu: &job.mu, buf: &job.stdoutBuf}
 	cmd.Stderr = lockedWriter{mu: &job.mu, buf: &job.stderrBuf}
-	// WaitDelay 只兜一种情况：进程已退出，但它派生的后台进程仍攥着写端，EOF 永远
-	// 不来，Wait 会一直挂着。计时器在进程退出后才启动（exec 的 awaitGoroutines），
-	// 长跑命令不受影响；正常命令的残余量最多一个管道缓冲，远用不到这个上限。
+	// WaitDelay 兜底：进程已退出但其派生的后台进程仍攥着写端，EOF 永远不来。
+	// 计时器在进程退出后才启动，长跑命令不受影响。
 	cmd.WaitDelay = pipeWaitDelay
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -83,9 +79,8 @@ func (m *Manager) startCmdWithPipe(id string) error {
 	job.startedAt = time.Now()
 	go func() {
 		err := cmd.Wait()
-		// ErrWaitDelay 只可能在进程本身退出成功时出现（Wait 内部是
-		// `if err == nil { err = goroutineErr }`，进程失败时退出错误优先），
-		// 含义是「输出没收全」而非「命令失败」，按成功处理，退出码仍是 0。
+		// ErrWaitDelay 含义是「输出没收全」而非「命令失败」（进程失败时退出错误优先），
+		// 按成功处理，退出码仍是 0。
 		if errors.Is(err, exec.ErrWaitDelay) {
 			err = nil
 		}
@@ -127,26 +122,24 @@ func (m *Manager) startCmdWithPty(id string) error {
 		return err
 	}
 	job.ptmx = ptmx
-	job.stdin = nil // PTY 模式下 stdin 通过 ptmx 写入，不再需要 pipe
+	job.stdin = nil // stdin 经 ptmx 写入，不再需要 pipe
 
 	job.cmd = cmd
 	job.pid = cmd.Process.Pid
 	job.status = StatusRunning
 	job.startedAt = time.Now()
 
-	// PTY 模式下 stdout/stderr 合并在 ptmx 一个 fd 里读
+	// stdout/stderr 合并在 ptmx 一个 fd 里读
 	copyDone := make(chan struct{})
 	go func() {
 		copyStream(ptmx, &job.stdoutBuf, &job.mu)
 		close(copyDone)
 	}()
 
-	// 等待结束
 	go func() {
 		err := cmd.Wait()
-		// 子进程退出后 ptmx 读到 EOF；等拷贝 goroutine 把剩余数据全部写入
-		// stdoutBuf 再置状态，避免调用方看到 done 却读到截断的输出。
-		// 兜底：若命令派生了持有 tty 的后台进程导致迟迟不 EOF，超时后强制关闭，防止永久阻塞。
+		// 等拷贝 goroutine 把剩余输出写完再置状态，避免调用方看到 done 却读到
+		// 截断的输出；若命令派生了持有 tty 的后台进程迟迟不 EOF，超时强制关闭防永久阻塞。
 		select {
 		case <-copyDone:
 		case <-time.After(time.Second):
@@ -250,7 +243,7 @@ func (m *Manager) WriteStdin(id string, data []byte) error {
 }
 
 // signals 仅收录 Windows 的 syscall 包同样定义的信号常量，保证跨平台编译；
-// Windows 走上面的 Kill 分支，不会真的用到这些值。
+// Windows 走 Kill 分支，不会真的用到这些值。
 var signals = map[string]syscall.Signal{
 	"HUP":  syscall.SIGHUP,
 	"INT":  syscall.SIGINT,
@@ -318,11 +311,9 @@ func (m *Manager) get(id string) *Job {
 	return m.jobs[id]
 }
 
-// copyStream 分块读取 r 并写入 buf，每块写入时短暂持有 mu，
-// 与 Output 的读取互斥，避免对 bytes.Buffer 的并发读写竞争。
-// 不在整个拷贝期间持锁，保证命令运行中也能读到已产生的输出。
-// 仅 PTY 模式使用：ptmx 是 pty.Start 交给我们自己读的 master fd，exec 不接管；
-// pipe 模式改由 exec 的拷贝 goroutine 经 lockedWriter 写入。
+// copyStream 分块读取 r 写入 buf，每块写入时短暂持有 mu，与 Output 的读取互斥；
+// 不全程持锁，保证命令运行中也能读到已产生的输出。
+// 仅 PTY 模式使用：ptmx 由我们自己读；pipe 模式由 exec 经 lockedWriter 写入。
 func copyStream(r io.Reader, buf *bytes.Buffer, mu *sync.Mutex) {
 	b := make([]byte, 32*1024)
 	for {
@@ -342,8 +333,7 @@ func copyStream(r io.Reader, buf *bytes.Buffer, mu *sync.Mutex) {
 const pipeWaitDelay = 2 * time.Second
 
 // lockedWriter 把 exec 拷贝 goroutine 写来的输出转进 buf，每批数据短暂持有 mu。
-// 刻意复用 Job 自己的 mu 与 bytes.Buffer：Output() 正是在这对组合上读取，两边共用
-// 同一把锁才不竞争，也不必给 Job 添新字段。
+// 刻意复用 Job 自己的 mu 与 buf：Output() 在同一对组合上读取，共用一把锁才不竞争。
 type lockedWriter struct {
 	mu  *sync.Mutex
 	buf *bytes.Buffer
@@ -362,7 +352,5 @@ func randomID() string {
 }
 
 func buildCmd(opts SubmitOptions) *exec.Cmd {
-
-	// 兜底：直接执行命令
 	return exec.Command(opts.Command, opts.Args...)
 }

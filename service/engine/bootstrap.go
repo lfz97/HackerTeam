@@ -1,9 +1,7 @@
 package engine
 
 // bootstrap 环境检查器：只做检查与供给，返回错误和产物；不驻留、不碰 UI。
-// 致命呈现（parkWithFatal）与通知上屏（setNotice）是 Engine 的职责，在 Init
-// 里完成。运行时回调（agent factory / summarySink / 状态栏）由调用方以窄接口
-// 或方法值注入，检查器不认识 *Engine。
+// 致命呈现与通知上屏是 Engine（Init）的职责；运行时回调由调用方注入，检查器不认识 *Engine。
 
 import (
 	"HackerTeam/service/engine/config"
@@ -72,8 +70,8 @@ type bootNotice struct {
 
 // BootEnv 环境检查与资产装配的产物，Engine 吸收后即可构造 runner。
 type BootEnv struct {
-	CWD                  string //进程工作目录（os.Getwd()，启动命令时所在的 shell 目录）
-	ExeDir               string //可执行文件所在目录，一切资产的锚点（config/log/output 跟随二进制）
+	CWD                  string //进程工作目录
+	ExeDir               string //可执行文件目录，资产锚点（config/log/output 跟随二进制）
 	ConfigFolderPath     string
 	HackerTeamConfigPath string
 	// 5 个角色的 skills 文件夹路径
@@ -108,8 +106,7 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	}
 	env.ExeDir = filepath.Dir(exePath)
 
-	// 进程工作目录：与资产锚点解耦。极端情况下 Getwd 会失败（如启动目录被删），
-	// 此时回退到 ExeDir，保证 CWD 永远非空。
+	// Getwd 失败（如启动目录被删）时回退 ExeDir，保证 CWD 非空。
 	env.CWD, err = os.Getwd()
 	if err != nil {
 		env.CWD = env.ExeDir
@@ -127,8 +124,7 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 		env.Notices = append(env.Notices, bootNotice{NoticeSuccess, "config folder not found, created default"})
 	}
 
-	// ③ 框架日志重定向到文件：尽早静音 stderr——Check 与 TUI 并发启动，重定向越早，
-	// sqlite/gse/框架初始化等后续步骤的日志污染 TUI 的窗口越小（失败则静默跳过，保持默认输出）
+	// ③ 框架日志重定向到文件：Check 与 TUI 并发启动，越早静音 stderr，日志污染 TUI 的窗口越小
 	env.redirectFrameworkLog()
 
 	// ④ 配置文件：不存在则写入默认模板，本次启动到此为止（须改完配置重启）
@@ -188,16 +184,9 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 }
 
 // buildSessionService 构建会话服务：默认 SQLite 持久化（<CWD>/.HackerTeam/session.db）。
-// session 按工作目录归属——分布式设计：不同 CWD 启动的实例各持独立会话空间，同 CWD 的
-// 多实例共享同一 db（WAL + busy_timeout + txlock=immediate 支撑多进程并发读写）；
-// CWD 取不到时回退 ExeDir，会话落回二进制目录，保证永远有非空锚点。
-// 创建失败按原因降级，降级不致命——会话只是从"跨进程持久化"退化为"进程内存"，不阻断启动：
-//   - 失败原因是目录不存在（常态：新工作目录首启，CWD/.HackerTeam 尚未建立）：创建目录后重试一次；
-//     目录创建失败或重试仍失败 → 降级内存会话服务
-//   - 其它原因失败 → 直接降级内存会话服务
-//
-// "是否路径不存在"用 os.Stat 判定而非解析驱动错误文案：mattn/go-sqlite3 的 CantOpen
-// 错误不保证能 errors.Is 链到 fs.ErrNotExist，Stat 目录是稳定的判定依据。
+// 会话按工作目录归属：同 CWD 的多实例共享同一 db（WAL 等参数支撑并发读写），不同 CWD 各自独立。
+// 创建失败降级为内存服务（不阻断启动）：目录不存在则建目录重试一次，其余原因直接降级。
+// "路径不存在"用 os.Stat 判定而非解析驱动错误：go-sqlite3 的 CantOpen 不保证 errors.Is 到 fs.ErrNotExist。
 func (env *BootEnv) buildSessionService(sink summarySink) framsession.Service {
 	dbPath := filepath.Join(env.CWD, hackerTeamConfigFolder, sessionDBFileName)
 
@@ -318,47 +307,30 @@ func (env *BootEnv) redirectFrameworkLog() {
 func (env *BootEnv) buildPrompts(agentName string) {
 	envPrompt_b, _ := PromptFiles.ReadFile("prompts/common/env.md")
 	prompt := string(envPrompt_b)
-	//Agent名称
 	prompt = strings.ReplaceAll(prompt, "{{NAME}}", agentName)
-
-	//当前日期
-	//prompt = strings.ReplaceAll(prompt, "{{DATE}}", time.Now().Format("2006-01-02 15:04:05 (Mon)"))
-
-	//当前时区
+	// {{DATE}}/{{CWD}} 不注入：已由 BeforeModel 状态栏每次调用刷新提供
 	zone, _ := time.Now().Zone()
 	prompt = strings.ReplaceAll(prompt, "{{TIMEZONE}}", fmt.Sprintf("%s (%s)", time.Now().Location().String(), zone))
 
-	//操作系统
 	prompt = strings.ReplaceAll(prompt, "{{OSTYPE}}", runtime.GOOS)
 
-	//CPU架构
 	prompt = strings.ReplaceAll(prompt, "{{AARCH}}", runtime.GOARCH)
 
-	//主目录
 	homeDir, _ := os.UserHomeDir()
 	prompt = strings.ReplaceAll(prompt, "{{HOME}}", homeDir)
 
-	//临时目录
 	prompt = strings.ReplaceAll(prompt, "{{TMPDIR}}", os.TempDir())
 
-	//当前用户
 	u, _ := user.Current()
 	prompt = strings.ReplaceAll(prompt, "{{CURRENTUSER}}", u.Username)
 
-	//主机名
 	hostName, _ := os.Hostname()
 	prompt = strings.ReplaceAll(prompt, "{{HOSTNAME}}", hostName)
 
-	//运行目录
-	//prompt = strings.ReplaceAll(prompt, "{{CWD}}", env.CWD)
-
-	//配置目录
 	prompt = strings.ReplaceAll(prompt, "{{CONFIGPATH}}", env.ConfigFolderPath)
 
-	//配置文件
 	prompt = strings.ReplaceAll(prompt, "{{HackerTeamConfig}}", hackerTeamConfig)
 	prompt = strings.ReplaceAll(prompt, "{{HackerTeamLogFile}}", hackerTeamLogFile)
-	//prompt = strings.ReplaceAll(prompt, "{{OperationRecord}}", operationRecord)
 
 	//输出目录（每次运行按时间戳独立，便于事后审计；锚定 ExeDir，与 localexec/tooloutput 保持一致）
 	now := time.Now().Format("20060102150405")

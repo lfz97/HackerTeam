@@ -26,9 +26,9 @@ const (
 	bannerRightMinW = 24   // 右栏压缩下限，低于它放弃双栏改走紧凑堆叠
 )
 
-// bannerLogo 7 行机器人头像。刻意只用块元素（█▄▀）：制表符（╭─╮ 等）是
-// East Asian Ambiguous 字符，CJK 环境的终端会渲染成 2 列而代码按 1 列
-// 计宽，必然错位；块元素无条件 1 列，任何终端/字体都不会歪。
+// bannerLogo 机器人头像。刻意只用块元素（█▄▀）：制表符类是 East Asian
+// Ambiguous 字符，CJK 环境的终端会渲染成 2 列而代码按 1 列计宽，必然
+// 错位；块元素无条件 1 列，任何终端/字体都不会歪。
 var bannerLogo = []string{
 	"   ▄▄▄▄▄▄▄▄▄▄▄▄▄   ",
 	"███████████████████",
@@ -62,7 +62,6 @@ func (b *banner) compose(width int) string {
 // composeBox 双栏圆角盒，盒宽=终端宽（左右边距对称）。宽度不足（返回
 // 空串）时由 compose 降级。
 func (b *banner) composeBox(width int) string {
-	// 信息按标签索引
 	m := make(map[string]string, len(b.info))
 	for _, line := range b.info {
 		if label, value := infoParts(line); label != "" {
@@ -78,9 +77,8 @@ func (b *banner) composeBox(width int) string {
 
 	center := lipgloss.NewStyle().Width(bannerLeftW).Align(lipgloss.Center)
 
-	// 左右两栏内容块在盒内垂直居中：上下各留 1 行呼吸，块高差由居中摊平。
-	// 左栏 = 欢迎语 + 空行 + 猫头像；右栏 = system 标题 + 全部启动信息
-	// （快捷键说明底部提示条已常驻，不再重复）。
+	// 左右两栏内容块在盒内垂直居中，块高差由居中摊平；
+	// 快捷键说明底部提示条已常驻，右栏不再重复。
 	logo := b.coloredLogo()
 	leftH := 2 + len(logo)
 	stats := make([]string, 0, len(b.info))
@@ -236,8 +234,8 @@ func gradientText(s, from, to string) string {
 
 // ---------- 字符串拼版辅助（通用，不绑定 banner） ----------
 //
-// ANSI 输出下没有 tview 标签的转义问题（方括号就是字面量），宽度度量
-// 直接用 ansi.StringWidth（显示宽度、宽字符与 ANSI 序列都正确处理）。
+// ANSI 输出下方括号就是字面量；宽度度量用 ansi.StringWidth（显示宽度、
+// 宽字符与 ANSI 序列都正确处理）。
 
 // subText 次文本色（信息行）。
 func subText(text string) string {
@@ -272,9 +270,9 @@ func clampWidth(s string, w int) string {
 	return s
 }
 
-// composeBanner 组装启动横幅文本（pull 循环在 StartupInfo 就绪后的第一帧调用一次）。
+// composeBanner 组装启动横幅文本（StartupInfo 就绪后调用一次）。
 // 横幅是"死文本"：写入后随对话滚动、resize 由 viewport 软换行兜底——
-// 这是刻意的语义（启动横幅本来就是一次性历史记录）。
+// 启动横幅本就是一次性历史记录。
 func composeBanner(infoLines []string, width int) string {
 	b := newBanner(infoLines)
 	//banner 与输入框之间只留 1 行空行（对齐 Claude Code 的紧凑观感）

@@ -1,16 +1,9 @@
 package engine
 
-// 本文件是引擎对上层 UI 暴露的可观察状态与方法（pull + JSON 契约）。
-// 上下游零 import：跨界只有 stdlib 类型与 JSON 文本，消息类型放在 JSON 的
-// type/style/kind 字段上，schema 自描述。
-//
-// 消息日志每条记录是一行 JSON：
-//   {"type":"delta","msg":{...框架 model.Message 原样...}}   流式增量
-//   {"type":"message","msg":{...框架 model.Message 原样...}} 完整消息（定稿/工具声明/工具结果）
-//   {"type":"user","text":"..."} / {"type":"slash","text":"..."}
-//   {"type":"warn","text":"..."} / {"type":"error","text":"..."} / {"type":"summary","text":"..."}
-// 引擎只透传框架原始 message（model.Message 自带 json 标签，可直接序列化），
-// 怎么渲染、怎么解释是 UI 侧的事。
+// 引擎对上层 UI 暴露的可观察状态与方法（pull + JSON 契约）。
+// 上下游零 import：跨界只有 stdlib 类型与 JSON 文本，schema 自描述（type/style/kind 字段）。
+// 消息日志每条一行 JSON：{"type":"delta"|"message","msg":框架 model.Message 原样}，
+// 或 {"type":"user"|"slash"|"warn"|"error"|"summary","text":"..."}；引擎只透传原始 message，渲染归 UI。
 
 import (
 	"encoding/json"
@@ -86,9 +79,8 @@ func (e *Engine) Records() []string {
 	return append([]string(nil), e.records...)
 }
 
-// 清空记录。必须递增 version：TUI 按 version != seenVersion 决定是否
-// 重组视图，只清 records 不 bump，聊天区不会刷新（fatal 有同样的前科，
-// 见 pull.go 的显式触发）。不依赖调用方先 append 之类的顺序巧合。
+// 清空记录。必须递增 version：TUI 按 version != seenVersion 决定是否重组视图，
+// 只清 records 不 bump，聊天区不会刷新。
 func (e *Engine) clearRecords() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -136,10 +128,8 @@ func wireMsg(typ string, m model.Message) string {
 	return string(b)
 }
 
-// emitChoice 把框架 Response choice 透传序列化进消息日志——引擎只传原始 message
-// （model.Message 自带 json 标签），增量/完整靠 type 字段区分；怎么渲染是 UI 的事。
-// ShowReasoning=false 时剥掉 reasoning_content（配置属于引擎，UI 无需感知）。
-// 空增量/空定稿不入日志（只 bump 版本没有任何意义）。
+// emitChoice 把框架 Response choice 透传序列化进消息日志，增量/完整靠 type 字段区分，
+// 怎么渲染是 UI 的事。ShowReasoning=false 时剥掉 reasoning_content；空增量/空定稿不入日志。
 func (e *Engine) emitChoice(choice model.Choice, isPartial bool) {
 	if (*(*e).AgentRunner_p).Stream {
 		d := choice.Delta

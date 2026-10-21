@@ -1,8 +1,7 @@
 package tui
 
-// wire JSON 形状（与引擎侧 uistate.go 的 schema 对齐）+ 事件循环消息。
-// demo 的 model/model.go 同位物：跨 goroutine 传递的消息类型与 JSON 契约
-// 集中在本文件；引擎访问的封装在 engine.go，事件循环在 tui.go。
+// wire JSON 形状（与引擎侧 uistate.go 的 schema 对齐）+ 事件循环消息；
+// 引擎访问的封装在 engine.go，事件循环在 tui.go。
 
 import (
 	"encoding/json"
@@ -55,9 +54,8 @@ type wireToolCall struct {
 
 // ── 事件循环消息 ─────────────────────────────────────────
 
-// frameMsg 一帧渲染结果（全部为已渲染的最终形态文本）。
-// 由 pullCmd（tea.Tick）在框架的 cmd goroutine 上产出、return 交给框架送进
-// Update——不经过 program.Send，走标准的 Elm 消息通道。
+// frameMsg 一帧渲染结果（全部为已渲染的最终形态文本），
+// 由 pullCmd 在框架的 cmd goroutine 上产出、经标准 Elm 消息通道送进 Update。
 type frameMsg struct {
 	view    string // 消息区全文（含横幅/终态，glamour 已渲染、lipgloss 已上色）
 	todo    string // 清单栏渲染结果（空串=无清单）
@@ -67,6 +65,6 @@ type frameMsg struct {
 }
 
 // pullSkipMsg 坏帧保活消息。pullCmd 的 fn 绝不能返回 nil（nil 不会触发
-// Update 的续链分支，链会静默断掉）——RunStateJSON 解析失败时返回它，
-// Update 收到后什么都不应用、只返回下一个 pullCmd 续链。
+// Update 的续链分支，链会静默断掉）——解析失败时返回它，Update 只续链、
+// 什么都不应用。
 type pullSkipMsg struct{}

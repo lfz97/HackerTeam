@@ -11,7 +11,7 @@ const (
 // HttpMCP HTTP 传输（SSE / streamable_http）的 MCP server 配置
 type HttpMCP struct {
 	Enabled     bool
-	Name        string // ToolSet 名称，决定工具前缀 {Name}_{toolName}，多个 MCP server 时必须唯一
+	Name        string // 决定工具前缀 {Name}_{toolName}，多个 MCP server 间必须唯一
 	Type        MCPtype
 	Endpoint    string
 	Headers     map[string]string
@@ -23,7 +23,7 @@ type HttpMCP struct {
 // 因此每个 server 全进程只有一个子进程。
 type StdinMCP struct {
 	Enabled     bool
-	Name        string // ToolSet 名称，决定工具前缀 {Name}_{toolName}，多个 MCP server 时必须唯一
+	Name        string // 决定工具前缀 {Name}_{toolName}，多个 MCP server 间必须唯一
 	Command     string
 	Args        []string
 	Description string

@@ -6,23 +6,20 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-// keyMsgHandler 处理按键消息（demo 范式 + HyperBot 语义）。
-//
-// 按键优先级从高到低：
+// keyMsgHandler 处理按键消息，优先级从高到低：
 //  1. 终态等键模式（fatal.waitKey）——任意键退出
 //  2. 斜杠命令浮层打开——esc/ctrl+c 关浮层，up/down 选条目，enter 补全指令
 //  3. /resume 弹框打开——up/down 选会话，enter 恢复，esc 取消，其余键吞掉
 //  4. ctrl+c 退出、enter 提交（斜杠命令先经 dispatchSlash 分发）、esc 中断（仅运行态）
 //  5. 其余转发给 textarea，再按输入框内容重算浮层
 //
-// 浮层没有独立的打开快捷键：它是输入框内容的派生状态——输入 "/" 起前缀匹配
-//（单敲 "/" 就是全量清单，slashRegistry 的 cmd 一律以 "/" 开头），失去斜杠前缀
-// 自动收起。派生而非独立模态，可见性只有一个决定点（refilterSlashItems）。
+// 浮层无独立打开快捷键：它是输入框内容的派生状态（输入 "/" 起前缀匹配），
+// 失去斜杠前缀自动收起——可见性只有一个决定点（refilterSlashItems）。
 func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	input := m.String()
 
-	// 终态 waitKey：消息已上屏，任意键退出（必须最先判，不再让按键进输入框）。
+	// 终态等任意键退出，必须最先判，不再让按键进输入框。
 	if t.waitingKey {
 		return t, tea.Quit
 	}
@@ -46,8 +43,8 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			if !ok {
 				return t, nil
 			}
-			//整段替换而非 InsertString：输入框里还留着半截 "/re"，插入会拼成
-			//"/re/resume "。补全后带个空格，光标停在命令末尾等用户接参数。
+			//整段替换而非 InsertString：输入框里留着半截 "/re"，插入会拼成
+			//"/re/resume "。补全后带空格，光标停在命令末尾等用户接参数。
 			t.ta.SetValue(sel + " ")
 			t.slashPopup.switchVisibility(false)
 			t.recalcComponentSize()
@@ -63,7 +60,7 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	} else if t.resume.isVisible() {
 		// /resume 弹框：方向键选择、enter 确认、esc 取消；其余键一律吞掉，
-		// 不让按键漏进 textarea（弹框期间输入被引擎串行化，不存在并发 turn）。
+		// 不让按键漏进 textarea。
 		if input == "ctrl+c" {
 			return t, tea.Quit
 		} else if input == "esc" {
@@ -90,10 +87,8 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return t, tea.Quit
 
 		} else if input == "enter" {
-			//斜杠命令在前端分发（注册表自持，后端只暴露能力接口）；未知命令
-			//按普通输入发给引擎，保持原先的兜底行为。
-			//普通输入主动提交给引擎（submitInput 内部 select-default，非阻塞），
-			//引擎忙（无人接收）时提交失败、保留输入框内容，用户输入不丢失。
+			//斜杠命令在前端分发；未知命令按普通输入发给引擎兜底。
+			//引擎忙时提交失败、保留输入框内容，用户输入不丢失。
 			text := strings.TrimSpace(t.ta.Value())
 			if text == "" { //空输入就地忽略，不占一条记录
 				return t, nil
@@ -115,8 +110,7 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return t, nil
 
 		} else if input == "esc" {
-			// esc 优先级：浮层开着上面已处理；运行期 → 中断 agent。
-			// 非运行期无操作（放行给 textarea 也无绑定，等价 no-op）。
+			// 浮层已在上面处理；运行期 → 中断 agent，非运行期 no-op。
 			if t.running {
 				t.interrupt()
 			}
@@ -124,7 +118,7 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 		} else {
 			var cmd tea.Cmd
-			t.ta, cmd = t.ta.Update(m) //把按键更新到textarea里面。
+			t.ta, cmd = t.ta.Update(m)
 			t.refilterSlashItems()
 			t.recalcComponentSize()
 			return t, cmd
@@ -133,9 +127,8 @@ func (t *TUI) keyMsgHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 }
 
-// slashToken 返回输入框里正在输入的半截斜杠命令（以 "/" 开头且不含空白）；
-// 不在输入命令时 ok=false。含空白说明用户已经在写命令参数（或根本就是普通
-// 消息），此时补全没有意义。
+// slashToken 返回输入框里正在输入的半截斜杠命令；含空白说明已在写参数
+// （或就是普通消息），此时补全没有意义，ok=false。
 func slashToken(text string) (string, bool) {
 	if !strings.HasPrefix(text, "/") || strings.ContainsAny(text, " \t\n") {
 		return "", false
@@ -143,9 +136,8 @@ func slashToken(text string) (string, bool) {
 	return text, true
 }
 
-// refilterSlashItems 按输入框当前内容重算斜杠命令浮层：正在输入斜杠命令且存在
-// 前缀匹配才显示，否则收起。必须在按键已交给 textarea 之后调用——用旧值匹配
-// 会永远差一个字符。
+// refilterSlashItems 按输入框当前内容重算斜杠命令浮层：有前缀匹配才显示，
+// 否则收起。必须在按键已交给 textarea 之后调用——用旧值匹配会永远差一个字符。
 // 条目源是 slashRegistry（编译期常量），过滤是纯内存操作，每次按键跑一遍无成本。
 func (t *TUI) refilterSlashItems() {
 	tok, ok := slashToken(t.ta.Value())

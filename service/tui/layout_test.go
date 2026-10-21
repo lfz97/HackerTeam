@@ -2,14 +2,13 @@ package tui
 
 import "testing"
 
-// 宽终端下内容列按 maxTextWidth 封顶后居中：封顶余量均分到两侧 padding，
-// 最大化窗口时左右留白对称（此前 viewport 左对齐把余量全堆在右侧，
-// "右边填充更宽"的根因）。窄终端（不足 120 列）行为不变。
+// 宽终端下内容列按 maxTextWidth 封顶后居中：封顶余量均分到两侧 padding
+// （"最大化窗口右边填充更宽"问题的回归）。窄终端行为不变。
 func TestRecalcPaddingCentersCappedColumn(t *testing.T) {
 	cases := []struct {
 		width    int
-		wantLeft int  // 期望左 padding（允许 ±1 内的奇数余量偏差见 diff 断言）
-		wantCW   int  // 期望内容列宽
+		wantLeft int // 期望左 padding（允许 ±1 内的奇数余量偏差见 diff 断言）
+		wantCW   int // 期望内容列宽
 	}{
 		{170, 25, 120}, // 最大化宽终端：extra=46 均分 23+23
 		{100, 2, 96},   // 窄终端：不足封顶，padding 不变

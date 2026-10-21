@@ -7,10 +7,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// ANSI 宽度测量把 \t 计为 0 列，终端展开到 8 列制表位——含 tab 的行
-// "测量达标、实际超宽"，越过 padding 被终端硬换行（词中断裂的根因）。
-// 修复：内容入口（cleanBlock/compactLine）统一把 tab 展开为 4 空格
-// （crush diffview 的 replaceTabs 同款）。
+// ANSI 宽度测量把 \t 计为 0 列而终端展开到制表位——含 tab 的行"测量达标、
+// 实际超宽"，被终端硬换行。修复：内容入口统一把 tab 展开为 4 空格。
 func TestCleanBlockExpandsTabs(t *testing.T) {
 	if got := cleanBlock("a\tb\tc"); got != "a    b    c" {
 		t.Fatalf("cleanBlock tabs = %q, want expanded to 4 spaces", got)

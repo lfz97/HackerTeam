@@ -52,8 +52,7 @@ type Engine struct {
 	ScannerSkillsFolderPath     string
 	ReproducerSkillsFolderPath  string
 
-	// errBudget 连续错误自动重试预算：策略（max/gap）与状态（streak）同体，
-	// 状态流转见 errorBudget.go 的 errorBudget 类型。
+	// errBudget：连续错误自动重试预算，状态流转见 errorBudget.go
 	errBudget errorBudget
 
 	// ── 对上层 UI 暴露的可观察状态（pull 契约，方法见 uistate.go）──
@@ -70,6 +69,7 @@ type Engine struct {
 	interruptCh chan struct{}
 }
 
+// GetEngineService 创建引擎实例（轻量：只装配字段，不触盘）。生命周期统一由 Run 驱动。
 func GetEngineService(name string) *Engine {
 	return &Engine{
 		Agentname:   name,
@@ -81,7 +81,6 @@ func GetEngineService(name string) *Engine {
 }
 
 // Init 完成环境检查与资产装配（bootstrap），随后构造 runner。
-// 检查器只返回错误与产物；致命呈现（parkWithFatal）是 Engine 的职责。
 func (e *Engine) Init() {
 	env, err := Check(e.Agentname, e)
 	if err != nil {
@@ -97,10 +96,8 @@ func (e *Engine) Init() {
 	e.newRunner()
 }
 
-// Run 启动引擎的完整生命周期：先同步完成初始化（Init），再启动主循环
-// （AgentStart）。主循环的 goroutine 由 AgentStart 内部负责，正常路径下
-// Run 返回时引擎已在后台自主运行；仅当 Init 走到致命终态（parkWithFatal）
-// 时才驻留当前 goroutine。
+// Run 启动引擎完整生命周期：先同步完成 Init，再启动主循环 AgentStart（goroutine 由其内部负责）。
+// 仅当 Init 走到致命终态（parkWithFatal）时才驻留当前 goroutine，否则返回时引擎已后台运行。
 func (e *Engine) Run() {
 	e.Init()
 	e.AgentStart()
@@ -141,9 +138,8 @@ func (e *Engine) absorb(env *BootEnv) {
 	}
 }
 
-// AgentStart 启动引擎主循环：goroutine 内读用户输入、分类分发，直到退出。
-// 阻塞语义收敛在引擎内部，调用方无需自行起 goroutine；一轮对话在 turn 里跑
-// （含自动重试），错误预算的状态流转见 errorBudget。
+// AgentStart 启动引擎主循环（goroutine 内读用户输入、分类分发，直到退出），
+// 调用方无需自行起 goroutine。错误预算的状态流转见 errorBudget。
 func (e *Engine) AgentStart() {
 	go e.agentLoop()
 }
@@ -160,8 +156,7 @@ func (e *Engine) agentLoop() {
 		if strings.TrimSpace(line) == "" { //空输入，重新等待（前端已兜底，双保险）
 			continue
 		}
-		//斜杠命令不经过这里：语义与注册表在前端（service/tui/commands.go 的
-		//dispatchSlash），后端只暴露能力接口——字符串 magic word 已废除。
+		//斜杠命令不经过这里：语义与注册表在前端（service/tui/commands.go），后端只暴露能力接口
 		(*e).appendTyped(RecUser, line)
 		e.turn(line)
 	}
@@ -169,8 +164,7 @@ func (e *Engine) agentLoop() {
 
 // ── 斜杠命令的后端能力接口（前端注册表见 service/tui/commands.go）──────
 
-// Shutdown /exit 的引擎侧收尾：释放 runner、MCP 连接与 localexec 工具集。
-// 置终态与退出由前端接管（tea.Quit 直接结束进程），引擎不再依赖“观察 fatal”的退出路径。
+// Shutdown /exit 的引擎侧收尾：释放 runner、MCP 连接与 localexec 工具集。置终态与退出由前端接管（tea.Quit）。
 //
 // 刻意不加 isRunning 守卫：长任务运行中 /exit 是常态，加了守卫会整段跳过清理，
 // MCP stdio 子进程与 localexec 的 PTY 作业就会活过进程。localexec.Close() 非阻塞
@@ -188,9 +182,8 @@ func (e *Engine) Shutdown() {
 	}
 }
 
-// NewConversation /new：重置 SessionId 与 RequestId 开新对话。running 时拒绝——
-// SessionId 读写无锁，turn 进行中重置是 data race；旧版命令经 inputCh 排队自然
-// 避开，命令前移到前端后这里显式兜底，拒绝即最小正确实现。
+// NewConversation /new：重置 SessionId 与 RequestId 开新对话。running 时拒绝：
+// SessionId 读写无锁，turn 进行中重置是 data race，这里显式兜底。
 func (e *Engine) NewConversation() bool {
 	if e.isRunning() {
 		e.setNotice(NoticeWarning, "agent is running, try /new later")

@@ -15,14 +15,11 @@ import (
 )
 
 // deliver 把工具输出写进结果 map：不超过内联上限就原样返回；超过则完整落盘，
-// 只内联头部预览，并附上文件路径与提示。
-//
-// 落盘走正常返回值而不是 error：这是一次成功的交付，只是换了载体。若用 error
-// 返回，调用方的 `if err != nil { return nil, err }` 会把整个结果 map 丢掉，
-// agent 连文件路径都拿不到，MCP 层还会把这次调用标记为失败。
+// 只内联头部预览并附文件路径。落盘走正常返回值而非 error——这是一次成功交付，
+// 用 error 返回会让上层丢掉整个结果。
 func deliver(res map[string]string, data []byte, id string) error {
-	// 内联判定以序列化后的大小为准（见 modeltext 包），内容原样返回不转换——
-	// 模型看到的本来就是框架序列化时替换后的结果。
+	// 按序列化后大小判定而非原始字节数：JSON 序列化对非法 UTF-8/控制字符有
+	// 最高 6 倍的放大（见 modeltext）。内容原样返回不转换。
 	text := string(data)
 	if modeltext.Size(text) <= inlineMaxBytes {
 		res["output"] = text
@@ -32,15 +29,14 @@ func deliver(res map[string]string, data []byte, id string) error {
 }
 
 // deliverSpilled 把完整输出落盘，只内联头部预览并附上文件路径与提示。
-// note/totalBytes 里报给 agent 的是文件的真实字节数（read 按 offset/bytes
-// 分页读的是原始文件）。
+// totalBytes/尾部偏移报的是文件真实字节数，read 分页读的就是原始文件。
 func deliverSpilled(res map[string]string, data []byte, id string) error {
 	path, err := spill(id, data)
 	if err != nil {
 		return err
 	}
 	head := preview(data)
-	// 尾部偏移直接算好给 agent，省掉它自己做减法（也避免它算错）
+	// 尾部偏移直接算好给 agent，省得它自己算错
 	tailOffset := len(data) - 4096
 	if tailOffset < 0 {
 		tailOffset = 0
@@ -76,8 +72,8 @@ func getTools(m *Manager) []tool.Tool {
 			isFinished := func(st StatusInfo) bool {
 				return st.Status == StatusDone || st.Status == StatusFailed || st.Status == StatusKilled
 			}
-			// 命令结束时构造返回：附带状态与退出码；失败时合并 stdout+stderr
-			// （PTY 模式下 stderr 合流进 stdout，Windows pipe 模式才有独立 stderr）。
+			// 失败时合并 stdout+stderr（PTY 下 stderr 合流进 stdout，只有
+			// Windows pipe 模式才有独立 stderr）
 			buildResult := func(st StatusInfo, id string) (map[string]string, error) {
 				out, err := m.Output(id, OutputOptions{Stream: "stdout"})
 				if err != nil {
@@ -94,9 +90,8 @@ func getTools(m *Manager) []tool.Tool {
 					if err != nil {
 						return nil, err
 					}
-					// 先合并 stdout+stderr 再做一次落盘判断，否则两条流会各落一个
-					// 文件，或出现「头部预览 + 完整 stderr」这种拼接结果。
-					// out 是 Output() 返回的副本，append 不会写坏 job 的 buffer。
+					// 合并后再做落盘判断，否则两条流各落一个文件；
+					// out 是 Output() 的副本，append 不会写坏 job 的 buffer
 					out = append(out, errOut...)
 				}
 				if err := deliver(res, out, id); err != nil {
@@ -157,7 +152,7 @@ func getTools(m *Manager) []tool.Tool {
 							"exitCode": strconv.Itoa(st.ExitCode),
 							"msg":      "wait timed out, command still running",
 						}, nil
-					case <-ticker.C: //ticker.C 每秒或获得一个time消息，这里就实现每秒查一次状态的场景
+					case <-ticker.C:
 						st := m.Status(req.Id)
 						if st.Status == "done" || st.Status == "failed" || st.Status == "killed" {
 							return map[string]string{

@@ -1,9 +1,7 @@
 package tui
 
-// 表格规则线对齐回归测试：glamour 排版宽度必须扣掉 msgIndent 的 2 列，
-// 否则整行超 viewport 被 wrapViewText 硬断时，无空格的行（表格规则线）
-// 触发 reflow 硬断丢行首缩进——规则线 ┼ 与正文行 │ 错位 2 列。
-// （历史 bug：renderBody 按 w 排版再叠 msgIndent，超宽 2 列。）
+// 表格规则线对齐回归测试：glamour 排版宽度必须扣掉 msgIndent 的 2 列缩进，
+// 否则规则线 ┼ 与正文行 │ 错位 2 列。
 
 import (
 	"strings"

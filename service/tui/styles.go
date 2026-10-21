@@ -2,12 +2,8 @@ package tui
 
 // ── 调色板与消息样式（对齐 crush 的 Charmtone 主题）──────────
 //
-// 消息区视觉语言参考 crush：
-//   用户消息   primary 色左竖线 + 1 列缩进（crush Messages.UserBlurred）
-//   助手消息   纯左缩进 2 列，无边框无前缀（crush Messages.AssistantBlurred）
-//   思考块     极淡底色通栏盒（crush Messages.ThinkingBox，bgLeastVisible）
-//   工具行     状态图标 + info 色工具名 + muted 参数（crush toolHeader）
-//   错误       红底 tag 徽章 + 弱化正文（crush Messages.ErrorTag/ErrorTitle）
+// 消息区视觉语言参考 crush：用户消息 primary 左竖线、助手纯左缩进、思考块
+// 淡底盒、工具行状态图标 + info 工具名、错误红底徽章。
 // 颜色取值来自 charmbracelet/x/exp/charmtone（与 crush 默认主题一致）。
 
 import (
@@ -38,14 +34,12 @@ var (
 	cBorder = lipgloss.Color("62")
 	cSub    = cFgMuted
 
-	// 工具块体区竖线：与用户消息（primary 线）、思考块（faint 线）同款视觉
-	// 语言。参数区暗灰（输入=既定上下文，Oyster）、结果区淡绿（输出=产出，
-	// Guac；饱和度低于 success 主色，错误结果的红色内容仍可辨识）。
+	// 工具块体区竖线：参数区暗灰（输入=既定上下文）、结果区淡绿
+	// （饱和度低于 success 主色，错误结果的红色内容仍可辨识）。
 	cToolLineIn  = cFgMostSubtle
 	cToolLineOut = cSuccessSubtle
 
-	// diff 行条纹底色（crush DefaultDarkStyle Insert/DeleteLine 同款取值）：
-	// add/del 行整行成条纹，行号列比内容列深一档；ctx 行保持透明。
+	// diff 行条纹底色（crush 同款）：add/del 整行成条纹，行号列深一档，ctx 行透明。
 	cDiffAddBg    = lipgloss.Color("#303a30")
 	cDiffAddGutBg = lipgloss.Color("#293229")
 	cDiffDelBg    = lipgloss.Color("#3a3030")
@@ -77,9 +71,8 @@ var userBar = lipgloss.NewStyle().
 	BorderStyle(lipgloss.NormalBorder()).
 	BorderForeground(cPrimary)
 
-// thinkingQuote 思考块：弱化左竖线 + 缩进（crush ThinkingBox 的无底色变体——
-// 大面积底色洗在黑底终端上会被读成色块，蓝紫调的尤其难看，弃用）。
-// Width 由调用方按文本宽度传入，负责软换行。
+// thinkingQuote 思考块：弱化左竖线 + 缩进（弃用底色变体：大面积底色洗在
+// 黑底终端上会被读成色块）。Width 由调用方按文本宽度传入。
 func thinkingQuote(w int) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(cFgMuted).
@@ -132,10 +125,8 @@ func toolHeader(name, params string) string {
 	return fmt.Sprintf("%s %s %s", icon, colorText(cInfo, name), params)
 }
 
-// compactLine 把多行文本压成单行：去掉 ANSI 转义与回车（命令输出常带 PTY 的
-// \r\n 和程序自身的颜色码，直接进视图会串色），换行转空格并合并多余空格，
-// tab 展开为 4 空格（测量计 0 列而终端展开 8 列，见 cleanBlock 注释）。
-// toolview 的参数/标量兜底在用；多行内容块用 toolview.cleanBlock（保留换行）。
+// compactLine 多行文本压成单行：剥 ANSI 与回车（PTY \r\n、颜色码进视图会
+// 串色）、换行转空格、tab 展开 4 空格（宽度测量坑，见 cleanBlock 注释）。
 func compactLine(s string) string {
 	s = ansi.Strip(s)
 	s = strings.ReplaceAll(s, "\r\n", "\n")

@@ -1,9 +1,7 @@
 package engine
 
-// diffMCPtoolsets 的行为验证：同名复用（不 Close、指针原样）、新名字
-// 启用新实例、消失/禁用/改名遗留的旧实例关闭。fakeToolset 用来精确
-// 观测“哪个实例被关、哪个被复用”——真 ToolSet 是惰性建连的，观测
-// 不到生命周期。loadMCPFromConfig 只验证清单构建（真实例惰性，不连）。
+// diffMCPtoolsets 的行为验证：同名复用（不 Close、指针原样）、新名字启用新实例、
+// 消失/禁用/改名的旧实例关闭。fakeToolset 精确观测实例生命周期——真 ToolSet 惰性建连，观测不到。
 
 import (
 	"context"

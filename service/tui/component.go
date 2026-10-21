@@ -10,38 +10,32 @@ import (
 
 // NewPrettyTextArea 美化过的输入框（demo 同款：圆角边框 + 紫色 62）。
 func NewPrettyTextArea(width int, height int, charLimit int) (textarea.Model, tea.Cmd) {
-
-	//初始化
 	ta := textarea.New()
-	ta.SetWidth(width)       // 设置宽度（列数）
-	ta.SetHeight(height)     // 设置高度（行数）
-	ta.CharLimit = charLimit // 最大容纳字符数，0 表示不限制
+	ta.SetWidth(width)
+	ta.SetHeight(height)
+	ta.CharLimit = charLimit // 0 表示不限制
 	ta.ShowLineNumbers = false
-	ta.DynamicHeight = true // 设置高度随内容自动增减
-	ta.MinHeight = height   // 自动收缩高度下限
+	ta.DynamicHeight = true
+	ta.MinHeight = height
 	ta.MaxHeight = height + 4
 
-	// 裸 enter 是"提交"（在 keyMsgHandler 里拦截），换行改挂 shift+enter /
-	// ctrl+j。textarea 默认把 enter 绑定 InsertNewline，必须显式改绑，
-	// 否则拦截前被默认绑定吃掉的行为不可控。
+	// 裸 enter 被 keyMsgHandler 拦截为"提交"，换行必须改绑到这里，
+	// 否则 textarea 默认的 InsertNewline 会先吃掉 enter。
 	ta.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("shift+enter", "ctrl+j"))
 
-	//定义样式
 	style := textarea.DefaultStyles(false)
-	// 输入文字用调色板最亮档（Sash #ECEBF0，crush 编辑器同款）：
 	// 不设前景色会落到终端默认灰，输入区显得暗
 	style.Focused.Base = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).       //圆角框线
-		BorderForeground(lipgloss.Color("62")). //框线颜色
-		Padding(0, 1).                          //框线与文字边距（垂直、水平）
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("62")).
+		Padding(0, 1).
 		Foreground(cFgBase)
 	style.Focused.Text = lipgloss.NewStyle().Foreground(cFgBase)
 	style.Focused.CursorLine = lipgloss.NewStyle()
 
-	//应用样式
 	ta.SetStyles(style)
 
-	//启用焦点，textarea只有启用焦点时才处理消息
+	// textarea 只有 Focus 后才处理消息
 	cmd := ta.Focus()
 	return ta, cmd
 }
@@ -59,8 +53,8 @@ func NewPrettyViewport(width int, height int) viewport.Model {
 // titleHeight 浮层标题占的行数（标题本身 + 空行）。
 const titleHeight = 2
 
-// overlayBoxStyle 浮层盒样式，唯一定义处。overlayCentered 用它算 frame 尺寸、
-// 各浮层用它排版内容，保证两者永远一致（改 padding 或边框时自动跟上）。
+// overlayBoxStyle 浮层盒样式唯一定义处：overlayCentered 算尺寸与各浮层排版
+// 共用，保证改 padding/边框时自动一致。
 var overlayBoxStyle = lipgloss.NewStyle().
 	Border(lipgloss.RoundedBorder()).
 	BorderForeground(lipgloss.Color("62")).
@@ -76,29 +70,27 @@ func overlayTextSize(boxW, boxH int) (textW, textH int) {
 
 // recalcComponentSize 重算所有组件尺寸（demo 范式 + 清单栏）。
 func (t *TUI) recalcComponentSize() {
-	// 窗口尺寸未就绪(启动早期,engine 的消息可能抢在第一条 WindowSizeMsg 之前到达)时,
-	// t.width/t.height 还是 0,此时布局免谈,等 WindowSizeMsg 到达后再算
+	// 启动早期 WindowSizeMsg 未到，t.width/t.height 还是 0，布局免谈
 	if t.width <= 0 || t.height <= 0 {
 		return
 	}
-	//计算组件宽度，需要减去两边padding的宽度，给padding留空间
 	componentWidth := t.componentWidth()
-	t.ta.SetWidth(componentWidth) // textarea在 v2 里 SetWidth 之后，组件会按新宽度把当前文本重新软换行一遍，数出总共占多少显示行，然后自动把高度设成这个行数。
+	// v2 里 SetWidth 后 textarea 会按新宽度重新软换行并自动调高度
+	t.ta.SetWidth(componentWidth)
 	t.vp.SetWidth(componentWidth)
 	t.bottom.UpdateGap(componentWidth - lipgloss.Width(t.bottom.spinnerView()) - lipgloss.Width(t.bottom.notice))
 
 	bottomHeight := lipgloss.Height(t.bottom.View())
 	todoHeight := lipgloss.Height(t.todoText)
 	// ta.View() 含边框，实际占 ta.Height()+2 行
-	viewportHeight := t.height - lipgloss.Height(t.ta.View()) - bottomHeight - todoHeight //viewport需要占满剩余高度
+	viewportHeight := t.height - lipgloss.Height(t.ta.View()) - bottomHeight - todoHeight
 	if viewportHeight < 1 {
 		viewportHeight = 1
 	}
 	t.vp.SetHeight(viewportHeight)
 }
 
-// draw 组合组件并绘制（demo 范式：viewport + todo + textarea + bottom，
-// 两侧 padding，浮层 Compositor 叠加）。
+// draw 组合组件并绘制整屏，浮层经 Compositor 叠加其上。
 func (t *TUI) draw() string {
 	messageView := t.vp.View()
 	textAreaView := t.ta.View()
@@ -106,7 +98,7 @@ func (t *TUI) draw() string {
 	leftPaddingView := lipgloss.NewStyle().Width(t.leftPadding).Height(t.height).Render("")
 	rightPaddingView := lipgloss.NewStyle().Width(t.rightPadding).Height(t.height).Render("")
 
-	//垂直方向组合消息栏、清单栏、文本栏、底部栏。清单为空时不占行。
+	// 清单为空时不占行
 	blocks := []string{messageView}
 	if t.todoText != "" {
 		blocks = append(blocks, t.todoText)
@@ -114,9 +106,8 @@ func (t *TUI) draw() string {
 	blocks = append(blocks, textAreaView, bottomView)
 	content := lipgloss.JoinVertical(lipgloss.Left, blocks...)
 
-	//水平方向组合padding栏
 	content = lipgloss.JoinHorizontal(lipgloss.Left, leftPaddingView, content, rightPaddingView)
-	//浮层：官方 Compositor —— 主界面是底层 Layer，浮层盒 X/Y 定位、Z=1 悬浮其上
+	// 浮层：主界面是底层 Layer，浮层盒居中悬浮其上（z=1）
 	if t.slashPopup.isVisible() {
 		content = t.overlayCentered(slashBoxWidth, slashBoxHeight, content, t.slashPopup.View(t.width, t.height))
 	}
@@ -126,12 +117,11 @@ func (t *TUI) draw() string {
 	return content
 }
 
-// overlayCentered 在原内容上增加居中悬浮框（demo 同款：圆角 + 紫色 62）。
-// 盒样式统一在本文件定义（overlayBoxStyle），尺寸由调用方传入
-//（各浮层自持常量），此处只夹取、渲染、定位。
+// overlayCentered 在原内容上居中叠加浮层盒；盒样式统一用 overlayBoxStyle，
+// 尺寸由调用方传入（各浮层自持常量），此处只夹取、渲染、定位。
 func (t *TUI) overlayCentered(boxW, boxH int, back string, front string) string {
 	boxW = min(boxW, t.width) //终端过小就夹到屏幕内
-	//盒高跟内容动态走：vp 实际渲染行数 + 边框/内边距，上限已由各浮层 View 夹过
+	//盒高跟内容走：vp 实际渲染行数 + 边框/内边距
 	boxH = min(lipgloss.Height(front)+overlayBoxStyle.GetVerticalFrameSize(), boxH, t.height)
 
 	box := overlayBoxStyle.

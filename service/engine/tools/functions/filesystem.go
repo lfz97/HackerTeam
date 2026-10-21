@@ -37,7 +37,7 @@ func PWD(ctx context.Context, req struct {
 	}, nil
 }
 
-// 列出指定目录下的文件和子目录
+// fileInfo 是 LS 返回的单条目录项信息
 type fileInfo struct {
 	Name     string      `json:"name"`
 	Size     int64       `json:"size"`
@@ -46,6 +46,7 @@ type fileInfo struct {
 	ModeTime string      `json:"mod_time"`
 }
 
+// 列出指定目录下的文件和子目录
 func LS(ctx context.Context, req struct {
 	Path string `json:"path" jsonschema:"description=要列出文件的目录路径。默认为当前目录。"`
 }) (map[string]string, error) {

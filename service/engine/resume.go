@@ -1,15 +1,9 @@
 package engine
 
 // /resume 会话恢复：列出当前 cwd 会话库里的候选、切换并重放。
-//
-// 命令语义与注册表都在前端（service/tui/commands.go 的 slashCommands +
-// dispatchSlash），后端只暴露两个能力接口：ListResumeItems 同步给候选
-// （纯查询，不感知 UI），CheckoutSession 完成切换；running 检查兜底并发
-// 切换（SessionId 读写无锁）。
-//
-// 切换本体只是改 SessionId：下一轮 turn 起框架按新 id 走 GetSession，历史
-// 事件与摘要自动进上下文（sqlite 持久化）；此处重放事件到 records 纯粹是
-// 给前端画历史，与上下文恢复无关。
+// 命令语义与注册表在前端（service/tui/commands.go），后端只暴露 ListResumeItems /
+// CheckoutSession 两个能力接口；running 检查兜底并发切换（SessionId 读写无锁）。
+// 切换本体只是改 SessionId，框架按新 id 自动恢复上下文；重放事件到 records 纯粹给前端画历史。
 
 import (
 	"context"
@@ -24,9 +18,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/session"
 )
 
-// ListResumeItems /resume 的数据接口：候选列表 JSON（"[]"=无可恢复，
-// 已附 notice 说明；读取失败已 appendTyped）。弹框显隐与选中态完全由
-// 前端自持，引擎不感知 UI。
+// ListResumeItems /resume 的数据接口：候选列表 JSON（"[]"=无可恢复或读取失败，已附 notice/error）。
 func (e *Engine) ListResumeItems() string {
 	items, err := e.listResumeItems()
 	if err != nil {
@@ -45,10 +37,8 @@ func (e *Engine) ListResumeItems() string {
 }
 
 // CheckoutSession 提交弹框选择（前端 enter 选中后调用）。
-//
-// running 时拒绝切换：SessionId 的读写无锁，turn 进行中切换是 data race。
-// TUI 场景下弹框拦截输入本不会有并发，这里是给未来输入入口的兜底；
-// 拒绝/失败时弹框保持，用户可重选。Esc 关闭是纯前端状态，不经这里。
+// running 时拒绝切换：SessionId 读写无锁，并发切换是 data race（对未来输入入口的兜底）；
+// 拒绝/失败时弹框保持，用户可重选。
 func (e *Engine) CheckoutSession(id string) error {
 	if e.isRunning() {
 		(*e).setNotice(NoticeWarning, "agent is running, try /resume later")

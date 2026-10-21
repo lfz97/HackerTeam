@@ -1,8 +1,7 @@
 package tui
 
-// 工具块的 chroma 语法高亮。配色取 markdownStyle() 的 Chroma 同款（视觉
-// 语言一致）。无缓存：高亮成本毫秒级、人不可感知（感知口径的消融数据见
-// composebench_test.go），渲染管线保持无全局可变状态。
+// 工具块的 chroma 语法高亮，配色与 markdownStyle() 一致。无缓存：高亮
+// 成本毫秒级不可感知，渲染管线保持无全局可变状态。
 
 import (
 	"bytes"
@@ -52,13 +51,12 @@ func lexerFor(filename, source string) chroma.Lexer {
 	return l
 }
 
-// highlightCode 源码 → 24-bit ANSI 高亮文本。bg 非 nil 时每个 token 的
-// SGR 自带底色（diff add/del 行条纹用，crush xchroma.Formatter 同型）——
-// 底色跟着 token 走，chroma 的逐 token reset 冲不掉条纹。
+// highlightCode 源码 → 24-bit ANSI 高亮。bg 非 nil 时每个 token 的 SGR
+// 自带底色（diff 条纹用）——底色跟着 token 走，chroma 的逐 token reset 冲不掉。
 func highlightCode(source, filename string, bg color.Color) string {
 	l := lexerFor(filename, source)
-	// 不用 TokeniseOptions{EnsureLF: true}：chroma v2.27.0 里它会触发 lexer
-	// 状态机 "unknown state" panic（追加换行后栈状态错乱），nil options 正常。
+	// 不用 TokeniseOptions{EnsureLF: true}：chroma v2.27.0 会触发 lexer
+	// "unknown state" panic，nil options 正常。
 	it, err := l.Tokenise(nil, source)
 	if err != nil {
 		return source
@@ -104,7 +102,7 @@ func chromaFormatter(bg color.Color) chroma.Formatter {
 }
 
 // codeBlockLines 高亮代码块：行号列（most-subtle 右对齐）+ chroma 高亮 +
-// blockMaxLines 截断与尾注。写入内容展示用（crush toolOutputCodeContent 同型）。
+// blockMaxLines 截断与尾注。
 func codeBlockLines(path, content string, avail int) []string {
 	if avail < 10 {
 		avail = 10

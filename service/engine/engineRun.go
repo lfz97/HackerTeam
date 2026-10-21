@@ -17,13 +17,11 @@ type AgentError struct {
 	PartialOutput string
 }
 
-// turn 跑一轮对话：调 runner 流式执行，失败时按错误预算自动重试——
-// 纠正 prompt + 退避；预算耗尽则交还用户（Run 循环回到等输入，下一次
-// 用户提交输入时充值）。中断（Esc）不充值：预算保留到下一次输入。
+// turn 跑一轮对话：调 runner 流式执行，失败时按错误预算自动重试（纠正 prompt + 退避）；
+// 预算耗尽则交还用户，等下一次输入充值。中断（Esc）不充值。
 func (e *Engine) turn(prompt string) {
-	// 中断桥接：前端 Esc → Interrupt() → 中断通道 → 本 goroutine 读取后取消当前轮
-	// （框架流式只认 ctx，通道信号在这里转成 ctx 取消）。runDone 在回合结束时 close，
-	// 桥接随之退出——无缓冲通道保证信号不会跨回合残留。
+	// 中断桥接：框架流式只认 ctx，把中断通道信号转成 ctx 取消。
+	// runDone 在回合结束时 close，桥接随之退出——信号不会跨回合残留。
 	Ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	runDone := make(chan struct{})
@@ -36,8 +34,7 @@ func (e *Engine) turn(prompt string) {
 		}
 	}()
 
-	// 运行指示器的开关紧贴 runOnce：defer 复位是 panic 安全——runOnce 内部
-	// 跑的是框架代码，panic 时指示器会永远转下去。
+	// defer 复位是 panic 安全：runOnce 跑的是框架代码，panic 时指示器不能永远转下去
 	(*e).setRunning(true)
 	defer (*e).setRunning(false)
 
@@ -97,7 +94,6 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 		//只有terminal error才会中断对话，其他error直接continue
 		if event.Error != nil {
 			if event.IsTerminalError() {
-				//填充err，使得返回的err不为nil，表示对话发生了错误
 				err = fmt.Errorf("event returned TerminalError: %v", event.Error)
 				(*e).appendTyped("error", err.Error())
 				return &AgentError{
@@ -129,7 +125,6 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 			}
 
 		}
-		// event.IsRunnerCompletion()判断是否完成输出
 		if event.IsRunnerCompletion() {
 			break
 		}
@@ -140,15 +135,10 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 
 }
 
-// 收集失败前已产出的部分输出。出现错误时通过这段文本在下一轮对 llm 进行提示，
-// 帮助模型理解之前发生了什么，从而调整后续输出。
-//
-// 不能删、也不能靠框架 session 代替：流式 delta 一律不落盘（框架 shouldPersistEvent
-// 要求 !IsPartial），中途失败时那个"完整最终 event"根本没产生，这一轮 assistant 文本
-// 在 session 里一个字都没有。框架的补救机制 WithPersistInterruptedAssistant 默认关闭、
-// 本项目未开启，且它只在 ctx 被取消时触发，覆盖不到 TerminalError。所以这里是唯一记录。
-//
-// 注意只累积 Choice 的 Content —— 不含 ReasoningContent，也不含 ToolCalls。
+// gatherPartialOutput 收集失败前已产出的部分输出，供重试时喂回模型。
+// 不能靠框架 session 代替：流式 delta 一律不落盘，中途失败时本轮 assistant 文本在
+// session 里一个字都没有（框架的补救机制默认关闭，且只在 ctx 取消时触发，覆盖不到
+// TerminalError），这里是唯一记录。只累积 Content，不含 ReasoningContent / ToolCalls。
 func gatherPartialOutput(Container_p *string, Choice model.Choice, Stream bool) {
 	if Stream {
 		*Container_p += Choice.Delta.Content

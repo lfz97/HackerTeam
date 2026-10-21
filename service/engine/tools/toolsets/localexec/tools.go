@@ -48,7 +48,7 @@ func deliverSpilled(res map[string]string, data []byte, id string) error {
 		"Output is %d bytes, over the %d-byte inline limit; the full content has been saved to outputFile. "+
 			"The output above is only a %d-byte head preview and does not represent the whole output. "+
 			"Failure reasons, test summaries and stack traces are usually at the end: pass offset=%d to `read` to read the tail directly, "+
-			"or use `search` to look for keywords.",
+			"or use Grep to look for keywords.",
 		len(data), inlineMaxBytes, len(head), tailOffset,
 	)
 	return nil
@@ -125,7 +125,7 @@ func getTools(m *Manager) []tool.Tool {
 			}
 		},
 		function.WithName(runToolName),
-		function.WithDescription("Execute a command built from `process` (program name) and `args` (argument array). Pick the shell for the operating system: Windows only supports `powershell` or `cmd` (e.g. `args=[\"-Command\",\"echo hello\"]`), while Unix/Linux/macOS use `bash`/`sh` (e.g. `args=[\"-c\",\"echo hello\"]`). Blocks for at most 20 seconds: if the command finishes within that window it returns the status (`status`), exit code (`exitCode`) and output (`output`) directly; if it is still running after 20 seconds it is switched to background execution and the command ID is returned, after which `status` checks its state, `output` fetches its output, `intervene` writes stdin or sends signals and `kill` terminates it forcefully. Output larger than the inline limit is saved to a file and only a head preview is returned inline; see `outputFile` and `note` in the result."),
+		function.WithDescription("Execute a command built from `process` (program name) and `args` (argument array). Pick the shell for the operating system: Windows only supports `powershell` or `cmd` (e.g. `args=[\"-Command\",\"echo hello\"]`), while Unix/Linux/macOS use `bash`/`sh` (e.g. `args=[\"-c\",\"echo hello\"]`). Blocks for at most 20 seconds: if the command finishes within that window it returns the status (`status`), exit code (`exitCode`) and output (`output`) directly; if it is still running after 20 seconds it is switched to background execution and the command ID is returned, after which `CommandStatus` checks its state, `CommandOutput` fetches its output, `CommandIntervene` writes stdin or sends signals and `CommandKill` terminates it forcefully. Output larger than the inline limit is saved to a file and only a head preview is returned inline; see `outputFile` and `note` in the result."),
 	)
 
 	statusTool := function.NewFunctionTool(
@@ -234,7 +234,7 @@ func getTools(m *Manager) []tool.Tool {
 			return map[string]string{"id": req.Id, "msg": "no action taken; provide `input` or `signal`"}, nil
 		},
 		function.WithName(interveneToolName),
-		function.WithDescription("Write to stdin or send a signal to a running command. Windows only supports stdin and forced termination, so use `kill` when you need to terminate a command."),
+		function.WithDescription("Write to stdin or send a signal to a running command. Windows only supports stdin and forced termination, so use `CommandKill` when you need to terminate a command."),
 	)
 
 	killTool := function.NewFunctionTool(

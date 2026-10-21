@@ -24,7 +24,7 @@ func TestCompactLineExpandsTabs(t *testing.T) {
 func TestBlockWithTabsNoOverflow(t *testing.T) {
 	// 真实形态：日志行含 tab 分隔（测量低估 → 旧版不折行 → 终端越界）
 	logLine := "2026-10-13T14:07:41+08:00\tDEBUG\tprocessor/identity.go:121\tIdentity request processor: sent preprocessing event"
-	out := toolView("LocalExec_run",
+	out := toolView("CommandRun",
 		[]byte(`{"Process":"bash","Args":["-c","tail"]}`),
 		`{"Id":"x","Status":"done","ExitCode":0,"Output":`+quoteJSON(logLine)+`}`,
 		110)

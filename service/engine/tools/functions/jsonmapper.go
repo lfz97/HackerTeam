@@ -9,9 +9,9 @@ func InjectMapper(m Mappers) {
 	m.AddMapping(writeFileToolName, []string{"path"}, []string{"wrote"})
 	m.AddMapping(readFileToolName, []string{"path"}, []string{"length"})
 	m.AddMapping(editFileToolName, []string{"path"}, []string{"diff"})
-	// search 的结果是数字键（"0"~"N" 的逐条匹配），无法逐字段登记，
+	// Grep 的结果是数字键（"0"~"N" 的逐条匹配），无法逐字段登记，
 	// Out 传 nil 走兜底：数字键自然排序、每条匹配一行
-	m.AddMapping(searchInFileToolName, []string{"path", "regex"}, nil)
+	m.AddMapping(grepToolName, []string{"path", "regex"}, nil)
 	m.AddMapping(deleteFileToolName, []string{"path"}, []string{"deleted"})
 	m.AddMapping(fileStatToolName, []string{"path"}, []string{"name", "size", "is_dir", "mode", "mod_time"})
 	m.AddMapping(diffToolName, []string{"src", "dst"}, []string{"diff"})

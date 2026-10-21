@@ -82,7 +82,7 @@ func buildSession() []string {
 			ToolCalls: []model.ToolCall{
 				{ID: fmt.Sprintf("t%d-a", turn), Function: model.FunctionDefinitionParam{Name: "edit", Arguments: []byte(fmt.Sprintf(`{"path":"/home/lfz/hyperbot/service/main.go","old":"x%d","new":"y%d"}`, turn, turn))}},
 				{ID: fmt.Sprintf("t%d-b", turn), Function: model.FunctionDefinitionParam{Name: "write", Arguments: []byte(fmt.Sprintf(`{"path":"/tmp/x%d.go","content":%s}`, turn, strconv.Quote(code)))}},
-				{ID: fmt.Sprintf("t%d-c", turn), Function: model.FunctionDefinitionParam{Name: "LocalExec_run", Arguments: []byte(fmt.Sprintf(`{"process":"bash","args":["-c","tail -n 50 log%d.log"]}`, turn))}},
+				{ID: fmt.Sprintf("t%d-c", turn), Function: model.FunctionDefinitionParam{Name: "CommandRun", Arguments: []byte(fmt.Sprintf(`{"process":"bash","args":["-c","tail -n 50 log%d.log"]}`, turn))}},
 			},
 		}))
 		recs = append(recs, wire("message", model.Message{Role: "tool", ToolID: fmt.Sprintf("t%d-a", turn), Content: `{"diff":` + strconv.Quote(diff) + `}`}))

@@ -190,7 +190,7 @@ type matchInfo struct {
 	MatchContent string `json:"match_content"`
 }
 
-// searchInFileRequest 是 SearchInFile 的请求；正则约束（RE2 语法等）见工具的 WithDescription。
+// searchInFileRequest 是 Grep 工具的请求；正则约束（RE2 语法等）见工具的 WithDescription。
 type searchInFileRequest struct {
 	Path  string `json:"path" jsonschema:"description=要搜索的文件路径。"`
 	Regex string `json:"regex" jsonschema:"description=要搜索的正则表达式。"`
@@ -326,15 +326,15 @@ func Diff(ctx context.Context, req struct {
 	}, nil
 }
 
-// 获取文件操作工具集合（write/read/edit/search/delete/stat/diff）。
+// 获取文件操作工具集合（write/read/edit/Grep/delete/stat/diff）。
 const (
-	writeFileToolName    string = "write"
-	readFileToolName     string = "read"
-	editFileToolName     string = "edit"
-	searchInFileToolName string = "search"
-	deleteFileToolName   string = "delete"
-	fileStatToolName     string = "stat"
-	diffToolName         string = "diff"
+	writeFileToolName  string = "write"
+	readFileToolName   string = "read"
+	editFileToolName   string = "edit"
+	grepToolName       string = "Grep"
+	deleteFileToolName string = "delete"
+	fileStatToolName   string = "stat"
+	diffToolName       string = "diff"
 )
 
 func GetFileOperationsTools() []tool.Tool {
@@ -355,7 +355,7 @@ func GetFileOperationsTools() []tool.Tool {
 	)
 	sftool := function.NewFunctionTool(
 		SearchInFile,
-		function.WithName(searchInFileToolName),
+		function.WithName(grepToolName),
 		function.WithDescription("通过正则表达式在指定文件中搜索内容，返回所有匹配项的行号和内容。使用Go RE2语法，不支持lookahead/lookbehind/backreference。`.`默认不匹配换行，跨行匹配用`(?s)`。`^`和`$`默认匹配文本首尾，匹配行首行尾用`(?m)`。结果受内联预算约束：截断时 truncated 为 true，totalMatches 报总匹配数。"),
 	)
 	dftool := function.NewFunctionTool(

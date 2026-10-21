@@ -10,4 +10,4 @@
     - Configuration files included:
       - {{HackerTeamConfig}}: Core configuration defining user settings, model settings, and MCP tool settings
       - {{HackerTeamLogFile}}: Runtime log
-  - **Output Directory**: {{OUTPUTDIR}} (Default path for final artifacts, unless the user specifies otherwise)
+  - **Output Directory**: {{OUTPUTDIR}} (Default path for final artifacts, unless the user specifies otherwise). Command output exceeding the inline size limit is automatically saved under {{OUTPUTDIR}}/tool-outputs/ — the tool result's `outputFile` field points there; read it with `read` (offset/bytes, the tail is at totalBytes-4096) or search it with `Grep`.

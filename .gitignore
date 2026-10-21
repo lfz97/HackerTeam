@@ -15,3 +15,4 @@ reproduce/
 
 # 测试二进制（go test -c 产物，不入库）
 *.test
+.codebuddy/

@@ -17,6 +17,7 @@ model:
   show_reasoning: false   # 显示推理内容，默认 false（不显示）
 
 # MCP server 配置（可选）。启用的 server 会挂载给全部 agent（含队长），实例跨 agent 共享。
+# timeout 单次工具调用的超时（单位/秒），不填默认 120；长耗时 server（扫描/分析类）务必调大
 # http_mcp：SSE / streamable_http 传输
 #http_mcp:
 #  - enabled: true
@@ -25,6 +26,7 @@ model:
 #    endpoint: "http://127.0.0.1:8080/mcp"
 #    headers: {}
 #    description: "示例 HTTP MCP server"
+#    timeout: 120
 
 # stdin_mcp：stdio 传输（每个 server 全进程一个子进程，懒连接）
 #stdin_mcp:
@@ -33,3 +35,4 @@ model:
 #    command: "uvx"
 #    args: ["mcp-server-fetch"]
 #    description: "示例 stdio MCP server"
+#    timeout: 120

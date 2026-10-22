@@ -26,7 +26,7 @@
 - Agent framework: `trpc.group/trpc-go/trpc-agent-go`, MCP: `trpc.group/trpc-go/trpc-mcp-go`
 - LLM backends: OpenAI-compatible API or Anthropic native SDK
 - Config auto-generated at first run: `<binary-dir>/.HackerTeam/HackerTeam.yaml`
-- MCP servers declared in config: `http_mcp`（sse/streamable_http）与 `stdin_mcp`（stdio）两个列表，`enabled` 开关控制；`name` 必须唯一（决定工具前缀 `{name}_{toolName}`，缺省时分配 `mcp_N` 默认名）；启用的 server 挂载给全部 agent（含 Captain），同一实例跨 agent 共享
+- MCP servers declared in config: `http_mcp`（sse/streamable_http）与 `stdin_mcp`（stdio）两个列表，`enabled` 开关控制；`name` 必须唯一（决定工具前缀 `{name}_{toolName}`，缺省时分配 `mcp_N` 默认名）；每个可配 `timeout` 字段（单位/秒，`<=0` 落默认值 `defaultMCPTimeout = 2min`）——框架把超时包在**每次 CallTool 上**（不是连接超时），长分析型调用务必调大；启用的 server 挂载给全部 agent（含 Captain），同一实例跨 agent 共享
 - TUI colors centralized in `utils/pretty/pretty.go` (TuiXxx constants)
 - `/new`, `/exit`, `ESC` — built-in TUI commands（`/flush` 已移除；每轮 run 重建配置/技能/MCP工具集，内置工具与工具集（localexec）常驻、跨轮复用）
 - Agent prompts embedded via `//go:embed prompts/*` in `service/engine/engineCore.go` (`PromptFiles`) and `service/engine/session/summarizer.go` (`promptFiles`, `prompt/*` prefix)
@@ -52,7 +52,7 @@
   - `tools/functions/` — Custom Go function tools（`jsonmapper.go`：`Mappers` 接口 + `InjectMapper` 注册本包工具的渲染字段表，工具名用常量）
   - `tools/parammapper.go` — `ParamMapper{Name,In,Out}` + `Mappers` 具体切片 + `GetParamMapper()`（聚合各工具包的 `InjectMapper`）
   - `tools/toolsets/localexec/` — LocalExec toolset（command execution subsystem；`Close()` 先 kill 未结束命令再清注册表；`mapper.go` 自注册同形 `Mappers` 接口 + `InjectMapper`，工具名常量、带前缀名构造）
-  - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、10s timeout)
+  - `tools/toolsets/mcp.go` — MCP ToolSet wrappers (`HttpMCP()`/`StdinMCP()`：`WithName` 决定工具前缀、`WithSessionReconnect(3)`、单次调用超时配置化默认 2min、`friendlyToolSet` 装饰器把超时错误改写成带时长与出路的文本——框架把 `context deadline exceeded` 原文回给模型只会引来无意义重试，改框架文本不可行（远端 pinned 依赖无 replace），装饰器是唯一拦截点)
 - `service/tui/` — bubbletea TUI: `tui.go` (model/update/view 生命周期), `pull.go` (tea.Tick 拉取链), `render.go` (消息日志重放渲染 + boundaryViews 边界记录分发表), `engine.go` (EngineView 接口), `handler.go` (按键), `banner.go` (欢迎盒), `skills.go` (帮助浮层), `bottom.go`/`spinner.go`/`styles.go` (状态消息宽度感知折行)
 - `utils/pretty/` — Centralized TUI color constants (`TuiXxx`)
 

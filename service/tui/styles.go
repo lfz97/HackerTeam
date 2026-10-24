@@ -3,11 +3,10 @@ package tui
 // ── 调色板与消息样式（对齐 crush 的 Charmtone 主题）──────────
 //
 // 消息区视觉语言参考 crush：用户消息 primary 左竖线、助手纯左缩进、思考块
-// 淡底盒、工具行状态图标 + info 工具名、错误红底徽章。
+// 弱化竖线、工具行折叠三角 + info 工具名、错误红底徽章。
 // 颜色取值来自 charmbracelet/x/exp/charmtone（与 crush 默认主题一致）。
 
 import (
-	"fmt"
 	"image/color"
 	"strings"
 
@@ -18,7 +17,7 @@ import (
 var (
 	cPrimary       = lipgloss.Color("#6B50FF") // Charple：用户左线、品牌色
 	cInfo          = lipgloss.Color("#00A4FF") // Malibu：工具名、链接、标题
-	cSuccess       = lipgloss.Color("#00FFB2") // Julep：工具 ✓、成功
+	cSuccess       = lipgloss.Color("#00FFB2") // Julep：成功状态
 	cSuccessSubtle = lipgloss.Color("#12C78F") // Guac：链接文本、成功正文
 	cError         = lipgloss.Color("#EB4268") // Sriracha：错误 tag
 	cWarning       = lipgloss.Color("#F5EF34") // Mustard：警告
@@ -160,16 +159,25 @@ func summaryText(text string, w int) string {
 	return colorLines(cSuccessSubtle, wrapStatusText("summary generated:\n"+text, w))
 }
 
-// ── 工具块头部行（crush toolHeader：状态图标 + info 工具名）──
+// ── 工具块头部行（crush toolHeader：折叠三角 + info 工具名）──
 // 参数行/结果行/内容块由 toolview.go 的 toolView 负责。
 
-// toolHeader 头部行：✓ 工具名（params 预留扩展，空串不出尾随空格）。
-func toolHeader(name, params string) string {
-	icon := colorText(cSuccess, "✓")
-	if params == "" {
-		return fmt.Sprintf("%s %s", icon, colorText(cInfo, name))
+// toolHeader 头部行：折叠三角 + 工具名。折叠/展开三角是点击提示；
+// 刻意不显示 ✓/✗：框架把工具错误直接写成 Content，没有结构化错误位，
+// 文本枚举必然误判，折叠行只呈现"可展开"这一确定信息。
+// limit 为去缩进后的可用列数，超长名字按显示宽度截断：折叠行不折行，
+// 溢出会让终端视觉换行、破坏行号命中。
+func toolHeader(name string, expanded bool, limit int) string {
+	arrow := "▸"
+	if expanded {
+		arrow = "▾"
 	}
-	return fmt.Sprintf("%s %s %s", icon, colorText(cInfo, name), params)
+	prefix := colorText(cFgMostSubtle, arrow) + " "
+	maxName := limit - 2 // 三角(1)+空格(1)
+	if maxName < 1 {
+		maxName = 1
+	}
+	return prefix + colorText(cInfo, ansi.Truncate(name, maxName, "…"))
 }
 
 // compactLine 多行文本压成单行：剥 ANSI 与回车（PTY \r\n、颜色码进视图会

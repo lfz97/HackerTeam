@@ -1,6 +1,10 @@
 package tui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // 宽终端下内容列按 maxTextWidth 封顶后居中：封顶余量均分到两侧 padding
 // （"最大化窗口右边填充更宽"问题的回归）。窄终端行为不变。
@@ -41,5 +45,22 @@ func TestRecalcPaddingOddExtra(t *testing.T) {
 	}
 	if got := tt.componentWidth(); got != 120 {
 		t.Errorf("componentWidth=%d, want 120", got)
+	}
+}
+
+func TestComposeHintFitsWidth(t *testing.T) {
+	// 底部是单行栏：hint 超宽会折行、改变视口高度。每个宽度档都必须
+	// 至少选到一条能放下的完整提示（极窄时退化为单箭头）。
+	for _, w := range []int{120, 80, 71, 70, 60, 52, 51, 40, 24, 20, 0} {
+		for _, running := range []bool{false, true} {
+			h := ansi.Strip(composeHint(running, w))
+			limit := max(1, w-hintSpinnerW)
+			if got := ansi.StringWidth(h); got > limit {
+				t.Errorf("w=%d running=%v: hint width %d > %d: %q", w, running, got, limit, h)
+			}
+			if h == "" {
+				t.Errorf("w=%d running=%v: empty hint", w, running)
+			}
+		}
 	}
 }

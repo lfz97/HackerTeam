@@ -20,7 +20,9 @@ import (
 
 // fakeView 固定返回预置记录集的假引擎（只实现基准需要的部分）。
 type fakeView struct {
-	records []string
+	records   []string
+	denyNew   bool // NewConversation 模拟 running 拒绝
+	denyClear bool // ClearRecords 模拟 running 拒绝
 }
 
 func (f *fakeView) Version() uint64               { return 1 }
@@ -34,8 +36,8 @@ func (f *fakeView) Interrupt() bool               { return true }
 
 // ── 斜杠命令的能力接口（注册表与分发在前端 slash.go）──
 func (f *fakeView) Shutdown()                       {}
-func (f *fakeView) NewConversation() bool           { return true }
-func (f *fakeView) ClearRecords() bool              { return true }
+func (f *fakeView) NewConversation() bool           { return !f.denyNew }
+func (f *fakeView) ClearRecords() bool              { return !f.denyClear }
 func (f *fakeView) ListResumeItems() string         { return "[]" }
 func (f *fakeView) CheckoutSession(id string) error { return nil }
 
@@ -105,9 +107,9 @@ func BenchmarkComposeWarm(b *testing.B) {
 	t := newBenchTUI()
 	st := newPullState()
 	st.width = 120
-	_ = t.composeView(st) // 预热缓存
+	_, _ = t.composeView(st) // 预热
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = t.composeView(st)
+		_, _ = t.composeView(st)
 	}
 }

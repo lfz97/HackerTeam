@@ -9,6 +9,7 @@ package tui
 // slashpopup.go/resumelist.go 两个浮层，其余为各组件自持文件。
 
 import (
+	"sync/atomic"
 	"time"
 
 	"charm.land/bubbles/v2/cursor"
@@ -36,6 +37,13 @@ type TUI struct {
 	bottom     *bottom
 	resume     *resumeList // /resume 弹框（会话恢复选择）
 
+	// 块折叠（collapse.go）：expand 是唯一一处事件循环写、pull goroutine 读
+	// 的状态（互斥锁保护）；spans/anchor 只在事件循环上读写。
+	expand       *expandState  // 思考/工具块展开状态（默认折叠）
+	spans        []blockSpan   // 最近一帧的可折叠块行号索引（点击命中用）
+	anchor       *scrollAnchor // 点击切换后的滚动锚（下一帧消费）
+	forceCompose atomic.Bool   // 点击后绕过 compose 节流，反馈即时
+
 	// pull 是拉取循环的私有状态（见 pull.go 的 pullState 注释）。
 	pull *pullState
 
@@ -62,6 +70,7 @@ func NewTui(view EngineView) *TUI {
 		engine: view,
 		resume: newResumeList(),
 		pull:   newPullState(),
+		expand: newExpandState(),
 	}
 }
 
@@ -105,6 +114,9 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.vp, cmd = t.vp.Update(m)
 		t.recalcComponentSize()
 		return t, cmd
+
+	case tea.MouseClickMsg: //鼠标点击：命中可折叠块头部则切换展开（collapse.go）
+		return t.mouseClickHandler(m)
 
 	case sp.TickMsg: //spinner 帧链（运行态时由 applyFrame 的 Start() 起链）
 		cmd := t.bottom.spinner.Update(m)

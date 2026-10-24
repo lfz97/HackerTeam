@@ -38,6 +38,7 @@ func newSlashTestTUI() (*TUI, *recordingView) {
 		vp:         NewPrettyViewport(0, 1),
 		slashPopup: newSlashPopup(),
 		resume:     newResumeList(),
+		expand:     newExpandState(),
 	}, e
 }
 

@@ -33,56 +33,55 @@ func TestWireRecordWithMetaRendersToolBlock(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
 		"write": {Name: "write", In: []string{"Path"}, Out: []string{"BytesWritten"}},
 	})
-	toolBuf := map[string]*wireToolCall{}
 
-	// 1) assistant 消息携带工具调用（delta 分片形态，两个片段参数按字节续接）
+	// 1) assistant 消息携带工具调用（delta 分片形态，两个片段参数按字节续接）+
+	//    2) 工具结果记录：与 engine.wireMsg 同形的 wire JSON 原样进假引擎。
 	args := `{"Path":"x.go"}`
-	for _, frag := range []string{args[:4], args[4:]} {
-		callRec := engineWireToolRecord(t, "delta", model.Message{
-			Role: "assistant",
-			ToolCalls: []model.ToolCall{{
-				ID: "t1",
-				Function: model.FunctionDefinitionParam{
-					Name:      "write",
-					Arguments: []byte(frag),
-				},
-			}},
-		})
-		var rec wireRecord
-		if err := json.Unmarshal([]byte(callRec), &rec); err != nil {
-			t.Fatalf("call record unmarshal: %v", err)
-		}
-		var m model.Message
-		if err := json.Unmarshal(rec.Msg, &m); err != nil {
-			t.Fatalf("call msg unmarshal: %v", err)
-		}
-		bufferToolCalls(&m, toolBuf)
-	}
-
-	// 2) 工具结果记录
+	callRec1 := engineWireToolRecord(t, "delta", model.Message{
+		Role: "assistant",
+		ToolCalls: []model.ToolCall{{
+			ID:       "t1",
+			Function: model.FunctionDefinitionParam{Name: "write", Arguments: []byte(args[:4])},
+		}},
+	})
+	callRec2 := engineWireToolRecord(t, "delta", model.Message{
+		Role: "assistant",
+		ToolCalls: []model.ToolCall{{
+			ID:       "t1",
+			Function: model.FunctionDefinitionParam{Name: "write", Arguments: []byte(args[4:])},
+		}},
+	})
 	resultRec := engineWireToolRecord(t, "message", model.Message{
 		Role:    "tool",
 		ToolID:  "t1",
 		Content: `{"BytesWritten":44}`,
 	})
-	var rec2 wireRecord
-	if err := json.Unmarshal([]byte(resultRec), &rec2); err != nil {
-		t.Fatalf("REGRESSION: result record failed to parse: %v", err)
-	}
-	var m2 model.Message
-	if err := json.Unmarshal(rec2.Msg, &m2); err != nil {
-		t.Fatalf("result msg unmarshal: %v", err)
-	}
 
-	// 3) composeView 同款路径：Role=tool → renderToolResult
-	out := renderToolResult(&m2, toolBuf, 120)
-	if out == "" {
-		t.Fatalf("tool block not rendered (entry not matched?)")
+	// 3) composeView 全链路：记录进假引擎 → 默认折叠只出头部行 →
+	//    展开（点开）后完整内容（Path/x.go/BytesWritten 值）可见。
+	fake := &fakeView{records: []string{callRec1, callRec2, resultRec}}
+	ft := NewTui(fake)
+	ft.pull.width = 120
+	view, spans := ft.composeView(ft.pull)
+	flat := ansi.Strip(view)
+	if !strings.Contains(flat, "write") || !strings.Contains(flat, "x.go") {
+		t.Fatalf("collapsed tool header missing name/path:\n%s", flat)
 	}
-	flat := ansi.Strip(out)
+	if strings.Contains(flat, "44") {
+		t.Fatalf("collapsed tool block leaked result content:\n%s", flat)
+	}
+	if len(spans) != 1 || spans[0].id != "tool:2" {
+		t.Fatalf("want one tool span with stable id, got %#v", spans)
+	}
+	ft.expand.toggle("tool:2")
+	view, spans = ft.composeView(ft.pull)
+	flat = ansi.Strip(view)
 	for _, want := range []string{"write", "Path", "x.go", "44"} {
 		if !strings.Contains(flat, want) {
-			t.Errorf("%q missing from tool block:\n%s", want, flat)
+			t.Errorf("%q missing from expanded tool block:\n%s", want, flat)
 		}
+	}
+	if len(spans) != 1 || spans[0].start != 0 {
+		t.Fatalf("expanded block header must stay at line 0, got %#v", spans)
 	}
 }

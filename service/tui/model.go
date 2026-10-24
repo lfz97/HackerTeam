@@ -57,11 +57,13 @@ type wireToolCall struct {
 // frameMsg 一帧渲染结果（全部为已渲染的最终形态文本），
 // 由 pullCmd 在框架的 cmd goroutine 上产出、经标准 Elm 消息通道送进 Update。
 type frameMsg struct {
-	view    string // 消息区全文（含横幅/终态，glamour 已渲染、lipgloss 已上色）
-	todo    string // 清单栏渲染结果（空串=无清单）
-	notice  string // 底部通知渲染结果（含 TTL 兜底）
-	running bool   // agent 是否在运行（spinner 开关依据）
-	fatal   *wireFatal
+	view      string      // 消息区全文（含横幅/终态，glamour 已渲染、lipgloss 已上色）
+	spans     []blockSpan // 可折叠块行号索引（与 view 同帧产出，点击命中用）
+	expandVer uint64      // 视图重组起点的展开状态版本（锚点据此判新旧）
+	todo      string      // 清单栏渲染结果（空串=无清单）
+	notice    string      // 底部通知渲染结果（含 TTL 兜底）
+	running   bool        // agent 是否在运行（spinner 开关依据）
+	fatal     *wireFatal
 }
 
 // pullSkipMsg 坏帧保活消息。pullCmd 的 fn 绝不能返回 nil（nil 不会触发

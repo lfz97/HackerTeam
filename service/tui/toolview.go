@@ -350,13 +350,14 @@ var diffHeaderVerbs = map[string]string{
 	"diff": "Diff",
 }
 
-// toolView 工具块总装：头部行（✓ name）→ 参数行（most-subtle）→ 空行分段
+// toolView 工具块总装：头部行（▾ name）→ 参数行（most-subtle）→ 空行分段
 // → 结果行与内容块（muted）。参数与结果同列对齐，w 为块可用总宽（缩进已扣）。
 func toolView(name string, args []byte, result string, w int) string {
 	avail := w - msgIndentW - 4 // 扣 msgIndent(2) 与块内容 4 空格缩进
 	if avail < 10 {
 		avail = 10
 	}
+	header := toolHeader(name, true, w-msgIndentW)
 
 	argsObj, _ := decodeJSONObject(args)
 	path := argPath(argsObj)
@@ -388,7 +389,7 @@ func toolView(name string, args []byte, result string, w int) string {
 	all = append(all, argRowList...)
 	all = append(all, resRows...)
 	if len(all) == 0 && len(blocks) == 0 && len(codeLines) == 0 {
-		return toolHeader(name, "")
+		return header
 	}
 
 	kw := 0
@@ -434,7 +435,7 @@ func toolView(name string, args []byte, result string, w int) string {
 	outLines = append(outLines, codeLines...)
 
 	lines := make([]string, 0, len(inLines)+len(outLines)+2)
-	lines = append(lines, toolHeader(name, ""))
+	lines = append(lines, header)
 	for _, l := range inLines {
 		lines = append(lines, lineWrap(l, cToolLineIn))
 	}

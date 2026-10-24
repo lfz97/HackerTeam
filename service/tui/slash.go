@@ -20,13 +20,19 @@ type slashCmd struct {
 // slashRegistry 前端自持的斜杠命令注册表。编译期常量，启动第一刻即非空——
 // 不存在"引擎还没发布条目"的空窗，也不存在拉取失败的中间态。
 // 顺序即浮层里的呈现顺序。
+// NewConversation/ClearRecords 在 running 时拒绝并自行 setNotice；返回值
+// 决定是否清空展开状态——拒绝时历史与展开态都必须保持原样。
 var slashRegistry = []slashCmd{
 	{"/new", "start a new session", func(t *TUI) tea.Cmd {
+		// /new 只换 session id，不清消息记录（旧历史仍留在屏上）；块 ID 按
+		// 记录序号生成、追加记录不改变旧 ID，因此不要 reset 展开态。
 		t.engine.NewConversation() //running 时引擎拒绝并自行 setNotice
 		return nil
 	}},
 	{"/clear", "clear the screen", func(t *TUI) tea.Cmd {
-		t.engine.ClearRecords() //running 时引擎拒绝并自行 setNotice
+		if t.engine.ClearRecords() { //running 时引擎拒绝：历史没清，展开态也不能清
+			t.resetExpand()
+		}
 		return nil
 	}},
 	{"/resume", "resume a previous session", func(t *TUI) tea.Cmd {

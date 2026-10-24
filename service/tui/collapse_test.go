@@ -474,6 +474,23 @@ func TestNewResetsExpandOnlyOnSuccess(t *testing.T) {
 	}
 }
 
+func TestNewKeepsExpandWhenClearRejected(t *testing.T) {
+	// NewConversation 成功但 ClearRecords 被 running 拒绝：历史没清，展开态保留。
+	fake := &fakeView{denyClear: true}
+	tu := NewTui(fake)
+	tu.expand.toggle("think:0")
+	tu.anchor = &scrollAnchor{id: "think:0", row: 1, ver: tu.expand.version()}
+	tu.forceCompose.Store(false)
+
+	tu.dispatchSlash("/new")
+	if !tu.expand.expanded("think:0") {
+		t.Fatalf("rejected /clear must not reset expand state")
+	}
+	if tu.anchor == nil || tu.forceCompose.Load() {
+		t.Fatalf("rejected /clear must not touch anchor/forceCompose")
+	}
+}
+
 func TestCheckoutSessionResetsExpand(t *testing.T) {
 	tu := NewTui(&fakeView{})
 	tu.expand.toggle("think:0")

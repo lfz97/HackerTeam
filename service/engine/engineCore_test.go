@@ -1,6 +1,7 @@
 package engine
 
-// /new 的引擎侧语义：换 session 与清屏必须原子完成；running 拒绝时历史保持原样。
+// /new 的引擎侧语义：只原子重置 session 并追加 /new 回显；
+// 清屏是 TUI 的编排职责，引擎不越界。
 
 import (
 	"encoding/json"
@@ -18,7 +19,7 @@ func noticeKind(t *testing.T, e *Engine) string {
 	return n.Kind
 }
 
-func TestNewConversationClearsRecords(t *testing.T) {
+func TestNewConversationResetsSessionKeepsRecords(t *testing.T) {
 	e := &Engine{}
 	e.appendTyped(RecUser, "old message")
 	before := e.Version()
@@ -26,11 +27,22 @@ func TestNewConversationClearsRecords(t *testing.T) {
 	if !e.NewConversation() {
 		t.Fatal("NewConversation must succeed when idle")
 	}
-	if got := e.Records(); len(got) != 0 {
-		t.Fatalf("/new must clear records, got %d: %v", len(got), got)
+	recs := e.Records()
+	if len(recs) != 2 {
+		t.Fatalf("NewConversation must keep old records and append /new, got %d: %v", len(recs), recs)
 	}
-	if e.Version() <= before {
-		t.Fatalf("/new must bump version: before=%d after=%d", before, e.Version())
+	var last struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(recs[1]), &last); err != nil {
+		t.Fatalf("slash record json: %v", err)
+	}
+	if last.Type != RecSlash || last.Text != "/new" {
+		t.Fatalf("last record=%+v, want slash /new", last)
+	}
+	if e.Version() != before+1 {
+		t.Fatalf("NewConversation must bump version once: before=%d after=%d", before, e.Version())
 	}
 	if e.SessionId == "" || e.RequestId == "" {
 		t.Fatal("/new must reset session/request ids")

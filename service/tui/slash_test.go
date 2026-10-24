@@ -144,12 +144,15 @@ func TestDispatchSlash(t *testing.T) {
 	if e.newConv != 1 {
 		t.Errorf("NewConversation calls=%d, want 1", e.newConv)
 	}
+	if e.clear != 1 {
+		t.Errorf("ClearRecords calls after /new=%d, want 1 (TUI orchestrates clear)", e.clear)
+	}
 
 	if cmd, handled := tt.dispatchSlash("/clear"); !handled || cmd != nil {
 		t.Errorf("/clear handled=%v cmd=%v, want true/nil", handled, cmd)
 	}
-	if e.clear != 1 {
-		t.Errorf("ClearRecords calls=%d, want 1", e.clear)
+	if e.clear != 2 {
+		t.Errorf("ClearRecords calls=%d, want 2", e.clear)
 	}
 
 	///resume 无候选（fakeView 的 ListResumeItems 返回 "[]"）时不开弹框

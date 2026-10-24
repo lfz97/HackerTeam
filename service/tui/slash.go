@@ -23,10 +23,12 @@ type slashCmd struct {
 // NewConversation/ClearRecords 在 running 时拒绝并自行 setNotice；返回值
 // 决定是否清空展开状态——拒绝时历史与展开态都必须保持原样。
 var slashRegistry = []slashCmd{
-	{"/new", "start a new session", func(t *TUI) tea.Cmd {
-		// /new 只换 session id，不清消息记录（旧历史仍留在屏上）；块 ID 按
-		// 记录序号生成、追加记录不改变旧 ID，因此不要 reset 展开态。
-		t.engine.NewConversation() //running 时引擎拒绝并自行 setNotice
+	{"/new", "start a new session (clears screen)", func(t *TUI) tea.Cmd {
+		// /new 引擎侧原子完成「换 session + 清屏」；成功后历史已作废，展开态
+		// 必须一起重置，否则旧块 ID 会指向不存在/错位的记录。
+		if t.engine.NewConversation() { //running 时引擎拒绝并自行 setNotice
+			t.resetExpand()
+		}
 		return nil
 	}},
 	{"/clear", "clear the screen", func(t *TUI) tea.Cmd {

@@ -24,7 +24,7 @@ type EngineView interface {
 	Interrupt() bool
 	// ── 斜杠命令的能力接口（命令注册表与分发都在前端 slash.go）──
 	Shutdown()                       // /exit：释放 runner/MCP/localexec，前端随后自行退出
-	NewConversation() bool           // /new：running 时拒绝（false）
+	NewConversation() bool           // /new：开新会话并清屏；running 时拒绝（false）
 	ClearRecords() bool              // /clear：running 时拒绝（false）
 	ListResumeItems() string         // /resume 候选 JSON（"[]"=无可恢复，引擎已附提示）
 	CheckoutSession(id string) error // 提交弹框选择；失败弹框保持可重选

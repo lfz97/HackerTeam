@@ -182,14 +182,15 @@ func (e *Engine) Shutdown() {
 	}
 }
 
-// NewConversation /new：重置 SessionId 与 RequestId 开新对话。running 时拒绝：
-// SessionId 读写无锁，turn 进行中重置是 data race，这里显式兜底。
+// NewConversation /new：重置 SessionId 与 RequestId 开新对话，并清空消息记录
+// （/new 自动 clear：旧会话的屏幕历史随上下文一起作废，不再留在屏上）。
+// running 时拒绝：SessionId 读写无锁，turn 进行中重置是 data race，这里显式兜底。
 func (e *Engine) NewConversation() bool {
 	if e.isRunning() {
 		e.setNotice(NoticeWarning, "agent is running, try /new later")
 		return false
 	}
-	(*e).appendTyped(RecSlash, "/new")
+	e.clearRecords()
 	e.randomStartID()
 	(*e).setNotice(NoticeNewConversation, "")
 	return true

@@ -101,7 +101,7 @@ func (e *expandState) clearTail() {
 	e.ver++
 }
 
-// reset 清空（/clear、/resume 换历史后调用）。
+// reset 清空（/new、/clear、/resume 换历史后调用）。
 func (e *expandState) reset() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -110,7 +110,7 @@ func (e *expandState) reset() {
 }
 
 // resetExpand 历史被清空/替换后重置展开状态：清锚点并强制下一轮重组，
-// 避免旧视图残留与折叠状态脱节（/clear、/resume 成功路径）。
+// 避免旧视图残留与折叠状态脱节（/new、/clear、/resume 成功路径）。
 func (t *TUI) resetExpand() {
 	t.expand.reset()
 	t.anchor = nil

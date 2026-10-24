@@ -447,22 +447,30 @@ func TestClearResetsExpandOnlyOnSuccess(t *testing.T) {
 	}
 }
 
-func TestNewKeepsExpandState(t *testing.T) {
-	// /new 只换 session id，不丢消息记录；旧块的展开态继续有效。
-	tu := NewTui(&fakeView{})
+func TestNewResetsExpandOnlyOnSuccess(t *testing.T) {
+	// running 拒绝：历史没清，展开态与锚点必须原样保留。
+	fake := &fakeView{denyNew: true}
+	tu := NewTui(fake)
 	tu.expand.toggle("think:0")
+	tu.anchor = &scrollAnchor{id: "think:0", row: 1, ver: tu.expand.version()}
+	tu.forceCompose.Store(false)
+
 	tu.dispatchSlash("/new")
 	if !tu.expand.expanded("think:0") {
-		t.Fatalf("/new must keep expansion state for retained history")
+		t.Fatalf("rejected /new must not reset expand state")
+	}
+	if tu.anchor == nil || tu.forceCompose.Load() {
+		t.Fatalf("rejected /new must not touch anchor/forceCompose")
 	}
 
-	// running 拒绝同样不动展开态。
-	fake := &fakeView{denyNew: true}
-	tu = NewTui(fake)
-	tu.expand.toggle("tool:1")
+	// 成功：/new 自动清屏，展开态、锚点与视图一起重置。
+	fake.denyNew = false
 	tu.dispatchSlash("/new")
-	if !tu.expand.expanded("tool:1") {
-		t.Fatalf("rejected /new must keep expansion state")
+	if tu.expand.expanded("think:0") {
+		t.Fatalf("successful /new must reset expand state")
+	}
+	if tu.anchor != nil || !tu.forceCompose.Load() {
+		t.Fatalf("successful /new must clear anchor and force recompose")
 	}
 }
 

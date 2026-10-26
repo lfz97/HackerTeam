@@ -48,14 +48,12 @@ const (
 	outputDir              string = "output"
 )
 
-// 技能目录名称
-const (
-	reconSkillsFolder       string = "ReconSkills"
-	exploitSkillsFolder     string = "ExploitSkills"
-	postExploitSkillsFolder string = "PostExploitSkills"
-	scannerSkillsFolder     string = "ScannerSkills"
-	reproducerSkillsFolder  string = "ReproducerSkills"
-)
+// 技能目录名称。重构后 Operator 与 Worker 是同一份实现、同一套技能，
+// 不再按角色分目录——所有技能合并进 Skills 一个目录。
+const skillsFolder string = "Skills"
+
+// skillsTemplateDir 内置技能模板目录：与运行时 Skills/ 同构，整目录一次安装。
+const skillsTemplateDir = "skillsTemplates/Skills"
 
 // summarySink 本文件对摘要展示端的全部需求（Engine 以 AppendSummary 实现）。
 type summarySink interface {
@@ -74,8 +72,8 @@ type BootEnv struct {
 	ExeDir               string //可执行文件目录，资产锚点（config/log/output 跟随二进制）
 	ConfigFolderPath     string
 	HackerTeamConfigPath string
-	// 5 个角色的 skills 文件夹路径
-	RoleSkillFolders map[string]string
+	// SkillsFolderPath 合并后的唯一技能目录（Operator 与 Worker 共用）。
+	SkillsFolderPath string
 
 	LogFile     *os.File
 	NeedRestart bool //首跑创建了默认配置文件：须改完配置重启
@@ -101,7 +99,7 @@ type BootEnv struct {
 // Check 跑完整的启动检查与资产装配。任何一步失败都返回带步骤语义的
 // error，由调用方决定如何呈现（parkWithFatal）。
 func Check(agentName string, sink summarySink) (*BootEnv, error) {
-	env := &BootEnv{RoleSkillFolders: map[string]string{}}
+	env := &BootEnv{}
 
 	// ① 可执行文件所在目录：一切资产的锚点
 	exePath, err := os.Executable()
@@ -150,8 +148,8 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 		return env, nil
 	}
 
-	// ⑤ 5 个角色的 skills 文件夹：不存在则创建并从嵌入模板复制技能
-	if err := env.checkRoleSkillFolders(); err != nil {
+	// ⑤ 技能目录：合并后的单一 Skills 目录，不存在则从嵌入模板安装并迁移旧角色目录
+	if err := env.checkSkillsFolder(); err != nil {
 		return nil, err
 	}
 
@@ -216,42 +214,24 @@ func (env *BootEnv) buildSessionService(sink summarySink) framsession.Service {
 	return session.NewMemorySessionService(env.Config.Model, sink)
 }
 
-// checkRoleSkillFolders 检查 5 个角色的 skills 文件夹，不存在则创建并从
-// skillsTemplates 嵌入模板复制该角色的预设技能（Reproducer 无预设，仅建空目录）。
-func (env *BootEnv) checkRoleSkillFolders() error {
-	// 角色目录 → skillsTemplates 下的预设目录（按角色分发各自的红队知识 skill）
-	presetFolders := []struct {
-		roleFolder string
-		presetName string
-	}{
-		{reconSkillsFolder, "Recon"},
-		{scannerSkillsFolder, "Scanner"},
-		{exploitSkillsFolder, "Exploit"},
-		{postExploitSkillsFolder, "PostExploit"},
-		{reproducerSkillsFolder, ""},
+// checkSkillsFolder 检查 Skills 目录：不存在则从嵌入模板整目录安装。
+// 目录一旦存在就不再补给——删掉的技能文件不该在下次启动时复活。
+func (env *BootEnv) checkSkillsFolder() error {
+	skillsDir := filepath.Join(env.ConfigFolderPath, skillsFolder)
+	env.SkillsFolderPath = skillsDir
+	if _, err := os.Stat(skillsDir); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to check %s folder: %w", skillsFolder, err)
 	}
-	for _, pf := range presetFolders {
-		roleFolder := filepath.Join(env.ConfigFolderPath, pf.roleFolder)
-		env.RoleSkillFolders[pf.roleFolder] = roleFolder
-		if _, err := os.Stat(roleFolder); err == nil {
-			continue
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("failed to check %s folder: %w", pf.roleFolder, err)
-		}
-		if err := os.MkdirAll(roleFolder, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create default %s folder: %w", pf.roleFolder, err)
-		}
-		if pf.presetName != "" {
-			if err := copy.Copy("skillsTemplates/"+pf.presetName, roleFolder, copy.Options{FS: ToolSkills}); err != nil {
-				return fmt.Errorf("failed to copy skill templates into %s folder: %w", pf.roleFolder, err)
-			}
-			// embedFS 源文件只读(0444)，复制后修正权限保证 skill 可编辑
-			if err := makeSkillsWritable(roleFolder); err != nil {
-				return fmt.Errorf("failed to fix %s folder permissions: %w", pf.roleFolder, err)
-			}
-		}
-		env.Notices = append(env.Notices, bootNotice{NoticeSuccess, fmt.Sprintf("%s folder not found, created default", pf.roleFolder)})
+	if err := copy.Copy(skillsTemplateDir, skillsDir, copy.Options{FS: ToolSkills}); err != nil {
+		return fmt.Errorf("failed to copy skill templates into %s folder: %w", skillsFolder, err)
 	}
+	// embedFS 源文件只读(0444)，复制后修正权限保证 skill 可编辑
+	if err := makeSkillsWritable(skillsDir); err != nil {
+		return fmt.Errorf("failed to fix %s folder permissions: %w", skillsFolder, err)
+	}
+	env.Notices = append(env.Notices, bootNotice{NoticeSuccess, fmt.Sprintf("%s folder not found, created default", skillsFolder)})
 	return nil
 }
 

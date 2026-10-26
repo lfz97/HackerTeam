@@ -83,17 +83,10 @@ func (e *Engine) reload() error {
 	return nil
 }
 
-// skillRepository 把 5 个角色技能目录合并成一个索引，Operator 与 Worker 共用。
-// 同名 skill 先到先得（框架行为）；当前 5 个角色各有独立命名的 skill，
-// pentest-tools 只是 .template 占位，不会进索引。
+// skillRepository 把合并后的 Skills 目录建成唯一索引，Operator 与 Worker 共用。
+// 目录里不再有角色边界：谁装配都拿到同一份技能集。
 func (e *Engine) skillRepository() (*skill.FSRepository, error) {
-	return skill.NewFSRepository(
-		(*e).ReconSkillsFolderPath,
-		(*e).ScannerSkillsFolderPath,
-		(*e).ExploitSkillsFolderPath,
-		(*e).PostExploitSkillsFolderPath,
-		(*e).ReproducerSkillsFolderPath,
-	)
+	return skill.NewFSRepository((*e).SkillsFolderPath)
 }
 
 // loadMCPFromConfig 从配置文件创建启用的 MCP ToolSet，返回期望运行的新清单。

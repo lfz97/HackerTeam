@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,7 +56,7 @@ type Engine struct {
 	execToolSet tool.ToolSet
 	mcpToolsets []tool.ToolSet // 配置文件声明的MCP工具集，增量对齐（同名复用），共享挂载给全部agent
 
-	// skillsRepo 把 5 个角色技能目录合并成一个索引：Operator 与 Worker 用同一份技能库，
+	// skillsRepo 是合并后 Skills 目录的唯一索引：Operator 与 Worker 用同一份技能库，
 	// 按任务自选技能，而不是靠预先把角色切碎。每次 reload 重建（技能文件可编辑）。
 	skillsRepo *skill.FSRepository
 
@@ -68,11 +69,8 @@ type Engine struct {
 	taskService *inprocess.Service
 	taskTools   *taskrun.Tools
 
-	ReconSkillsFolderPath       string
-	ExploitSkillsFolderPath     string
-	PostExploitSkillsFolderPath string
-	ScannerSkillsFolderPath     string
-	ReproducerSkillsFolderPath  string
+	// SkillsFolderPath 合并后的技能目录：Operator 与 Worker 共用同一份索引。
+	SkillsFolderPath string
 
 	// errBudget：连续错误自动重试预算，状态流转见 errorBudget.go
 	errBudget errorBudget
@@ -142,20 +140,7 @@ func (e *Engine) absorb(env *BootEnv) {
 	e.SqliteMemoryService = env.SqliteMemoryService
 	e.builtinTools = env.BuiltinTools
 	e.execToolSet = env.ExecToolSet
-	for role, folder := range env.RoleSkillFolders {
-		switch role {
-		case reconSkillsFolder:
-			e.ReconSkillsFolderPath = folder
-		case exploitSkillsFolder:
-			e.ExploitSkillsFolderPath = folder
-		case postExploitSkillsFolder:
-			e.PostExploitSkillsFolderPath = folder
-		case scannerSkillsFolder:
-			e.ScannerSkillsFolderPath = folder
-		case reproducerSkillsFolder:
-			e.ReproducerSkillsFolderPath = folder
-		}
-	}
+	e.SkillsFolderPath = env.SkillsFolderPath
 	for _, n := range env.Notices {
 		e.setNotice(n.Kind, n.Text)
 	}
@@ -253,15 +238,16 @@ func (e *Engine) startupInfoLines() []string {
 	if len(sid) > 8 {
 		sid = sid[:8]
 	}
-	// 统计 5 个角色 skills 文件夹下的 skill 数量（每个 skill 是一个子目录）
+	// 统计 Skills 目录下的 skill 数量：一个 skill = 一个含 SKILL.md 的子目录。
+	// 只数子目录会把 pentest-tools（仅 .template 占位）也算进去，那是虚数。
 	skills := 0
-	for _, dir := range []string{(*e).ReconSkillsFolderPath, (*e).ExploitSkillsFolderPath,
-		(*e).PostExploitSkillsFolderPath, (*e).ScannerSkillsFolderPath, (*e).ReproducerSkillsFolderPath} {
-		if entries, err := os.ReadDir(dir); err == nil {
-			for _, en := range entries {
-				if en.IsDir() {
-					skills++
-				}
+	if entries, err := os.ReadDir((*e).SkillsFolderPath); err == nil {
+		for _, en := range entries {
+			if !en.IsDir() {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join((*e).SkillsFolderPath, en.Name(), "SKILL.md")); err == nil {
+				skills++
 			}
 		}
 	}

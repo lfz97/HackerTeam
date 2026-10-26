@@ -91,13 +91,15 @@ bootstrap/prompts/common/
 ├── HackerTeam.yaml          ← 主配置文件
 ├── HackerTeam.log
 ├── memory.db                ← 长期记忆数据库
-├── ReconSkills/             ← 各 Agent 独立的 Skill 目录
-├── ScannerSkills/
-├── ExploitSkills/
-├── PostExploitSkills/
-├── ReproducerSkills/        ← Reproducer 专用（预置 poc-scripting 复现脚本知识）
+├── Skills/                  ← 唯一技能目录（Operator 与 Worker 共用）
+│   ├── hacktricks-recon-methodology/
+│   ├── hacktricks-service-scanning/
+│   ├── hacktricks-web-exploitation/
+│   ├── hacktricks-privesc-postex/
+│   ├── poc-scripting/       ← 复现脚本编写模式
+│   └── pentest-tools/       ← 工具清单占位（SKILL.md.template）
 └── output/                  ← 任务报告与原始输出
-    └── poc_scripts/         ← Reproducer 生成的 Python 复现脚本
+    └── poc_scripts/         ← 复现脚本
 ```
 
 ---
@@ -112,7 +114,7 @@ bootstrap/prompts/common/
 
 ### 预置模板
 
-首次运行时，除 Reproducer 外每个 Agent 的 Skill 目录下会自动生成 `pentest-tools/SKILL.md.template`（`.template` 后缀防止被框架自动加载；Reproducer 生成的是 `poc-scripting` 复现脚本知识，无 pentest-tools），内容如下：
+首次运行时，`.HackerTeam/Skills/` 下会自动生成 `pentest-tools/SKILL.md.template`（`.template` 后缀防止被框架自动加载），内容如下：
 
 ```markdown
 ---
@@ -137,27 +139,27 @@ description: >-
 
 ### 预置红队知识
 
-首次运行时，各 Agent 的 Skill 目录除 `pentest-tools` 模板外，还会自动生成按角色分发的 HackTricks 蒸馏知识（`hacktricks-*`），开箱即用：
+首次运行时，`.HackerTeam/Skills/` 除 `pentest-tools` 模板外，还会自动生成全部 HackTricks 蒸馏知识（`hacktricks-*`）与复现脚本知识，开箱即用：
 
-| 角色 | 预置 Skill |
+| 主题 | 预置 Skill |
 |---|---|
-| **Recon** | `hacktricks-recon-methodology`（外部资产发现、子域名枚举、被动情报、nmap/masscan 用法、WiFi 侦察） |
-| **Scanner** | `hacktricks-service-scanning`（各服务指纹与爆破、Web 技术栈、AD/Windows 服务） |
-| **Exploit** | `hacktricks-web-exploitation`（SQLi/XSS/反序列化/文件上传/SSRF 等 12 类攻击手法） |
-| **PostExploit** | `hacktricks-privesc-postex`（Linux/Windows 提权、AD、横向移动、隧道、持久化） |
-| **Reproducer** | `poc-scripting`（复现脚本编写模式：SQLi/RCE/SSTI/SSRF/XSS/文件上传/协议客户端，含 verification 签名判断与 PoC 安全规范） |
+| **侦察方法论** | `hacktricks-recon-methodology`（外部资产发现、子域名枚举、被动情报、nmap/masscan 用法、WiFi 侦察） |
+| **服务扫描** | `hacktricks-service-scanning`（各服务指纹与爆破、Web 技术栈、AD/Windows 服务） |
+| **Web 利用** | `hacktricks-web-exploitation`（SQLi/XSS/反序列化/文件上传/SSRF 等 12 类攻击手法） |
+| **后渗透** | `hacktricks-privesc-postex`（Linux/Windows 提权、AD、横向移动、隧道、持久化） |
+| **复现脚本** | `poc-scripting`（SQLi/RCE/SSTI/SSRF/XSS/文件上传/协议客户端，含 verification 签名判断与 PoC 安全规范） |
 
 - 知识以 `SKILL.md` + `references/` 形式注入，references 仅按需读取，不占每轮提示词
-- 增删改直接在 `.HackerTeam/<Role>Skills/` 下对应目录操作，下一轮对话生效
-- 删除某目录不会影响其他角色（各角色预设相互独立）
+- Operator 与 Worker 读同一份 `Skills/` 索引；增删改直接在 `.HackerTeam/Skills/` 下对应目录操作，下一轮对话生效
+- 删除某个技能目录后两个 agent 同时失去它（不再按角色隔离）
 
 > **版权说明**：`hacktricks-*` skill 为 [HackTricks](https://book.hacktricks.xyz)（作者 Carlos Polop）知识的方法论蒸馏与改编，references 内容裁剪自原站对应章节。遵循 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可分发，使用时保留本署名。
 
 ### 配置示例
 
-以下为各 Agent 的 SKILL.md 实际配置示例，按职责分配工具：
+以下是 `Skills/pentest-tools/SKILL.md` 的配置示例，按工具类别分组；重构后 Operator 与 Worker 共用同一份，可把各类清单合并写进同一个文件：
 
-**Recon** — `.HackerTeam/ReconSkills/pentest-tools/SKILL.md`
+**侦察类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
 
 ```markdown
 ---
@@ -196,7 +198,7 @@ description: >-
   - repo: https://github.com/shadow1ng/fscan
 ```
 
-**Scanner** — `.HackerTeam/ScannerSkills/pentest-tools/SKILL.md`
+**扫描类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
 
 ```markdown
 ---
@@ -234,7 +236,7 @@ description: >-
   - repo: https://github.com/maurosoria/dirsearch
 ```
 
-**Exploit** — `.HackerTeam/ExploitSkills/pentest-tools/SKILL.md`
+**利用类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
 
 ```markdown
 ---
@@ -267,7 +269,7 @@ description: >-
   - repo: https://github.com/rapid7/metasploit-framework
 ```
 
-**PostExploit** — `.HackerTeam/PostExploitSkills/pentest-tools/SKILL.md`
+**后渗透类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
 
 ```markdown
 ---
@@ -305,7 +307,7 @@ description: >-
   - repo: https://github.com/fortra/impacket
 ```
 
-**Reproducer** — `.HackerTeam/ReproducerSkills/` — 保持为空，不需要配置任何 Skill。
+**复现脚本** — `.HackerTeam/Skills/poc-scripting/` — 预置内容，无需额外配置即可使用。
 
 ---
 

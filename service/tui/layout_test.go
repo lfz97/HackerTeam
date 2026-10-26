@@ -1,10 +1,34 @@
 package tui
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
 )
+
+// todo 栏出现/变高会压矮视口。压矮前若已贴底，压矮后必须仍然贴底：
+// 否则下一帧 applyViewText 读到的 AtBottom 为 false，本轮后续消息与最终
+// 回答都停在上屏位置之外（引擎记录是完整的，只是不再跟随）。
+func TestRecalcComponentSizeKeepsBottomFollow(t *testing.T) {
+	tu := NewTui(&fakeView{})
+	ta, _ := NewPrettyTextArea(90, 1, 0)
+	tu.ta = ta
+	tu.width, tu.height = 100, 24
+	tu.recalcComponentSize()
+
+	tu.vp.SetContent(strings.Repeat("line\n", 200))
+	tu.vp.GotoBottom()
+	if !tu.vp.AtBottom() {
+		t.Fatalf("precondition: viewport not at bottom")
+	}
+
+	tu.todoText = strings.Repeat("[TODO] item\n", 8)
+	tu.recalcComponentSize()
+	if !tu.vp.AtBottom() {
+		t.Fatalf("viewport lost bottom follow after todo bar shrank it (offset=%d)", tu.vp.YOffset())
+	}
+}
 
 // 宽终端下内容列按 maxTextWidth 封顶后居中：封顶余量均分到两侧 padding
 // （"最大化窗口右边填充更宽"问题的回归）。窄终端行为不变。

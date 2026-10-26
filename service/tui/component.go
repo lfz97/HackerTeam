@@ -87,7 +87,14 @@ func (t *TUI) recalcComponentSize() {
 	if viewportHeight < 1 {
 		viewportHeight = 1
 	}
+	// 改高度前先记是否贴底：todo 栏出现/变高会把视口压矮，压矮后同一 YOffset
+	// 已经不在底部，applyViewText 下一帧读到的就是"用户滚上去了"，从此不再跟随，
+	// 本轮后续消息与最终回答全部停在上屏位置之外。
+	wasBottom := t.vp.AtBottom()
 	t.vp.SetHeight(viewportHeight)
+	if wasBottom {
+		t.vp.GotoBottom()
+	}
 }
 
 // draw 组合组件并绘制整屏，浮层经 Compositor 叠加其上。

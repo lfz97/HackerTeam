@@ -309,10 +309,10 @@ func TestCollapsedLinesWithinWidth(t *testing.T) {
 			return msgIndent.Render(thinkingCollapsedView(strings.Repeat("c", 3000)))
 		}},
 		{"折叠工具行-长路径", func(w int) string {
-			return msgIndent.Render(toolCollapsedView("read", []byte(`{"path":"`+strings.Repeat("/", 200)+`f.go"}`), w))
+			return msgIndent.Render(toolCollapsedView("read", []byte(`{"path":"`+strings.Repeat("/", 200)+`f.go"}`), "", w))
 		}},
 		{"折叠工具行-长参数", func(w int) string {
-			return msgIndent.Render(toolCollapsedView("CommandRun", []byte(`{"process":"bash","args":["-c","`+strings.Repeat("x", 300)+`"]}`), w))
+			return msgIndent.Render(toolCollapsedView("CommandRun", []byte(`{"process":"bash","args":["-c","`+strings.Repeat("x", 300)+`"]}`), "", w))
 		}},
 	}
 	for _, w := range []int{120, 40} {
@@ -323,6 +323,45 @@ func TestCollapsedLinesWithinWidth(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// task-run 折叠行要回答"谁在干什么"：agent + brief 首行，而不是 mode 这类
+// 低信息量字段。agent 省略时从结果里取已解析的真实名字。
+func TestToolArgSummaryStartTaskRun(t *testing.T) {
+	cases := []struct {
+		name   string
+		args   string
+		result string
+		want   string
+	}{
+		{
+			name: "agent 来自参数",
+			args: `{"agent_name":"Worker","task":"task_id: TASK-1\n\nOBJECTIVE: 扫 10 个端口\n\nSCOPE: x","mode":"async"}`,
+			want: "Worker · 扫 10 个端口",
+		},
+		{
+			name:   "agent 省略时取结果",
+			args:   `{"task":"task_id: TASK-1\n\nOBJECTIVE: Batch-decode 10 files","mode":"async"}`,
+			result: `{"id":"r1","agent_name":"Worker","status":"running"}`,
+			want:   "Worker · Batch-decode 10 files",
+		},
+		{
+			name: "没有 OBJECTIVE 取首个非 task_id 行",
+			args: `{"task":"task_id: TASK-2\n先读 README","mode":"async"}`,
+			want: "先读 README",
+		},
+	}
+	for _, c := range cases {
+		if got := toolArgSummary("start_task_run", []byte(c.args), c.result, 120); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+
+	// 预算仍然硬约束：超出宽度的摘要必须截断，否则折叠行会视觉折行。
+	got := toolArgSummary("start_task_run", []byte(cases[1].args), "", 20)
+	if w := ansi.StringWidth(got); w > 20 {
+		t.Errorf("summary over budget: %q (%d > 20)", got, w)
 	}
 }
 

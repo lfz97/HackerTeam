@@ -143,30 +143,31 @@ func thinkingExpandedHeader() string {
 // toolBlock 工具块：默认折叠成头部行 + 首个参数摘要；点开后完整 toolView。
 func (t *TUI) toolBlock(entry *wireToolCall, result string, id string, w int) string {
 	if !t.expand.expanded(id) {
-		return msgIndent.Render(toolCollapsedView(entry.name, []byte(entry.args), w))
+		return msgIndent.Render(toolCollapsedView(entry.name, []byte(entry.args), result, w))
 	}
 	return msgIndent.Render(toolView(entry.name, []byte(entry.args), result, w))
 }
 
-// toolCollapsedView 折叠态工具行：▸ name + 首个参数摘要（路径优先），
+// toolCollapsedView 折叠态工具行：▸ name + 摘要（路径优先/任务类工具用专用摘要），
 // 摘要本身就是"还有内容"的提示。截断预算按本轮视图宽度 w 算。
 // 不在折叠行做成功/失败判定：框架没有结构化错误位，枚举错误文本必然
 // 漏判/误判；结果内容展开后可见，状态图标只会给出不可靠的暗示。
-func toolCollapsedView(name string, args []byte, w int) string {
+func toolCollapsedView(name string, args []byte, result string, w int) string {
 	head := toolHeader(name, false, w-msgIndentW)
 	budget := min(argSummaryMaxRunes, w-msgIndentW-2-ansi.StringWidth(head))
-	if s := toolArgSummary(name, args, budget); s != "" {
+	if s := toolArgSummary(name, args, result, budget); s != "" {
 		head += "  " + colorText(cFgMostSubtle, s)
 	}
 	return head
 }
 
-// toolArgSummary 折叠态参数摘要：目标路径优先，否则首个参数值。
+// toolArgSummary 折叠态参数摘要：目标路径优先，task-run 用 agent + brief，
+// 其余工具取首个参数值。
 // 折叠行不走 hardWrap（单行块），超宽会让终端视觉折行、整屏行号错位
 // （点击命中依赖行号对齐）——budget 由调用方按本轮实际宽度扣掉头部后传入：
 // 预算到 0 就不出摘要，宁可缺失不溢出。截断用 ansi.Truncate（显示宽度
 // 感知）而非 rune 数：CJK 路径 60 rune 可顶出远超宽度的列数。
-func toolArgSummary(name string, args []byte, budget int) string {
+func toolArgSummary(name string, args []byte, result string, budget int) string {
 	if budget <= 0 {
 		return ""
 	}
@@ -177,6 +178,9 @@ func toolArgSummary(name string, args []byte, budget int) string {
 	if p := argPath(obj); p != "" {
 		return ansi.Truncate(compactLine(p), budget, "…")
 	}
+	if name == "start_task_run" {
+		return ansi.Truncate(startTaskRunSummary(obj, result), budget, "…")
+	}
 	skip := codeArgFields[name] // 代码内容字段不进摘要（展开态也不展示）
 	for _, r := range argRows(name, args) {
 		if r.key != skip {
@@ -184,6 +188,52 @@ func toolArgSummary(name string, args []byte, budget int) string {
 		}
 	}
 	return ""
+}
+
+// startTaskRunSummary 折叠行的 task-run 摘要：agent 名 + brief 首行。
+//
+// agent_name 是可选的（工具侧有默认值），调用方常常省略；此时从结果里取
+// 已解析的真实 agent 名，避免折叠行只能看到默认值而无法区分 Worker 以外的
+// 注册 agent。brief 第一行固定是 task_id（对"在干什么"没有信息量），跳过；
+// 有 OBJECTIVE 就取它，否则取第一个非空行。
+func startTaskRunSummary(obj map[string]any, result string) string {
+	agent := stringField(obj, "agent_name")
+	if agent == "" {
+		if ro := resultObjectOf(result); ro != nil {
+			agent = stringField(ro, "agent_name")
+		}
+	}
+	head := briefHeadline(stringField(obj, "task"))
+	switch {
+	case agent != "" && head != "":
+		return agent + " · " + head
+	case agent != "":
+		return agent
+	default:
+		return head
+	}
+}
+
+// briefHeadline 从 task brief 里取一行最能说明"干什么"的文本。
+func briefHeadline(brief string) string {
+	const objective = "OBJECTIVE:"
+	for _, line := range strings.Split(brief, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(strings.ToLower(line), "task_id:") {
+			continue
+		}
+		if len(line) >= len(objective) && strings.EqualFold(line[:len(objective)], objective) {
+			line = strings.TrimSpace(line[len(objective):])
+		}
+		return compactLine(line)
+	}
+	return ""
+}
+
+// stringField 取 JSON 对象的字符串字段（非字符串/缺失返回空）。
+func stringField(obj map[string]any, key string) string {
+	s, _ := obj[key].(string)
+	return strings.TrimSpace(s)
 }
 
 // flushTailBlocks 把流式尾段作为独立块上屏（先于边界记录/定稿块）并清空

@@ -85,11 +85,15 @@ type BootEnv struct {
 	CommandExecutionPrompt string //共享的命令执行提示词片段
 	VulnConsensusPrompt    string //共享的漏洞定义与定级共识提示词
 	OutputConsensusPrompt  string //共享的结果输出规范提示词
+	OutputDir              string //本次运行的输出根目录（每次启动按时间戳独立）
 
 	SessionService      framsession.Service
 	SqliteMemoryService framememory.Service
 	BuiltinTools        []tool.Tool
-	BuiltinToolsets     map[string]tool.ToolSet //每个执行角色一个常驻 localexec 实例
+	// ExecToolSet 是 Operator 与 Worker 共享的常驻 localexec 作业表。
+	// 两者同源、同一命名空间：Worker 起的命令 Operator 能直接 status/output 续查，
+	// 反之亦然。
+	ExecToolSet tool.ToolSet
 
 	Notices []bootNotice
 }
@@ -172,13 +176,13 @@ func Check(agentName string, sink summarySink) (*BootEnv, error) {
 	}
 	env.SqliteMemoryService = memoryService
 
-	// ⑩ 内置 function 工具与每角色 localexec 工具集
-	tools, toolsets, err := builtinAssets()
+	// ⑩ 内置 function 工具与共享 localexec 工具集
+	tools, execToolSet, err := builtinAssets()
 	if err != nil {
 		return nil, err
 	}
 	env.BuiltinTools = tools
-	env.BuiltinToolsets = toolsets
+	env.ExecToolSet = execToolSet
 
 	return env, nil
 }
@@ -338,8 +342,9 @@ func (env *BootEnv) buildPrompts(agentName string) {
 	prompt = strings.ReplaceAll(prompt, "{{OUTPUTDIR}}", outDir)
 
 	env.EnvPrompt = prompt
+	env.OutputDir = outDir
 
-	// 读取共享的 Command Execution 提示词片段（sub-agent 共用）
+	// 读取共享的 Command Execution 提示词片段（Operator/Worker 共用）
 	cmdExecBytes, _ := PromptFiles.ReadFile("prompts/common/command_execution.md")
 	env.CommandExecutionPrompt = string(cmdExecBytes)
 
@@ -352,19 +357,14 @@ func (env *BootEnv) buildPrompts(agentName string) {
 	env.OutputConsensusPrompt = string(toolConsensusBytes)
 }
 
-// builtinAssets 内置 function 工具（文件系统/文件操作/日期）与每个执行角色
-// 一个常驻 localexec 工具集（Manager 保持 per-agent，作业命名空间隔离，
-// 实例跨轮复用——上一轮提交的长任务在下一轮仍可通过 status/output 续查）。
-func builtinAssets() ([]tool.Tool, map[string]tool.ToolSet, error) {
+// builtinAssets 内置 function 工具（文件系统/文件操作/日期）与一个共享的
+// localexec 工具集。作业表全进程一份：Manager 跨轮复用（上一轮提交的长任务
+// 下一轮仍可 status/output 续查），Operator 与 Worker 看到的是同一个命名空间。
+func builtinAssets() ([]tool.Tool, tool.ToolSet, error) {
 	tools := []tool.Tool{}
 	tools = append(tools, functionTools.GetFileSystemTools()...)
 	tools = append(tools, functionTools.GetFileOperationsTools()...)
 	tools = append(tools, functionTools.GetDateTools()...)
 
-	toolsets := map[string]tool.ToolSet{}
-	for _, role := range []string{"Recon", "Scanner", "Exploit", "PostExploit", "Reproducer"} {
-		toolsets[role] = localexec.LocalExec()
-	}
-
-	return tools, toolsets, nil
+	return tools, localexec.LocalExec(), nil
 }

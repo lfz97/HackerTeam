@@ -17,7 +17,7 @@ Findings to look for:
   (`msf> use scanner/ssh/ssh_enumusers`) — flag as scanner finding, hand to Exploit.
 - **Private-key acceptance test** (if you have candidate keys): nmap `ssh-publickey-acceptance`,
   `msf> use scanner/ssh/ssh_identify_pubkeys`. Check known-bad Debian predictable keys.
-- Default creds: rarely exist on SSH; only test if Captain authorized
+- Default creds: rarely exist on SSH; only test if Operator authorized
   (`hydra -L users.txt -P pass.txt <IP> ssh`, see brute-force.md).
 
 ## Telnet — 23/tcp

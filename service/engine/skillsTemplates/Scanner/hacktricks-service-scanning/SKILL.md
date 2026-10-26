@@ -28,18 +28,18 @@ open — what do I run, in what order, and what findings am I looking for?"**
 1. Match the open port/service against the routing table below.
 2. Open the matching reference file and execute the enumeration steps top-to-bottom:
    **banner grab → safe nmap scripts → anonymous/unauthenticated checks → version &
-   CVE preconditions → (only if Captain authorized) weak-credential test**.
+   CVE preconditions → (only if Operator authorized) weak-credential test**.
 3. Record raw output verbatim into the task's raw output directory. You scan; you do
    not verify or exploit. When a reference says "hand to Exploit", stop there and flag it.
 
 ## Scanner safety rules (non-negotiable)
 
 - Rate-limit everything: hydra `-t 4..16`, ffuf/wfuzz `-rate`/`-t` throttles, nmap `-T3`
-  max unless Captain says otherwise. Never `--risk=3`, never `--os-shell`, never
+  max unless Operator says otherwise. Never `--risk=3`, never `--os-shell`, never
   intrusive/dos/exploit NSE categories, never destructive printer/PJL commands
   (`FSINIT`, `FSDELETE`, `FSDOWNLOAD` writes), never `FLUSH*` on Redis, never write
   operations on databases.
-- Credential brute-forcing only with explicit Captain authorization; small wordlists;
+- Credential brute-forcing only with explicit Operator authorization; small wordlists;
   watch for lockout responses.
 - Local tool reality: `crackmapexec` is NOT installed — use `nxc`/netexec if present,
   else impacket scripts (`/usr/share/doc/python3-impacket/examples/`) which ARE installed.

@@ -1,373 +1,148 @@
 package engine
 
 import (
+	"errors"
+	"strings"
+
 	"HackerTeam/service/engine/config"
 	"HackerTeam/service/engine/models"
 	functionTools "HackerTeam/service/engine/tools/functions"
-	"errors"
-	"fmt"
-	"strings"
-
-	"context"
 
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/model"
-	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
-	agenttool "trpc.group/trpc-go/trpc-agent-go/tool/agent"
 )
 
 type agentName string
 
 var (
-	captain     agentName = "Captain"
-	recon       agentName = "Recon"
-	exploit     agentName = "Exploit"
-	postexploit agentName = "PostExploit"
-	scanner     agentName = "Scanner"
-	reproducer  agentName = "Reproducer"
+	operatorName agentName = "Operator"
+	workerName   agentName = "Worker"
 )
 
-func (e *Engine) InitTeam() (*llmagent.LLMAgent, error) {
-	exploit, err := e.initexploit()
-	if err != nil {
-		return nil, err
-	}
-	postexploit, err := e.initpostexploit()
-	if err != nil {
-		return nil, err
-	}
-	recon, err := e.initRecon()
-	if err != nil {
-		return nil, err
-	}
-	scanner, err := e.initScanner()
-	if err != nil {
-		return nil, err
-	}
-	reproducer, err := e.initReproducer()
-	if err != nil {
-		return nil, err
-	}
+// agentSpec 是一次 agent 装配里"有差异"的部分。
+//
+// Operator 与 Worker 共用同一套模型参数、内置工具、执行工具集、技能库和上下文
+// 压缩策略——差别只有提示词、额外工具、以及是否向 TUI 推状态。它们是同一份实现
+// 的两个实例，不是两套代码：给 Operator 加工具或改压缩参数，Worker 自动同步。
+type agentSpec struct {
+	name        agentName
+	promptPath  string
+	description string
 
-	subagents := []*llmagent.LLMAgent{exploit, postexploit, recon, scanner, reproducer}
-	subagentTools := []tool.Tool{}
-	for _, agent := range subagents {
-		subagentTools = append(subagentTools, agenttool.NewTool(
-			agent,
-			agenttool.WithStreamInner(true), // 开启：把子 Agent 的流式事件转发给父流程
-			agenttool.WithInnerTextMode(agenttool.InnerTextModeInclude), //展示子agent完整transcript(正文+tool call+tool result)
-			agenttool.WithDescription(agent.Info().Description),
-			agenttool.WithPersistentHistory(),                          //在 HistoryScopeIsolated 下使用稳定的子 FilterKey，让子 Agent 能在同一个 session 内跨多次 AgentTool 调用读取自己的历史（而不是每次都从“全新子 key”开始）
-			agenttool.WithHistoryScope(agenttool.HistoryScopeIsolated), //子调用使用独立 FilterKey，通常只读取本次工具参数，不继承父历史
-		))
-	}
-	toolCallbacks := tool.NewCallbacks().RegisterAfterTool(afterToolCallback)
-	captain, err := e.initCaptain(subagentTools, toolCallbacks)
-	if err != nil {
-		return nil, err
-	}
-	return captain, nil
+	// extraTools 只给 Operator：记忆、todo、taskrun 调度面。
+	// Worker 一个都不挂——它调不动别人，也不维护跨轮状态。
+	extraTools []tool.Tool
+
+	// 状态栏开关。Worker 是无记忆的一次性工人，只看时间和工作目录：
+	// 不查记忆、不读 todo、不关心在途的兄弟任务。
+	todoSink   todoTextSink
+	withTodo   bool
+	withMemory bool
+	withFlight bool
+
+	preloadMemory int  // >0 时预加载记忆（仅 Operator）
+	summaryToUser bool // 摘要注入 user message，避免与 system prompt 里的 SOP 争优先级
 }
 
-func afterToolCallback(ctx context.Context, args *tool.AfterToolArgs) (*tool.AfterToolResult, error) {
-	if args.ToolName == string(recon) || args.ToolName == string(exploit) || args.ToolName == string(postexploit) || args.ToolName == string(scanner) || args.ToolName == string(reproducer) {
-		if args.Error != nil {
-			return nil, nil // 真失败放行：框架沿用原始 result+err 走原有错误路径
-		}
+// buildAgent 装配 Operator 与 Worker 的唯一入口。
+func (e *Engine) buildAgent(spec agentSpec) (*llmagent.LLMAgent, error) {
+	prompt := e.assemblePrompt(spec.promptPath)
 
-		if args.Result == nil {
-			return &tool.AfterToolResult{
-				CustomResult: fmt.Sprintf("[AGENT %s returned EMPTY RESPONSE - likely a model "+"generation failure (empty content, no toolcalls). Task NOT completed. "+"This is usually transient: re-dispatch the SAME request up to 2 more times. "+"If it fails repeatedly, switch approach or report failure explicitly.]", args.ToolName),
-			}, nil
-		}
-		s, ok := args.Result.(string)
-		if ok {
-			if strings.TrimSpace(s) == "" {
-				return &tool.AfterToolResult{
-					CustomResult: fmt.Sprintf("[AGENT %s returned EMPTY RESPONSE - likely a model "+"generation failure (empty content, no toolcalls). Task NOT completed. "+"This is usually transient: re-dispatch the SAME request up to 2 more times. "+"If it fails repeatedly, switch approach or report failure explicitly.]", args.ToolName),
-				}, nil
-			}
-		}
-	}
-
-	return nil, nil
-}
-
-// 创建队长agent，负责任务规划、分配和总结，队长挂载文件目录、文件读写工具与todo清单
-func (e *Engine) initCaptain(subagentTools []tool.Tool, toolCallbacks *tool.Callbacks) (*llmagent.LLMAgent, error) {
-	captainPrompt := e.assemblePrompt("prompts/agents/captain.md")
-
-	// 内置工具清单常驻（启动时建一次），拷入私有slice再追加记忆工具，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools)+5)
+	tools := make([]tool.Tool, 0, len((*e).builtinTools)+len(spec.extraTools))
 	tools = append(tools, (*e).builtinTools...)
-	tools = append(tools, (*e).SqliteMemoryService.Tools()...) // 记忆工具：除 memory_clear 外全部暴露（agentic 闸门：默认集合 + 显式开 Delete），写入全靠队长手动调用
-	tools = append(tools, functionTools.GetTodoTools()...)     // 框架内置 todo_write：任务清单仅队长持有，子Agent不共享（避免各自写乱计划）
-	tools = append(tools, subagentTools...)
-	// 配置文件声明的MCP工具集：挂载给全部agent（含队长），每轮run自动刷新
-	toolsets := make([]tool.ToolSet, 0, len((*e).mcpToolsets))
-	toolsets = append(toolsets, (*e).mcpToolsets...)
+	tools = append(tools, spec.extraTools...)
 
-	opts := []llmagent.Option{
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			MaxTokens:       &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
-			ReasoningEffort: (*(*e).Config_p).Model.ReasoningEffortPtr(),
-			Stream:          (*(*e).Config_p).Model.Stream,
-		}),
-		llmagent.WithTools(tools),                                        // 队长挂载内置文件/日期工具 + 记忆工具
-		llmagent.WithToolSets(toolsets),                                  // 配置文件声明的MCP工具集
-		llmagent.WithRefreshToolSetsOnRun(true),                          // 每次run刷新MCP工具列表
-		llmagent.WithAddSessionSummary(true),                             // 启用上下文压缩注入
-		llmagent.WithSyncSummaryIntraRun(true),                           //在同一次对话中同步更新摘要
-		llmagent.WithEnableContextCompaction(true),                       // 启用 tool result 压缩（Pass 1+2）
-		llmagent.WithContextCompactionToolResultMaxTokens(8192),          // Pass 1 预算：历史 tool result >8K 才换 placeholder
-		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192), // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                         // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithPreloadMemory(10),                                   // 预加载记忆到上下文中
-		llmagent.WithGlobalInstruction(captainPrompt),                    // 系统提示词
-		llmagent.WithToolCallbacks(toolCallbacks),
-		//llmagent.WithEnableParallelTools(true),        //队长启用子agent的并行调度能力
-	}
-	agent_p, err := setAgent(captain, (*(*e).Config_p).Model, opts, e)
-	return agent_p, err
-
-}
-
-// 侦察agent，负责信息收集和环境侦察，挂载相关技能库和工具
-func (e *Engine) initRecon() (*llmagent.LLMAgent, error) {
-
-	reconPrompt := e.assemblePrompt("prompts/agents/recon.md")
-	repo, _ := skill.NewFSRepository((*e).ReconSkillsFolderPath)
-
-	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools))
-	tools = append(tools, (*e).builtinTools...)
-
-	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
+	// 执行工具集与 MCP 工具集是共享实例：同一份作业表、同一批 MCP 子进程。
 	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
-	toolsets = append(toolsets, (*e).builtinToolsets["Recon"])
+	if (*e).execToolSet != nil {
+		toolsets = append(toolsets, (*e).execToolSet)
+	}
 	toolsets = append(toolsets, (*e).mcpToolsets...)
+
 	opts := []llmagent.Option{
 		llmagent.WithGenerationConfig(model.GenerationConfig{
 			MaxTokens:       &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
 			ReasoningEffort: (*(*e).Config_p).Model.ReasoningEffortPtr(),
 			Stream:          (*(*e).Config_p).Model.Stream,
 		}),
-		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
-		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
-		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
-		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
-		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
-		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Recon Agent — information gathering ONLY. Use for reconnaissance: subdomain enumeration, DNS records, port scanning, service/OS fingerprinting, web tech-stack and sensitive-path discovery, passive intel (Shodan/Fofa/WHOIS/GitHub leaks). Does NOT scan for vulnerabilities or exploit. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(reconPrompt),
 		llmagent.WithTools(tools),
-		llmagent.WithToolSets(toolsets), // 本角色常驻localexec + 配置文件MCP工具集
-		llmagent.WithRefreshToolSetsOnRun(true),
-		llmagent.WithSkillsLoadedContentInToolResults(true),
-		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
-		llmagent.WithSkills(repo),
-		llmagent.WithSkillToolProfile(
-			llmagent.SkillToolProfileKnowledgeOnly,
-		),
+		llmagent.WithToolSets(toolsets),         // 共享 localexec + 配置文件声明的 MCP 工具集
+		llmagent.WithRefreshToolSetsOnRun(true), // 每次run刷新MCP工具列表
+		llmagent.WithAddSessionSummary(true),    // 启用上下文压缩注入
+		llmagent.WithSyncSummaryIntraRun(true),  // 在同一次对话中同步更新摘要
+		llmagent.WithEnableContextCompaction(true),
+		llmagent.WithContextCompactionToolResultMaxTokens(8192),
+		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),
+		llmagent.WithEnableOnDemandSession(true),
+		llmagent.WithDescription(spec.description),
+		llmagent.WithGlobalInstruction(prompt),
 	}
-	agent_p, err := setAgent(recon, (*(*e).Config_p).Model, opts, nil)
-	return agent_p, err
+	if spec.summaryToUser {
+		opts = append(opts, llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser))
+	}
+	if spec.preloadMemory > 0 {
+		opts = append(opts, llmagent.WithPreloadMemory(spec.preloadMemory))
+	}
+	if (*e).skillsRepo != nil {
+		opts = append(opts,
+			llmagent.WithSkills((*e).skillsRepo),
+			// 只注入知识，不给执行能力：命令统一走 localexec 作业表，
+			// 否则 skill 自带的执行器会绕开作业表，长任务就查不到了。
+			llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly),
+			// 技能正文随 tool result 返回而不是塞进 system prompt：system 段保持稳定，前缀缓存不被打断
+			llmagent.WithSkillsLoadedContentInToolResults(true),
+		)
+	}
+	opts = append(opts, (*e).beforeModelStatus(spec))
+	return setAgent(spec.name, (*(*e).Config_p).Model, opts)
 }
 
-// 渗透agent，负责漏洞利用和权限提升，挂载相关技能库和工具
-func (e *Engine) initexploit() (*llmagent.LLMAgent, error) {
-
-	exploitPrompt := e.assemblePrompt("prompts/agents/exploit.md")
-	repo, _ := skill.NewFSRepository((*e).ExploitSkillsFolderPath)
-
-	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools))
-	tools = append(tools, (*e).builtinTools...)
-
-	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
-	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
-	toolsets = append(toolsets, (*e).builtinToolsets["Exploit"])
-	toolsets = append(toolsets, (*e).mcpToolsets...)
-	opts := []llmagent.Option{
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			MaxTokens:       &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
-			ReasoningEffort: (*(*e).Config_p).Model.ReasoningEffortPtr(),
-			Stream:          (*(*e).Config_p).Model.Stream,
-		}),
-		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
-		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
-		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
-		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
-		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
-		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Exploit Agent — hands-on verification, controlled exploitation, and bounded general execution. Pentest mode requires target context plus a concrete finding or attack hypothesis. General Execution / CTF mode instead requires a bounded objective, supplied artifacts or endpoints, and an explicit success condition; it does not require Recon/Scanner reports or a vulnerability hypothesis. Use this fallback only when no other specialist fits. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(exploitPrompt), // 系统提示词
-		llmagent.WithTools(tools),
-		llmagent.WithToolSets(toolsets),
-		llmagent.WithRefreshToolSetsOnRun(true),
-		llmagent.WithSkillsLoadedContentInToolResults(true),
-		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
-		llmagent.WithSkills(repo),
-		llmagent.WithSkillToolProfile(
-			llmagent.SkillToolProfileKnowledgeOnly,
-		),
+// initOperator 装配主 agent：与用户对话、自己执行、按需派 Worker。
+func (e *Engine) initOperator() (*llmagent.LLMAgent, error) {
+	extra := make([]tool.Tool, 0, 16)
+	if (*e).SqliteMemoryService != nil {
+		extra = append(extra, (*e).SqliteMemoryService.Tools()...) // 记忆工具：写入全靠 Operator 手动调用
 	}
-	agent_p, err := setAgent(exploit, (*(*e).Config_p).Model, opts, nil)
-	return agent_p, err
-
+	extra = append(extra, functionTools.GetTodoTools()...) // 框架内置 todo_write：计划只由 Operator 持有
+	if (*e).taskTools != nil {
+		extra = append(extra, (*e).taskTools.All()...) // start/list/get/wait/cancel/read_task_run_transcript
+	}
+	return e.buildAgent(agentSpec{
+		name:          operatorName,
+		promptPath:    "prompts/agents/operator.md",
+		description:   "Operator — owns the engagement: executes hands-on work directly and dispatches stateless Workers for breadth tasks. Talks to the user.",
+		extraTools:    extra,
+		todoSink:      e,
+		withTodo:      true,
+		withMemory:    true,
+		withFlight:    true,
+		preloadMemory: 10,
+	})
 }
 
-// 后渗透agent，负责权限维持、横向移动和痕迹清除，挂载相关技能库和工具
-func (e *Engine) initpostexploit() (*llmagent.LLMAgent, error) {
-
-	postexploitPrompt := e.assemblePrompt("prompts/agents/post_exploit.md")
-	repo, _ := skill.NewFSRepository((*e).PostExploitSkillsFolderPath)
-
-	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools))
-	tools = append(tools, (*e).builtinTools...)
-
-	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
-	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
-	toolsets = append(toolsets, (*e).builtinToolsets["PostExploit"])
-	toolsets = append(toolsets, (*e).mcpToolsets...)
-	opts := []llmagent.Option{
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			MaxTokens:       &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
-			ReasoningEffort: (*(*e).Config_p).Model.ReasoningEffortPtr(),
-			Stream:          (*(*e).Config_p).Model.Stream,
-		}),
-		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
-		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
-		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
-		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
-		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
-		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("PostExploit Agent — one-objective post-exploitation from existing valid access. Use only when a session/credential/foothold already exists, and assign one explicit objective at a time: privilege escalation assessment, scoped internal recon, approved credential/data collection, authorized lateral movement, persistence, exfiltration, or cleanup. Provide current session/privilege info and the single authorized objective in the task. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(postexploitPrompt), // 系统提示词
-		llmagent.WithToolSets(toolsets),
-		llmagent.WithTools(tools),
-		llmagent.WithRefreshToolSetsOnRun(true),
-		llmagent.WithSkillsLoadedContentInToolResults(true),
-		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
-		llmagent.WithSkills(repo),
-		llmagent.WithSkillToolProfile(
-			llmagent.SkillToolProfileKnowledgeOnly,
-		),
-	}
-	agent_p, err := setAgent(postexploit, (*(*e).Config_p).Model, opts, nil)
-	return agent_p, err
-}
-
-// 扫描agent，负责漏洞扫描和安全评估，挂载相关技能库和工具
-func (e *Engine) initScanner() (*llmagent.LLMAgent, error) {
-
-	scannerPrompt := e.assemblePrompt("prompts/agents/scanner.md")
-	repo, _ := skill.NewFSRepository((*e).ScannerSkillsFolderPath)
-
-	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools))
-	tools = append(tools, (*e).builtinTools...)
-
-	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
-	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
-	toolsets = append(toolsets, (*e).builtinToolsets["Scanner"])
-	toolsets = append(toolsets, (*e).mcpToolsets...)
-	opts := []llmagent.Option{
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			MaxTokens:       &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
-			ReasoningEffort: (*(*e).Config_p).Model.ReasoningEffortPtr(),
-			Stream:          (*(*e).Config_p).Model.Stream,
-		}),
-		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
-		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
-		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
-		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
-		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
-		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Scanner Agent — automated vulnerability scanning ONLY (breadth over accuracy). Use for nuclei, sqlmap --batch detection, nikto, and non-invasive service/path-scoped vulnerability checks against concrete targets. Does NOT do asset discovery, tech/WAF fingerprinting, directory enumeration, weak-credential attempts, verification, rating, or exploitation. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(scannerPrompt), // 系统提示词
-		llmagent.WithToolSets(toolsets),
-		llmagent.WithTools(tools),
-		llmagent.WithRefreshToolSetsOnRun(true),
-		llmagent.WithSkillsLoadedContentInToolResults(true),
-		//仅注入知识，不注入执行工具的能力，统一通过localexec执行
-		llmagent.WithSkills(repo),
-		llmagent.WithSkillToolProfile(
-			llmagent.SkillToolProfileKnowledgeOnly,
-		),
-	}
-	agent_p, err := setAgent(scanner, (*(*e).Config_p).Model, opts, nil)
-	return agent_p, err
-}
-
-// 复现agent，负责生成漏洞复现脚本并进行离线语法校验，挂载相关技能库和工具
-func (e *Engine) initReproducer() (*llmagent.LLMAgent, error) {
-	reproducerPrompt := e.assemblePrompt("prompts/agents/reproducer.md")
-	repo, _ := skill.NewFSRepository((*e).ReproducerSkillsFolderPath)
-
-	// 内置工具清单常驻（启动时建一次），拷入私有slice再挂载，避免与Engine共享列表产生append别名
-	tools := make([]tool.Tool, 0, len((*e).builtinTools))
-	tools = append(tools, (*e).builtinTools...)
-
-	// 本角色常驻localexec（jobs跨轮续查）+ 配置文件MCP工具集（全体agent共享）
-	toolsets := make([]tool.ToolSet, 0, 1+len((*e).mcpToolsets))
-	toolsets = append(toolsets, (*e).builtinToolsets["Reproducer"])
-	toolsets = append(toolsets, (*e).mcpToolsets...)
-	opts := []llmagent.Option{
-		llmagent.WithGenerationConfig(model.GenerationConfig{
-			MaxTokens:       &(*(*e).Config_p).Model.MaxTokens, // 最大生成 token 数，来自配置 maxtokens 字段
-			ReasoningEffort: (*(*e).Config_p).Model.ReasoningEffortPtr(),
-			Stream:          (*(*e).Config_p).Model.Stream,
-		}),
-		llmagent.WithAddSessionSummary(true),                                           // 启用上下文压缩注入
-		llmagent.WithSessionSummaryInjectionMode(llmagent.SessionSummaryInjectionUser), //摘要注入到user message，不与system prompt中的SOP规则竞争优先级
-		llmagent.WithSyncSummaryIntraRun(true),                                         //在同一次对话中同步更新摘要
-		llmagent.WithEnableContextCompaction(true),                                     // 启用 tool result 压缩（Pass 1+2）
-		llmagent.WithContextCompactionToolResultMaxTokens(8192),                        // Pass 1 预算：历史 tool result >8K 才换 placeholder
-		llmagent.WithContextCompactionOversizedToolResultMaxTokens(8192),               // Pass 2: 超大 tool result 首尾保留截断
-		llmagent.WithEnableOnDemandSession(true),                                       // 按需加载被压缩的原始数据（session_load）
-		llmagent.WithDescription("Reproducer Agent — generates standalone Python PoC/Exploit scripts from reviewed vulnerability evidence. Provide MD report paths, raw-output paths, or other Captain-reviewed evidence in prior_results so it can extract complete structured vulnerability data. Never attacks targets. Dispatch by passing the task in the `request` field."),
-		llmagent.WithGlobalInstruction(reproducerPrompt), // 系统提示词
-		llmagent.WithToolSets(toolsets),
-		llmagent.WithTools(tools),
-		llmagent.WithRefreshToolSetsOnRun(true),
-		llmagent.WithSkills(repo),
-		llmagent.WithSkillToolProfile(
-			llmagent.SkillToolProfileKnowledgeOnly,
-		),
-	}
-	agent_p, err := setAgent(reproducer, (*(*e).Config_p).Model, opts, nil)
-	return agent_p, err
+// initWorker 装配一次性助手：同一套工具、同一份技能库、同一个模型，
+// 但没有记忆、没有 todo、没有调度权——它只把手里那一件事做完并交回证据。
+func (e *Engine) initWorker() (*llmagent.LLMAgent, error) {
+	return e.buildAgent(agentSpec{
+		name:          workerName,
+		promptPath:    "prompts/agents/worker.md",
+		description:   "Worker — stateless execution assistant. Give it one self-contained task; it executes with the shared tools and returns a report path plus a verdict. No memory, no delegation, no follow-up questions.",
+		summaryToUser: true,
+	})
 }
 
 // setAgent 根据 APIType 创建对应模型的 agent（无状态，包级函数）。
-// sink 用于把 TodoBar 文本推给 TUI：只有 Captain（主 agent，与用户对话、持有 todo 清单）
-// 传 (*e).tui；五个子 agent 传 nil —— 子 agent 按 branch 读不到清单，每跳推空串会把
-// TodoBar 清空再由 Captain 推回造成闪烁，且它们本就非交互。
-func setAgent(agentName agentName, m config.Model, opts []llmagent.Option, sink todoTextSink) (*llmagent.LLMAgent, error) {
-	opts = append(opts, setBeforeModelStatusCallback(sink)) //设置beforeModel状态栏
-	if m.APIType == "openai" {
-		openaimodel := models.Openai(m)
-		opts = append(opts, llmagent.WithModel(openaimodel))
-		Agent_p := llmagent.New(string(agentName), opts...)
-		return Agent_p, nil
-
-	} else if m.APIType == "anthropic" {
-
-		Anthropicagent := models.Anthropic(m)
-		opts = append(opts, llmagent.WithModel(Anthropicagent))
-		Agent_p := llmagent.New(string(agentName), opts...)
-		return Agent_p, nil
-
-	} else {
+func setAgent(name agentName, m config.Model, opts []llmagent.Option) (*llmagent.LLMAgent, error) {
+	switch m.APIType {
+	case "openai":
+		opts = append(opts, llmagent.WithModel(models.Openai(m)))
+	case "anthropic":
+		opts = append(opts, llmagent.WithModel(models.Anthropic(m)))
+	default:
 		return nil, errors.New("unsupported API type, check the Model.APIType field in your config")
 	}
+	return llmagent.New(string(name), opts...), nil
 }
 
 // 组装各个agent的提示词
@@ -378,6 +153,9 @@ func (e *Engine) assemblePrompt(path string) string {
 	prompt = strings.ReplaceAll(prompt, "{{COMMAND_EXECUTION}}", (*e).CommandExecutionPrompt)
 	prompt = strings.ReplaceAll(prompt, "{{VULN_CONSENSUS}}", (*e).VulnConsensusPrompt)
 	prompt = strings.ReplaceAll(prompt, "{{OUTPUT_CONSENSUS}}", (*e).OutputConsensusPrompt)
+	// {{OUTPUTDIR}} 之前在 env.md 里替换，agent 提示词（报告路径、结果目录）拿到的
+	// 一直是字面量；这里补上，两处统一到同一个本次运行的输出根目录。
+	prompt = strings.ReplaceAll(prompt, "{{OUTPUTDIR}}", (*e).OutputDir)
 	//todo_write 工具使用说明（框架 tool/todo.DefaultToolPrompt，随框架版本走，不在提示词里硬编码）
 	prompt = strings.ReplaceAll(prompt, "{{TODO_PROMPT}}", functionTools.GetTodoToolPrompt())
 	return prompt

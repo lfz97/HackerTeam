@@ -27,25 +27,35 @@ const (
 // todoTextSink 接收渲染好的 todo 文本，供 TUI 的 TodoBar 显示。
 // 在 engine 包内声明（1 个方法），避免把 init.go 的 tuiService 胖接口渗进调用方——
 // 状态回调只需要"能把文本推给 UI"这一个能力。
-// 非交互调用方（子 agent 装配）传 nil：仍然注入 prompt，只是不推 UI。
+// Worker 装配时 withTodo=false：它没有 todo 工具，也不该去读 Operator 的计划。
 type todoTextSink interface {
 	SetTodoText(text string)
 }
 
-// 注入模型调用前callback，在消息末尾追加当前状态栏（时间、工作目录、内存、todo清单、相关记忆）。
+// beforeModelStatus 注入模型调用前的状态栏（时间、工作目录、内存，并按 spec 追加
+// todo 清单、相关记忆、在途任务）。Operator 全开；Worker 只留基础状态——它是一次性
+// 工人，看得到机器状态就够，不需要计划、记忆和兄弟任务的进度。
+//
 // 注意：追加在末尾而非前置 —— 自动前缀缓存要求请求头部保持稳定，
 // 状态栏每次调用内容变化，放头部会破坏整个前缀缓存（实测：尾部99%命中 vs 头部0）。
 // 使用本功能必须关闭框架的 system 前置重排（openai.WithOptimizeForCache），否则
 // 尾部状态栏会被框架挪回头部、缓存收益失效；关闭位置：service/engine/models/openai.go。
 // 状态栏不进 session（仅存在于当次请求副本），不污染摘要/上下文压缩。
-func setBeforeModelStatusCallback(sink todoTextSink) llmagent.Option {
+func (e *Engine) beforeModelStatus(spec agentSpec) llmagent.Option {
 
 	modelCallbacks := model.NewCallbacks().RegisterBeforeModel(
 		func(ctx context.Context, args *model.BeforeModelArgs) (*model.BeforeModelResult, error) {
 			var status string
 			injectBaseStatus(ctx, &status)
-			injectTodoStatus(ctx, sink, &status)
-			injectMemoryStatus(ctx, args.Request.Messages, &status)
+			if spec.withTodo {
+				injectTodoStatus(ctx, spec.todoSink, &status)
+			}
+			if spec.withMemory {
+				injectMemoryStatus(ctx, args.Request.Messages, &status)
+			}
+			if spec.withFlight {
+				(*e).injectFlightStatus(ctx, &status)
+			}
 
 			args.Request.Messages = append(args.Request.Messages, model.NewSystemMessage(status)) //在末尾追加状态栏
 			return nil, nil

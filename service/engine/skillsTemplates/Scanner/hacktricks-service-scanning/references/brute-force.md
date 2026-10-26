@@ -1,6 +1,6 @@
 # Brute-Force & Default Credentials — Scanner Cheatsheet
 
-**Authorization & safety**: brute-force ONLY with explicit Captain authorization.
+**Authorization & safety**: brute-force ONLY with explicit Operator authorization.
 Hydra is installed locally (`/usr/bin/hydra`); `-t 4..16` threads, `-f` stop-on-success,
 prefer small targeted lists. Other tools (ncrack, medusa, legba, patator, kerbrute,
 mssqlpwner, odat) may need installing — verify with `command -v <tool>` first.
@@ -90,5 +90,5 @@ python3 jwt_tool.py -d wl.txt <token>
 ## Spray vs brute strategy
 1. Default creds first (tiny list, fast, low noise).
 2. Password spray: 1-2 passwords × many users (lockout-safe: `-t 4`, sleep between rounds).
-3. Full brute only on high-value single accounts with Captain sign-off.
+3. Full brute only on high-value single accounts with Operator sign-off.
 4. Always watch for lockout indicators (responses changing to "locked") and STOP.

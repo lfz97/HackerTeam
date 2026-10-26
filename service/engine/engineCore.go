@@ -1,18 +1,24 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"HackerTeam/service/engine/config"
 	"github.com/google/uuid"
+	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/taskrun/inprocess"
 	"trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session"
+	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/taskrun"
 )
 
 type Agentrunner struct {
@@ -38,13 +44,29 @@ type Engine struct {
 	CommandExecutionPrompt string //共享的命令执行提示词片段
 	VulnConsensusPrompt    string //共享的漏洞定义与定级共识提示词
 	OutputConsensusPrompt  string //共享的结果输出规范提示词
+	OutputDir              string //本次运行的输出根目录，提示词里的 {{OUTPUTDIR}} 由它替换
 
 	SessionId string
 	RequestId string
 
-	builtinTools    []tool.Tool             // 内置function工具清单（文件系统/文件操作/日期），启动时确定，跨轮常驻不刷新
-	builtinToolsets map[string]tool.ToolSet // 内置工具集（每个执行角色一个常驻localexec实例），启动时确定，跨轮常驻，jobs可跨轮续查
-	mcpToolsets     []tool.ToolSet          // 配置文件声明的MCP工具集，增量对齐（同名复用），共享挂载给全部agent
+	builtinTools []tool.Tool // 内置function工具清单（文件系统/文件操作/日期），启动时确定，跨轮常驻不刷新
+	// execToolSet 是 Operator 与 Worker 共享的常驻 localexec 作业表，
+	// 启动时确定、跨轮常驻，jobs 可跨轮续查。
+	execToolSet tool.ToolSet
+	mcpToolsets []tool.ToolSet // 配置文件声明的MCP工具集，增量对齐（同名复用），共享挂载给全部agent
+
+	// skillsRepo 把 5 个角色技能目录合并成一个索引：Operator 与 Worker 用同一份技能库，
+	// 按任务自选技能，而不是靠预先把角色切碎。每次 reload 重建（技能文件可编辑）。
+	skillsRepo *skill.FSRepository
+
+	// worker 由 reload 在主 goroutine 上构造后原子发布；taskrun 的 worker 工厂只读它。
+	// 这样 Worker 的构造不会与 reload 的字段写入并发。
+	worker atomic.Pointer[llmagent.LLMAgent]
+
+	// taskService/taskTools：agent 级后台任务的调度面。Operator 通过 taskrun 工具
+	// 起 Worker；Worker 本身是一次性 child session，不持有跨轮记忆。
+	taskService *inprocess.Service
+	taskTools   *taskrun.Tools
 
 	ReconSkillsFolderPath       string
 	ExploitSkillsFolderPath     string
@@ -115,10 +137,11 @@ func (e *Engine) absorb(env *BootEnv) {
 	e.CommandExecutionPrompt = env.CommandExecutionPrompt
 	e.VulnConsensusPrompt = env.VulnConsensusPrompt
 	e.OutputConsensusPrompt = env.OutputConsensusPrompt
+	e.OutputDir = env.OutputDir
 	e.SessionService_p = env.SessionService
 	e.SqliteMemoryService = env.SqliteMemoryService
 	e.builtinTools = env.BuiltinTools
-	e.builtinToolsets = env.BuiltinToolsets
+	e.execToolSet = env.ExecToolSet
 	for role, folder := range env.RoleSkillFolders {
 		switch role {
 		case reconSkillsFolder:
@@ -164,21 +187,28 @@ func (e *Engine) agentLoop() {
 
 // ── 斜杠命令的后端能力接口（前端注册表见 service/tui/commands.go）──────
 
-// Shutdown /exit 的引擎侧收尾：释放 runner、MCP 连接与 localexec 工具集。置终态与退出由前端接管（tea.Quit）。
+// Shutdown /exit 的引擎侧收尾：先停后台任务，再释放 runner、MCP 连接与 localexec 作业表。
+// 置终态与退出由前端接管（tea.Quit）。
+//
+// 顺序有意义：taskService.Close 会取消并等待在跑的 Worker 退出，之后才能安全关闭
+// 它们正在使用的 MCP 工具集与 localexec 作业表。
 //
 // 刻意不加 isRunning 守卫：长任务运行中 /exit 是常态，加了守卫会整段跳过清理，
 // MCP stdio 子进程与 localexec 的 PTY 作业就会活过进程。localexec.Close() 非阻塞
 // （拷作业 ID → Kill → 清注册表），不会挂住退出；关闭运行中的 runner 是紧随
 // tea.Quit 的竞态，与上游同型、刻意接受。
 func (e *Engine) Shutdown() {
+	if (*e).taskService != nil {
+		(*e).taskService.Close()
+	}
 	if (*e).AgentRunner_p != nil {
 		(*(*e).AgentRunner_p).Runner.Close()
 	}
 	for _, ts := range (*e).mcpToolsets {
 		ts.Close() //关闭MCP连接，释放stdio子进程
 	}
-	for _, ts := range (*e).builtinToolsets {
-		ts.Close() //localexec：kill残留运行命令并清空注册表
+	if (*e).execToolSet != nil {
+		(*e).execToolSet.Close() //localexec：kill残留运行命令并清空注册表
 	}
 }
 
@@ -239,12 +269,16 @@ func (e *Engine) startupInfoLines() []string {
 	if err != nil {
 		host = &url.URL{Host: ""}
 	}
+	toolCount := len((*e).builtinTools)
+	if (*e).execToolSet != nil {
+		toolCount += len((*e).execToolSet.Tools(context.Background()))
+	}
 	return []string{
 		fmt.Sprintf("model        %s %d", cfg.Model, cfg.ContextWindow),
 		fmt.Sprintf("endpoint     %s", host.Host),
 		fmt.Sprintf("cwd          %s", cwd),
 		fmt.Sprintf("tools        %d · skills %d · mcp %d",
-			len((*e).builtinTools)+len((*e).builtinToolsets),
+			toolCount,
 			skills,
 			len((*e).mcpToolsets)),
 		fmt.Sprintf("session      %s", sid),

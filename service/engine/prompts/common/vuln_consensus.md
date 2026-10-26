@@ -113,12 +113,12 @@ Information that is **helpful to an attacker** but cannot directly cause any sub
 - Lateral movement to a new host = High (further Critical outcomes possible on the new host)
 - Data collection rating depends on data sensitivity: core credentials = Critical, business data = High, system information = Medium
 
-### Captain Agent
+### Operator Agent
 - **Has the final rating authority.**
 - When reviewing Exploit's ratings, must check: whether the verification process is sufficient, whether evidence supports the level, whether Scanner findings were correctly verified.
 - When downgrading, must give a specific technical reason ("because X evidence is missing, Y level criteria are not met").
 - When upgrading, must similarly give a reason.
-- The final report's vulnerability levels are based on Captain's ruling, but the original analyzing Agent's rating and Captain's adjustment reason must both be preserved.
+- The final report's vulnerability levels are based on Operator's ruling, but the original analyzing Agent's rating and Operator's adjustment reason must both be preserved.
 
 ---
 
@@ -127,7 +127,7 @@ Information that is **helpful to an attacker** but cannot directly cause any sub
 When two Agents give different ratings for the same vulnerability, resolve as follows:
 
 1. **Exploit's verified result overrides Scanner's finding** — Scanner's report may contain false positives. Exploit's post-verification conclusion (confirmed real / false positive) takes priority over Scanner's original finding.
-2. **Captain has the final ruling authority** — Any Agent's rating can be adjusted by Captain, but the adjustment must have a specific technical reason.
+2. **Operator has the final ruling authority** — Any Agent's rating can be adjusted by Operator, but the adjustment must have a specific technical reason.
 3. **Reasons must be public** — The reason for each rating adjustment is recorded in the final report.
 
 ---
@@ -143,4 +143,4 @@ All Agents use unified semantics for the `confidence` field:
 | 50-69% | Medium probability (partial feature match but version range uncertain or interfering factors present) |
 | <50% | Low probability/speculation (based only on indirect information), must flag uncertainty reason in the report |
 
-Captain review rule: Any vulnerability rated Critical or High with confidence < 70% MUST be returned for supplementary verification.
+Operator review rule: Any vulnerability rated Critical or High with confidence < 70% MUST be returned for supplementary verification.

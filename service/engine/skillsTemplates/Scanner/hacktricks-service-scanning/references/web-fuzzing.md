@@ -49,7 +49,7 @@ Node/JSON object-injection bypass: send `password[$ne]=x` or `{"password":{"$ne"
 ```bash
 sqlmap -u "<URL>?id=1" --batch --level=1 --risk=1 --technique=BEUSTQ --threads=4
 ```
-NEVER `--os-shell`, `--risk=3`, `--level=5` without Captain. Add `--cookie` if auth needed.
+NEVER `--os-shell`, `--risk=3`, `--level=5` without Operator. Add `--cookie` if auth needed.
 For POST: `sqlmap -u "<URL>" --data="user=a&pass=b" -p user --batch`.
 
 ## JWT / token quick checks

@@ -56,7 +56,7 @@ When a task is complete, output the following JSON summary in the conversation. 
 
 | Field | Description |
 |-------|-------------|
-| `task_id` | Task ID issued by Captain |
+| `task_id` | Task ID issued by Operator |
 | `agent` | Current Agent name |
 | `status` | Task status; each Agent defines its own status enum |
 | `report_path` | Full absolute path to the MD report file |
@@ -169,7 +169,7 @@ lateral_technique: "pass-the-hash"  # Only for lateral movement findings
 
 ## 5. Purpose
 
-*   **Consistency**: All Agent outputs have a consistent structure that Captain can uniformly parse.
+*   **Consistency**: All Agent outputs have a consistent structure that Operator can uniformly parse.
 *   **Traceability**: Trace back to raw tool output to verify Agent conclusions.
 *   **Reproducibility**: Third parties can independently verify the analysis process using raw output and command logs.
 *   **No Omission**: Preserving raw output gives subsequent Agents the opportunity to discover information missed in the summary report.

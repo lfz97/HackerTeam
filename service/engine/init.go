@@ -7,22 +7,33 @@ import (
 
 	"HackerTeam/service/engine/tools/toolsets"
 	ag "trpc.group/trpc-go/trpc-agent-go/agent"
+	"trpc.group/trpc-go/trpc-agent-go/agent/taskrun/inprocess"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
+	"trpc.group/trpc-go/trpc-agent-go/skill"
 	"trpc.group/trpc-go/trpc-agent-go/tool"
+	"trpc.group/trpc-go/trpc-agent-go/tool/taskrun"
 )
 
 func (e *Engine) newRunner() {
 	Runner := runner.NewRunnerWithAgentFactory(
 		(*e).Agentname,
-		(*e).Agentname,
+		string(operatorName),
 		func(ctx context.Context, ro ag.RunOptions) (ag.Agent, error) {
-			e.reload()
-			captain, err := e.InitTeam()
-			if err != nil {
+			if err := e.reload(); err != nil {
 				return nil, err
 			}
-			return captain, nil
+			return e.initOperator()
 		},
+		// Worker 用独立工厂，且不 reload：它返回 reload 已经构造好的那一代实例。
+		// 这样 worker 的构造永远发生在 reload 的同一 goroutine 上，spawn 只做一次原子读，
+		// 不会出现 N 个并发 spawn 各自重载配置/刷新 MCP。
+		runner.WithAgentFactory(string(workerName), func(ctx context.Context, ro ag.RunOptions) (ag.Agent, error) {
+			worker := (*e).worker.Load()
+			if worker == nil {
+				return nil, fmt.Errorf("worker is not initialized")
+			}
+			return worker, nil
+		}),
 		runner.WithSessionService((*e).SessionService_p),
 		runner.WithMemoryService((*e).SqliteMemoryService),
 	)
@@ -30,12 +41,59 @@ func (e *Engine) newRunner() {
 		Runner: Runner,
 		Stream: (*(*e).Config_p).Model.Stream,
 	}
+
+	// agent 级后台任务：Operator 用它派 Worker，每个 Worker 跑在自己的 child session 里。
+	// 必须在 runner 之后构造——Service 直接持有 runner。
+	service, err := inprocess.NewService(Runner)
+	if err != nil {
+		(*e).parkWithFatal(FatalError, fmt.Sprintf("Failed to initialize task run service: %v (press any key to exit)", err), true)
+		return
+	}
+	// 不能挂 turn 的 ctx：turn 结束不该杀掉还在跑的 run。
+	service.Start(context.Background())
+	tools := taskrun.NewTools(
+		service,
+		taskrun.WithDefaultAgentName(string(workerName)),
+		taskrun.WithSessionService((*e).SessionService_p), // 打开 read_task_run_transcript
+	)
+	(*e).taskService = service
+	(*e).taskTools = &tools
 }
 
-// 每次runner执行时重新加载以下Module
-func (e *Engine) reload() {
+// reload 每次 Operator 运行前重新加载配置，并把"这一代配置"派生出的技能索引和
+// Worker 一起重建。
+//
+// Worker 在这里（主 goroutine）构造后原子发布：taskrun 的 worker 工厂只做一次原子读，
+// 所以 worker 的构造不会和 Config_p / mcpToolsets 的写入并发。
+func (e *Engine) reload() error {
 	e.LoadConfig()           //加载配置文件（agent工厂每次重建技能和提示词）
 	e.refreshMCPFromConfig() //刷新MCP工具集：增量对齐——同名复用，运行中的stdio子进程/连接不重启
+
+	repo, err := e.skillRepository()
+	if err != nil {
+		return fmt.Errorf("failed to index skills: %w", err)
+	}
+	(*e).skillsRepo = repo
+
+	worker, err := e.initWorker()
+	if err != nil {
+		return fmt.Errorf("failed to build worker: %w", err)
+	}
+	(*e).worker.Store(worker)
+	return nil
+}
+
+// skillRepository 把 5 个角色技能目录合并成一个索引，Operator 与 Worker 共用。
+// 同名 skill 先到先得（框架行为）；当前 5 个角色各有独立命名的 skill，
+// pentest-tools 只是 .template 占位，不会进索引。
+func (e *Engine) skillRepository() (*skill.FSRepository, error) {
+	return skill.NewFSRepository(
+		(*e).ReconSkillsFolderPath,
+		(*e).ScannerSkillsFolderPath,
+		(*e).ExploitSkillsFolderPath,
+		(*e).PostExploitSkillsFolderPath,
+		(*e).ReproducerSkillsFolderPath,
+	)
 }
 
 // loadMCPFromConfig 从配置文件创建启用的 MCP ToolSet，返回期望运行的新清单。

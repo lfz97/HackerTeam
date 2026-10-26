@@ -2,12 +2,13 @@
 
 > **仅供授权渗透测试和安全研究使用。请遵守当地法律法规。**
 
-HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测试平台**，将大语言模型与本地 PTY 命令执行结合，由 Captain 在共享共识约束下自主规划并推进任务。
+HackerTeam 是面向专业渗透测试人员的 **AI 驱动渗透测试平台**，将大语言模型与本地 PTY 命令执行结合，由 Operator 在共享共识约束下自己动手推进任务，并按需把可并行的广度工作交给无状态 Worker。
 
 **核心优势：**
 - **独立二进制部署** — 单文件，无运行时依赖，Linux/macOS 开箱即用
-- **共识驱动的多 Agent 协作** — 统一的漏洞定级共识和结果输出共识，Agent 间职责清晰、协作一致
-- **可扩展 Skill 配置** — 每个 Agent 独立 Skill 目录，支持 MCP 热扩展
+- **Operator 自执行** — 主 agent 直接持有 shell、读原始输出、构建攻击链，不做只转发任务的调度器
+- **无状态 Worker 并行** — 同一套工具/技能/模型的临时副本，无记忆、无委派，适合批量枚举与独立复核
+- **可扩展 Skill 配置** — Operator 与 Worker 共享一个 Skill 目录，支持 MCP 热扩展
 - **内置完整操作工具** — PTY 命令管理 + 文件系统工具，覆盖渗透全流程
 
 ---
@@ -22,7 +23,7 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 ## 目录
 
-- [共识驱动的多 Agent 架构](#共识驱动的多-agent-架构)
+- [Operator + Worker 架构](#operator--worker-架构)
 - [可扩展 Skill 配置](#可扩展-skill-配置)
 - [内置操作工具](#内置操作工具)
 - [快速开始](#快速开始)
@@ -30,45 +31,51 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动多智能体渗透测
 
 ---
 
-## 共识驱动的多 Agent 架构
+## Operator + Worker 架构
 
-### Agent 分工与自主协作
+### 分工
 
-`Captain` 作为中枢调度，根据用户目标和已有证据维护 `todo_write` 任务清单，每次只选择一个最有价值的后续任务并串行调用对应 Agent。PTES 用于检查盲区，不再规定固定的 Recon → Scanner → Exploit 流程；不需要的 Agent 可以跳过，出现新证据时也可以重复调用或调整方向。
+系统只有两个角色，共用同一份实现：同一套模型参数、同一批执行工具、同一个技能库、同一套上下文压缩策略。差别只在提示词、额外工具与状态权限。
 
-```
-          用户目标 + 当前证据
-                  |
-       Captain + todo_write
-      选择当前最需要解决的问题
-                  |
-       串行调用一个合适的 Agent
-   ┌──────┬────────┬─────────┬─────────────┬────────────┐
- Recon  Scanner  Exploit  PostExploit  Reproducer
-   └──────┴────────┴─────────┴─────────────┴────────────┘
-                  |
-          完整结果与证据审核
-                  |
-       更新 todo、重试、跳过或终止
-```
+- **Operator** — 唯一与用户对话的 agent，自己执行工作：持有 shell、读原始输出、构建攻击链、审核证据、定级、出最终报告；同时维护 `todo_write` 计划和长期记忆。
+- **Worker** — 一次性无状态助手。它只看得到 Operator 写进 brief 的内容，没有记忆、没有 todo、没有调度权；做完一件事，把报告与结构化结论落盘后退出。
 
-| Agent | 角色 | 职责 | 工具集 |
-|-------|------|------|--------|
-| **Captain** | 队长 | 自主维护 todo、按证据串行调度 Agent、结果审核、最终定级裁决、生成报告 | 文件系统工具 |
-| **Recon** | 侦察兵 | 子域名枚举、端口服务扫描、Web 指纹、目录爆破、被动情报（深度单点侦察） | LocalExec + Skills |
-| **Scanner** | 脚本小子 | 对明确目标做自动化漏洞候选扫描，覆盖面广速度快，不做资产发现、弱口令验证或最终判断 | LocalExec + Skills |
-| **Exploit** | 老师傅 | 真实渗透中验证具体漏洞/攻击假设并受控利用；简单 CTF、一次性命令/脚本/网络交互任务的兜底执行者 | LocalExec + Skills |
-| **PostExploit** | 后渗透 | 从已有会话/凭证出发，每次执行一个 Captain 明确授权的后渗透目标 | LocalExec + Skills |
-| **Reproducer** | 复现员 | 读取已审核漏洞证据中的结构化数据，为每个已确认漏洞生成 PoC + Exploit 双模式 Python 脚本 | LocalExec（仅语法检查） |
-
-**协作关键：** 框架只固定授权边界、Agent 职责、证据格式和质量门；Captain 根据证据缺口决定下一步，不为了补齐预设阶段而调用 Agent。纯问答/纯文件分析可由 Captain 直接完成；简单 CTF 或一次性工具任务走 Exploit 的通用执行模式。所有子 Agent 结果都要通过完整报告审核后，才能完成对应 todo 并成为后续任务的输入。
-
-### Agent 间共识体系
-
-所有 Agent 共享三份共识文件，通过系统提示词自动注入：
+Worker 不是另一套专家实现，也不是调度器的延伸：它运行在隔离会话里，但与 Operator 共享同一个 LocalExec 作业表——它起的后台任务，Operator 用 `CommandStatus` 直接能查。交互式会话（ssh、msfconsole、反弹 shell）只能由 Operator 持有。
 
 ```
-bootstrap/prompts/common/
+用户目标 + 当前证据
+        │
+  Operator（todo_write + 记忆）
+        │  自己跑命令 / 读输出 / 构建攻击链
+        │  只有广度或可并行的任务才派发
+        ▼
+  start_task_run ──▶ Worker（隔离会话，无记忆）
+        │                  │
+        │                  └─ 落盘：TASK-<id>_result.json
+        │                            TASK-<id>_<time>_<type>_result.md
+        │                            TASK-<id>_<time>_raw/
+        ◀── wait / get / read_transcript（取回状态与进度）
+        │
+  读文件复核 → 更新 todo → 继续 / 重派 / 自己接手
+```
+
+| Agent | 职责 | 工具 |
+|-------|------|------|
+| **Operator** | 规划、亲自执行、按需派 Worker、审核证据、定级、出报告、维护记忆 | 全部执行工具 + Skills + MCP + `todo_write` + memory 工具 + taskrun 调度工具 |
+| **Worker** | 执行一个自包含 brief，产出报告与结构化结论 | 全部执行工具 + Skills + MCP（无 memory / todo / 调度权） |
+
+**派发是 pull 模型：** `start_task_run` 默认 `async`，立即返回 run id；只有下一步决策依赖结果时才用 `sync`。Operator 用 `wait_task_run(timeout)` 做有界等待、`get_task_run` 查状态、`read_task_run_transcript` 看运行中进度、`cancel_task_run` 停止。等待超时不会取消任务。
+
+**结果以文件为准：** 框架只保留 Worker 叙述的前约 4000 字符，`result` 只能当存活信号。真正的结论在 `TASK-<task_id>_result.json`，完整报告与原始输出在 `TASK-<task_id>_<time>_<type>_result.md` / `TASK-<task_id>_<time>_raw/`。Worker 返回 "done" 不构成证据，Operator 必须读文件复核。
+
+**派发边界：** 一两条命令能做完的事 Operator 自己跑；brief 必须写清 `task_id`、`OBJECTIVE`、`SCOPE`、`INPUTS`、`DELIVERABLE`、`SUCCESS`。缺 `INPUTS` 对应的真实文件，就还没准备好派发。
+
+### 共享共识
+
+Operator 与 Worker 注入同一套公共提示词与共识文件：
+
+```
+service/engine/prompts/common/
 ├── env.md                   # 执行环境信息
 ├── command_execution.md     # 命令执行规范
 ├── vuln_consensus.md        # 漏洞定义与定级共识
@@ -77,12 +84,12 @@ bootstrap/prompts/common/
 
 | 共识文件 | 核心内容 |
 |----------|----------|
-| **vuln_consensus** | 漏洞定义（攻击者获得了什么技术能力）、严重性等级（Critical/High/Medium/Low）纯技术标准、各 Agent 定级职责、定级冲突解决流程、Confidence 语义 |
-| **output_consensus** | 报告格式（MD only）、原始输出必须保存到 `TASK-{id}_raw/`、对话回复 JSON 通用字段、命令记录规范、**漏洞结构化块**（YAML 格式，为 Reproducer 提供满信号数据：entry_point / payload / verification / prerequisites / evidence） |
+| **vuln_consensus** | 漏洞定义（攻击者获得了什么技术能力）、严重性等级（Critical/High/Medium/Low）纯技术标准、执行者的定级职责、定级冲突解决流程、Confidence 语义 |
+| **output_consensus** | 报告格式（MD only）、原始输出必须保存到 `TASK-{id}_*_raw/`、对话回复 JSON 通用字段、命令记录规范、**漏洞结构化块**（YAML 格式，为 PoC 脚本提供满信号数据：entry_point / payload / verification / prerequisites / evidence） |
 
 **定级原则：** 抛弃 CVSS 评分，从攻击者实际获得的技术能力出发 —— 拿到 Shell / 拿到任意身份 / 拿到核心凭证 → Critical；能读敏感数据 / 能越权 / 能打通内网 → High。
 
-**漏洞结构化块：** 所有产出漏洞的 Agent（Scanner/Exploit/PostExploit）必须在报告中为每个漏洞输出 YAML 结构化块，包含完整的攻击入口、payload、验证方式、前置条件和证据。这是 Reproducer 生成脚本的唯一数据源——结构化块不完整，脚本就无法产出。Captain 在审核时会检查结构化块完整性，模糊描述会被打回重写。
+**漏洞结构化块：** 产出漏洞的 Operator 或 Worker 必须在报告中为每个漏洞输出 YAML 结构化块，包含完整的攻击入口、payload、验证方式、前置条件和证据。这是 PoC 脚本生成的唯一数据源——结构化块不完整，脚本就无法产出。Operator 审核时会检查结构化块完整性，模糊描述会被打回重写。
 
 ### 首次运行目录结构
 
@@ -106,7 +113,7 @@ bootstrap/prompts/common/
 
 ## 可扩展 Skill 配置
 
-每个 Agent 拥有独立的 Skill 目录，通过 **`SKILL.md`** 文件以知识注入方式告知 Agent 如何使用外部安全工具：
+Operator 与 Worker 共享 `.HackerTeam/Skills/` 一个目录，通过 **`SKILL.md`** 文件以知识注入方式告知 Agent 如何使用外部安全工具：
 
 - Skill 注入到 Agent 的系统提示词，**工具本身仍通过 LocalExec 调用**，无需编写适配代码
 - 在 `SKILL.md` 中描述工具用法、参数和输出格式，Agent 即可正确使用该工具
@@ -151,13 +158,13 @@ description: >-
 
 - 知识以 `SKILL.md` + `references/` 形式注入，references 仅按需读取，不占每轮提示词
 - Operator 与 Worker 读同一份 `Skills/` 索引；增删改直接在 `.HackerTeam/Skills/` 下对应目录操作，下一轮对话生效
-- 删除某个技能目录后两个 agent 同时失去它（不再按角色隔离）
+- 删除某个技能目录后 Operator 与 Worker 同时失去它
 
 > **版权说明**：`hacktricks-*` skill 为 [HackTricks](https://book.hacktricks.xyz)（作者 Carlos Polop）知识的方法论蒸馏与改编，references 内容裁剪自原站对应章节。遵循 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可分发，使用时保留本署名。
 
 ### 配置示例
 
-以下是 `Skills/pentest-tools/SKILL.md` 的配置示例，按工具类别分组；重构后 Operator 与 Worker 共用同一份，可把各类清单合并写进同一个文件：
+以下是 `Skills/pentest-tools/SKILL.md` 的配置示例，按工具类别分组；Operator 与 Worker 共用同一份，可把各类清单合并写进同一个文件：
 
 **侦察类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
 
@@ -319,17 +326,17 @@ description: >-
 
 | 工具 | 功能 |
 |------|------|
-| `run` | 执行命令，最多阻塞 20 秒：期间结束就直接返回状态/退出码/输出，超时则转后台并返回任务 ID |
-| `status` | 查询任务状态（running / done / failed / killed）；`wait_seconds` 可阻塞等到完成再返回 |
-| `output` | 获取 stdout/stderr 输出；超过内联上限的整份落盘，只回头部预览与文件路径 |
-| `intervene` | 向进程写 stdin 或发送信号（SIGHUP / SIGINT / SIGQUIT / SIGABRT / SIGTERM / SIGKILL） |
-| `kill` | 强制结束进程 |
+| `CommandRun` | 执行命令，最多阻塞 20 秒：期间结束就直接返回状态/退出码/输出，超时则转后台并返回任务 ID |
+| `CommandStatus` | 查询任务状态（running / done / failed / killed）；`wait_seconds` 可阻塞等到完成再返回 |
+| `CommandOutput` | 获取 stdout/stderr 输出；超过内联上限的整份落盘，只回头部预览与文件路径 |
+| `CommandIntervene` | 向进程写 stdin 或发送信号（SIGHUP / SIGINT / SIGQUIT / SIGABRT / SIGTERM / SIGKILL） |
+| `CommandKill` | 强制结束进程 |
 
 > **平台说明**：PTY 在 Linux/macOS 上完整可用。Windows 原生不支持 PTY，LocalExec 会自动降级为普通管道（pipe），此时 `ssh`、`sudo`、`msfconsole` 等交互式工具无法正常工作，且 AI 操控 PowerShell 的失败率显著偏高。**使用 HackerTeam 请务必在 Linux/macOS 或 WSL 中运行。**
 
-### 所有 Agent 共享工具
+### 工具集
 
-除 Captain 外，所有子 Agent 均挂载完整工具集：
+Operator 与 Worker 挂载同一套执行工具，并共享同一个 LocalExec 作业表：
 
 | 工具集 | 工具 | 功能 |
 |--------|------|------|
@@ -338,8 +345,17 @@ description: >-
 | **Date** | `date_now` | 获取当前日期时间 |
 | **LocalExec** | `run` / `status` / `output` / `intervene` / `kill` | PTY 命令管理 |
 | **Skills** | 知识注入 | 将 SKILL.md 内容注入系统提示词 |
+| **MCP** | 配置声明的工具 | 安装的 MCP server 工具，实例共享 |
 
-Captain 仅挂载 FileSystem + FileOps + Date，不挂载 LocalExec 和 Skills。Reproducer 挂载 LocalExec 但仅用于语法检查（`python3 -m py_compile`），不执行实际攻击。
+Operator 另外挂载三组状态与调度工具，Worker 一个都没有：
+
+| 工具 | 功能 |
+|------|------|
+| `todo_write` | 维护跨轮任务计划（Worker 没有 todo） |
+| memory 工具 | `memory_search` / `memory_load` / `memory_update` 等长期记忆读写 |
+| taskrun 工具 | `start_task_run` / `list_task_runs` / `get_task_run` / `wait_task_run` / `read_task_run_transcript` / `cancel_task_run` |
+
+Worker 只做短任务：没有跨轮记忆、不能派活、不能向用户提问。长任务、交互式会话和需要历史上下文的判断都由 Operator 自己承担。
 
 ---
 
@@ -396,7 +412,7 @@ model:
   reasoning_effort: ""                  # 思考强度档位（low/medium/high/max），留空不下发该参数
   show_reasoning: false                 # 是否显示推理内容，默认 false（不显示）
 
-# MCP server 配置（可选）。启用的 server 挂载给全部 agent（含队长），实例跨 agent 共享
+# MCP server 配置（可选）。启用的 server 挂载给 Operator 与 Worker，实例跨 agent 共享
 # http_mcp：SSE / streamable_http 传输
 #http_mcp:
 #  - enabled: true
@@ -440,12 +456,12 @@ model:
 
 ## 长期记忆
 
-每轮对话完成后自动提取关键信息并持久化到 SQLite，下次对话时智能注入上下文：
+长期记忆只属于 Operator：由它主动写入 SQLite，下轮对话开始前预加载相关条目：
 
-- **自动提取**：后台 LLM 异步分析对话，提取事实和事件记忆（增量去重）
-- **智能预加载**：记忆少时全量注入，多了自动切语义检索
+- **显式写入**：记忆只由 Operator 用 memory 工具主动写入，不会自动落库
+- **智能预加载**：每轮开始注入 10 条记忆（`[MEMORY]` 块），其余通过 `memory_search` / `memory_load` 检索
 - **SQLite 持久化**：单文件 `memory.db`，零运维，重启不丢失
-- **主动检索**：Captain 拥有 `memory_search` / `memory_load` 工具，可随时查找历史记忆
+- **Worker 无记忆**：它只看到 brief 中显式写出的内容，读完即弃
 
 ## 构建
 
@@ -489,7 +505,7 @@ scp -r .HackerTeam user@new-host:/opt/hackerteam/
 |-----------|------|
 | `HackerTeam.yaml` | API Key、模型配置 |
 | `memory.db` | 长期记忆（渗透过程的关键信息提取） |
-| `*Skills/` | 各 Agent 的 Skill 定义 |
+| `Skills/` | Operator 与 Worker 共用的 Skill 定义 |
 | `HackerTeam.log` | 运行日志 |
 
 > **注意**：`HackerTeam.yaml` 中的 API Key 是敏感信息，迁移前请确保目标环境安全。

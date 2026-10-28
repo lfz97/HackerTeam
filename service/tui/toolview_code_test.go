@@ -241,15 +241,15 @@ func TestToolViewWriteFileResultContent(t *testing.T) {
 
 func TestToolViewBodySectionLines(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{
-		"CD": {Name: "CD", In: []string{"Path"}, Out: []string{"CwdNow"}},
+		"LS": {Name: "LS", In: []string{"Path"}, Out: []string{"Files"}},
 	})
-	out := toolView("CD", []byte(`{"Path":"/tmp"}`), `{"CwdNow":"/home/x"}`, 120)
+	out := toolView("LS", []byte(`{"Path":"/tmp"}`), `{"Files":"/home/x"}`, 120)
 	lines := strings.Split(out, "\n")
 	// 头部行无竖线
 	if strings.HasPrefix(ansi.Strip(lines[0]), "│") {
 		t.Errorf("header should not carry section line: %q", lines[0])
 	}
-	if len(lines) != 4 { // header + Path + 段间空行 + CwdNow
+	if len(lines) != 4 { // header + Path + 段间空行 + Files
 		t.Fatalf("want 4 lines, got %d:\n%s", len(lines), out)
 	}
 	// 参数区行带暗灰线（#605F6B = 96;95;107）

@@ -80,7 +80,7 @@ func buildSession() []string {
 	for i := 0; i < 60; i++ {
 		output += fmt.Sprintf("2026-10-13T12:21:%02d+08:00    DEBUG    processor/functioncall.go:2748    Executing tool WriteFile with args: {\"Path\": \"/home/lfz/hyperbot/x.go\"}\n", i%60)
 	}
-	thinking := strings.Repeat("用户要求自检。我需要逐项验证：环境、文件系统、记忆、定时任务。先并行调用 PWD 与 date_now 获取基线，再依次测试文件读写与编辑，最后清理测试产物。\n", 30)
+	thinking := strings.Repeat("用户要求自检。我需要逐项验证：环境、文件系统、记忆、定时任务。先并行调用 LS 与 Glob 获取基线，再依次测试文件读写与编辑，最后清理测试产物。\n", 30)
 
 	for turn := 0; turn < 20; turn++ {
 		recs = append(recs, typed("user", fmt.Sprintf("第 %d 轮：请做一次完整自检，包括环境、文件、记忆与定时任务", turn)))

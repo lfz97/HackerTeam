@@ -78,7 +78,6 @@ func (e *Engine) buildBuiltinAssets() {
 	tools := []tool.Tool{}
 	tools = append(tools, functionTools.GetFileSystemTools()...)
 	tools = append(tools, functionTools.GetFileOperationsTools()...)
-	tools = append(tools, functionTools.GetDateTools()...)
 
 	e.builtinTools = tools
 	e.execToolSet = localexec.LocalExec()

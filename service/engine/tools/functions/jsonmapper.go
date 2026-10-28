@@ -5,7 +5,6 @@ type Mappers interface {
 }
 
 func InjectMapper(m Mappers) {
-	m.AddMapping(dateToolName, []string{}, []string{"datetime"})
 	m.AddMapping(writeFileToolName, []string{"path"}, []string{"wrote"})
 	m.AddMapping(readFileToolName, []string{"path"}, []string{"length"})
 	m.AddMapping(editFileToolName, []string{"path"}, []string{"diff"})
@@ -15,8 +14,6 @@ func InjectMapper(m Mappers) {
 	m.AddMapping(deleteFileToolName, []string{"path"}, []string{"deleted"})
 	m.AddMapping(fileStatToolName, []string{"path"}, []string{"name", "size", "is_dir", "mode", "mod_time"})
 	m.AddMapping(diffToolName, []string{"src", "dst"}, []string{"diff"})
-	m.AddMapping(pwdToolName, []string{}, []string{"pwd"})
-	m.AddMapping(cdToolName, []string{}, []string{"cwd"})
 	// ls/glob 的值是"JSON 套 JSON"（数组字符串），渲染层会展开成每元素一行
 	m.AddMapping(lsToolName, []string{"path"}, []string{"files"})
 	m.AddMapping(mkdirToolName, []string{}, []string{"created"})

@@ -371,9 +371,9 @@ func TestToolViewRowWrapNarrowWidth(t *testing.T) {
 
 func TestToolViewEmptyArgsResult(t *testing.T) {
 	withMappers(t, map[string]*tools.ParamMapper{})
-	out := toolView("date_now", nil, "", 120)
+	out := toolView("LS", nil, "", 120)
 	lines := strings.Split(out, "\n")
-	if len(lines) != 1 || !strings.Contains(lines[0], "date_now") {
+	if len(lines) != 1 || !strings.Contains(lines[0], "LS") {
 		t.Fatalf("want header only, got:\n%s", out)
 	}
 }

@@ -340,9 +340,8 @@ Operator 与 Worker 挂载同一套执行工具，并共享同一个 LocalExec �
 
 | 工具集 | 工具 | 功能 |
 |--------|------|------|
-| **FileSystem** | `PWD` / `CD` / `LS` / `Mkdir` / `CP` / `MV` / `Glob` | 文件系统导航与操作 |
+| **FileSystem** | `LS` / `Mkdir` / `CP` / `MV` / `Glob` | 文件系统导航与操作 |
 | **FileOps** | `read` / `write` / `edit` / `search` / `delete` / `stat` / `diff` | 文件读写与搜索 |
-| **Date** | `date_now` | 获取当前日期时间 |
 | **LocalExec** | `run` / `status` / `output` / `intervene` / `kill` | PTY 命令管理 |
 | **Skills** | 知识注入 | 将 SKILL.md 内容注入系统提示词 |
 | **MCP** | 配置声明的工具 | 安装的 MCP server 工具，实例共享 |

@@ -64,6 +64,7 @@ type frameMsg struct {
 	notice    string      // 底部通知渲染结果（含 TTL 兜底）
 	running   bool        // agent 是否在运行（spinner 开关依据）
 	fatal     *wireFatal
+	bootField map[string]string // 非nil=首次启动待配置（config 态，携带预填值；一次性开页信号）
 }
 
 // pullSkipMsg 坏帧保活消息。pullCmd 的 fn 绝不能返回 nil（nil 不会触发

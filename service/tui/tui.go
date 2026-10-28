@@ -36,6 +36,7 @@ type TUI struct {
 	slashPopup *slashPopup // 斜杠命令补全浮层（显隐由输入框内容派生）
 	bottom     *bottom
 	resume     *resumeList // /resume 弹框（会话恢复选择）
+	cfgPage    *configPage // 首次启动配置页（模态，帧携带 bootField 时开页）
 
 	// 块折叠（collapse.go）：expand 是唯一一处事件循环写、pull goroutine 读
 	// 的状态（互斥锁保护）；spans/anchor 只在事件循环上读写。
@@ -67,10 +68,11 @@ func NewTui(view EngineView) *TUI {
 			spinner: NewSpinner(defaultDynamicSpinner, defaultStaticSpinner,
 				60*time.Millisecond),
 		},
-		engine: view,
-		resume: newResumeList(),
-		pull:   newPullState(),
-		expand: newExpandState(),
+		engine:  view,
+		resume:  newResumeList(),
+		cfgPage: newConfigPage(),
+		pull:    newPullState(),
+		expand:  newExpandState(),
 	}
 }
 
@@ -98,6 +100,16 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return t.keyMsgHandler(m)
 
 	case tea.PasteMsg: // v2 默认开启 bracketed paste，整段文本（含换行）以 PasteMsg 到达
+		if t.cfgPage.isVisible() {
+			//配置页模态：粘贴语义=整字段覆盖（清掉预填值再插入），而非在
+			//光标处拼接；apikey 是主要粘贴对象。二选一项无输入框，吞掉即可。
+			//粘贴后光标落在尾部（退格可删），显示恒为头部（viewValue 截断）。
+			if f := t.cfgPage.fields[t.cfgPage.focus]; !f.isChoice() {
+				f.input.Reset()
+				f.input, cmd = f.input.Update(m)
+			}
+			return t, cmd
+		}
 		t.ta, cmd = t.ta.Update(m)
 		t.recalcComponentSize()
 		return t, cmd

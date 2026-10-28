@@ -42,6 +42,13 @@ const (
 	NoticeClear           = "cleared"
 )
 
+// 引擎启动状态（FirstStartupJSON 的 state 字段取值）。
+const (
+	BootBooting      = "booting" //bootstrap 检查/装配未完成，消费端继续等下一帧
+	BootConfigNeeded = "config"  //首次启动：等待 TUI 配置页提交模型配置
+	BootReady        = "ready"   //正常状态：配置就绪（首次提交完成或非首次启动）
+)
+
 // Fatal 进程终态（RunStateJSON 里 fatal 对象的形状）。
 type Fatal struct {
 	Text    string `json:"text"`
@@ -226,6 +233,54 @@ func (e *Engine) NoticeJSON() string {
 		return "{}"
 	}
 	return string(b)
+}
+
+// ── 首次启动状态 ──────────────────────────────────────────
+
+// FirstStartupJSON 返回首次启动状态快照 JSON：
+// {"state":"booting"|"config"|"ready","fields":{"model":...}}。
+// fields 仅在 state=config 时携带（模板 model 块的预填值）。
+// 消费端（TUI）每帧拉取，state 离开 booting 即可停止拉取。
+func (e *Engine) FirstStartupJSON() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	b, err := json.Marshal(struct {
+		State  string            `json:"state"`
+		Fields map[string]string `json:"fields,omitempty"`
+	}{e.bootState, e.firstStartupFields})
+	if err != nil {
+		return `{"state":"` + e.bootState + `"}`
+	}
+	return string(b)
+}
+
+// enterFirstStartup 进入首次启动待配置状态并快照模板 model 块预填值。
+// 快照而非活读 Config_p：预填值在进入状态时定格，避免与 pull goroutine 竞态。
+func (e *Engine) enterFirstStartup() {
+	e.mu.Lock()
+	m := e.Config_p.Model
+	e.firstStartupFields = map[string]string{
+		"model":   m.Model,
+		"baseurl": m.BaseURL,
+		"apikey":  m.APIKey,
+		"apitype": m.APIType,
+	}
+	e.bootState = BootConfigNeeded
+	e.mu.Unlock()
+}
+
+// setBootState 推进启动状态（幂等，last-write-wins）。
+func (e *Engine) setBootState(state string) {
+	e.mu.Lock()
+	e.bootState = state
+	e.mu.Unlock()
+}
+
+// bootStateSnapshot 读取启动状态（agentLoop 的横幅 gate 用）。
+func (e *Engine) bootStateSnapshot() string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.bootState
 }
 
 // ── 静态数据 ─────────────────────────────────────────────

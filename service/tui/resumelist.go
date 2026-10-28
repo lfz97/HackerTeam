@@ -1,13 +1,13 @@
 package tui
 
 // /resume 弹框：会话恢复候选列表（斜杠命令浮层同款）。数据由 openResume
-// 同步拉取，选择经 checkoutSession 提交；按键语义在 handler.go，
-// 本文件只管渲染与选中态。
+// 同步拉取，选择经 checkoutSession 提交；按键语义、渲染与选中态均在本文件。
 
 import (
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -33,6 +33,32 @@ type resumeList struct {
 func newResumeList() *resumeList { return &resumeList{vp: NewPrettyViewport(0, 1)} }
 
 func (r *resumeList) isVisible() bool { return r.visible }
+
+// resumeKeyHandler /resume 弹框的按键语义：ctrl+c 退出、esc 取消（纯前端
+// 状态，不经引擎）、方向键选择、enter 确认；其余键一律吞掉，不漏进 textarea。
+func (t *TUI) resumeKeyHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	input := m.String()
+
+	switch input {
+	case "ctrl+c":
+		return t, tea.Quit
+	case "esc":
+		t.resume.visible = false
+		return t, nil
+	case "down":
+		t.resume.moveDown()
+		return t, nil
+	case "up":
+		t.resume.moveUp()
+		return t, nil
+	case "enter":
+		if id, ok := t.resume.selectedID(); ok && t.checkoutSession(id) {
+			t.resume.visible = false //成功才关框；失败弹框保持可重选
+		}
+		return t, nil
+	}
+	return t, nil
+}
 
 // setItems 重建候选，选中归零。
 func (r *resumeList) setItems(items []wireResumeItem) {

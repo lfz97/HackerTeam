@@ -99,6 +99,16 @@ func (t *TUI) recalcComponentSize() {
 
 // draw 组合组件并绘制整屏，浮层经 Compositor 叠加其上。
 func (t *TUI) draw() string {
+	// 首次启动配置页：主输入框与底部通知栏不参与排版（此刻它们毫无意义），
+	// 背景留白整屏，只呈现配置浮层
+	if cfg := t.configPageView(); cfg != "" {
+		back := ""
+		if t.width > 0 && t.height > 0 {
+			back = lipgloss.NewStyle().Width(t.width).Height(t.height).Render("")
+		}
+		return t.overlayCentered(configBoxWidth, configBoxHeight, back, cfg)
+	}
+
 	messageView := t.vp.View()
 	textAreaView := t.ta.View()
 	bottomView := t.bottom.View()

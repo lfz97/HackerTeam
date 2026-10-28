@@ -28,6 +28,9 @@ type EngineView interface {
 	ClearRecords() bool              // /clear：running 时拒绝（false）
 	ListResumeItems() string         // /resume 候选 JSON（"[]"=无可恢复，引擎已附提示）
 	CheckoutSession(id string) error // 提交弹框选择；失败弹框保持可重选
+	// ── 首次启动配置页 ──
+	FirstStartupJSON() string                             // 启动状态拉取（booting/config/ready，见 engine.BootXxx）
+	ApplyFirstStartupConfig(vals map[string]string) error // 提交模型配置；失败页面保持可重填
 }
 
 // noticeTTL 临时通知的停留时长，从引擎写入槽位的 setAt 起算。
@@ -97,4 +100,26 @@ func (t *TUI) checkoutSession(id string) bool {
 		return true
 	}
 	return false
+}
+
+// ── 首次启动配置页 ────────────────────────────────────────
+
+// wireFirstStartup FirstStartupJSON 的形状。
+type wireFirstStartup struct {
+	State  string            `json:"state"`            // booting | config | ready
+	Fields map[string]string `json:"fields,omitempty"` // config 态的预填值
+}
+
+// fetchFirstStartup 拉取并解析启动状态；解析失败返回 false（下一帧重拉）。
+func (t *TUI) fetchFirstStartup() (wireFirstStartup, bool) {
+	var fs wireFirstStartup
+	if err := json.Unmarshal([]byte(t.engine.FirstStartupJSON()), &fs); err != nil {
+		return wireFirstStartup{}, false
+	}
+	return fs, true
+}
+
+// submitFirstStartupConfig 提交配置页；错误由调用方显示在页内（可重填）。
+func (t *TUI) submitFirstStartupConfig(vals map[string]string) error {
+	return t.engine.ApplyFirstStartupConfig(vals)
 }

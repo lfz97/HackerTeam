@@ -28,6 +28,7 @@ type pullState struct {
 	composedWidth int       // 当前 st.view 排版时的宽度（0=尚未排版，变化即强制重组）
 	banner        string    // 启动横幅（就绪后进视图头部，只渲染一次）
 	bannerDone    bool
+	bootDone      bool // 首次启动状态已决（离开 booting 即停拉，帧不再携带）
 	lastFatal     *wireFatal
 	view          string      // 最近一次重组的视图全文（帧恒携带，重复帧交给框架去重）
 	spans         []blockSpan // 视图的可折叠块行号索引（与 view 同源同帧）
@@ -116,6 +117,19 @@ func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 	// 通知栏槽位：TTL 内显示通知，否则回落常驻 hint（运行态多一条 esc 提示）。
 	notice := t.fetchNotice(rs.Running, w)
 
+	// 首次启动状态：拉到终态（config/ready）即停；config 态的帧携带预填值
+	// 作为一次性开页信号，applyFrame 据此开页（引擎装配与 TUI 并发起跑，
+	// booting 阶段必须重拉，TUI Init 单次查询有竞态）。
+	var bootField map[string]string
+	if !st.bootDone {
+		if fs, ok := t.fetchFirstStartup(); ok && fs.State != "booting" {
+			st.bootDone = true
+			if fs.State == "config" {
+				bootField = fs.Fields
+			}
+		}
+	}
+
 	return frameMsg{
 		view:      st.view,
 		spans:     st.spans,
@@ -124,5 +138,6 @@ func (t *TUI) pullOnce(w int) (frameMsg, bool) {
 		notice:    notice,
 		running:   rs.Running,
 		fatal:     rs.Fatal,
+		bootField: bootField,
 	}, true
 }

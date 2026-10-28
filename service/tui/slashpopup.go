@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
@@ -79,6 +80,42 @@ func (s *slashPopup) renderItems() string {
 }
 
 func (s *slashPopup) isVisible() bool { return s.visible }
+
+// slashPopupKeyHandler 斜杠浮层的按键语义：esc/ctrl+c 关浮层，up/down 选条目，
+// enter 补全指令，其余键继续进输入框（打字要重新过滤候选）。
+func (t *TUI) slashPopupKeyHandler(m tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	input := m.String()
+
+	switch input {
+	case "esc", "ctrl+c":
+		t.slashPopup.switchVisibility(false)
+		return t, nil
+	case "down":
+		t.slashPopup.moveDown()
+		return t, nil
+	case "up":
+		t.slashPopup.moveUp()
+		return t, nil
+	case "enter":
+		//清单为空时无指令可补全，浮层保持打开（esc 仍能关）
+		sel, ok := t.slashPopup.selectedCmd()
+		if !ok {
+			return t, nil
+		}
+		//整段替换而非 InsertString：输入框里留着半截 "/re"，插入会拼成
+		//"/re/resume "。补全后带空格，光标停在命令末尾等用户接参数。
+		t.ta.SetValue(sel + " ")
+		t.slashPopup.switchVisibility(false)
+		t.recalcComponentSize()
+		return t, nil
+	default:
+		var cmd tea.Cmd
+		t.ta, cmd = t.ta.Update(m)
+		t.refilterSlashItems() //浮层开着时继续打字也要重新过滤，否则清单永远停在第一次的结果
+		t.recalcComponentSize()
+		return t, cmd
+	}
+}
 
 // switchVisibility 只有"设为某值"、没有"翻转"：可见性是输入框内容的派生结果。
 func (s *slashPopup) switchVisibility(visible bool) { s.visible = visible }

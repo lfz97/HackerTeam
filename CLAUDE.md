@@ -52,7 +52,7 @@
   - `session/` — summarizer, session service, prompt embedding (`prompt/*`)
   - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
   - `prompts/agents/` + `prompts/common/` — `operator.md` / `worker.md` + shared consensus prompts (embedded)
-  - `skillsTemplates/Skills/` — embedded skill presets，与运行时 `Skills/` 同构：hacktricks-* 红队知识 + poc-scripting + pentest-tools 占位模板
+  - `skillsTemplates/Skills/` — embedded skill presets，与运行时 `Skills/` 同构：仅 `pentest-tools` 占位模板；知识型 skill 由用户添加
   - `tools/functions/` — Custom Go function tools（`jsonmapper.go`：`Mappers` 接口 + `InjectMapper` 注册本包工具的渲染字段表，工具名用常量）
   - `tools/parammapper.go` — `ParamMapper{Name,In,Out}` + `Mappers` 具体切片 + `GetParamMapper()`（聚合各工具包的 `InjectMapper`）
   - `tools/toolsets/localexec/` — LocalExec toolset（command execution subsystem；`Close()` 先 kill 未结束命令再清注册表；`mapper.go` 自注册同形 `Mappers` 接口 + `InjectMapper`，工具名常量、带前缀名构造）
@@ -71,7 +71,7 @@
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools
 - Skills use `llmagent.WithSkillToolProfile(llmagent.SkillToolProfileKnowledgeOnly)` — injected into system prompt, execution still via LocalExec
 - Skills live in one shared directory: `.HackerTeam/Skills/` — Operator and Worker read the same index; there is no per-role split anymore
-- Embedded skill presets: `service/engine/skillsTemplates/Skills/` — same layout as the runtime folder. On first start `checkSkillsFolder()` copies the whole tree into `.HackerTeam/Skills/` (installed once; an existing folder is never repopulated) and `makeSkillsWritable()` fixes the read-only embed permissions. Presets include hacktricks-* distilled knowledge (CC BY 4.0, attribution in README) + a `pentest-tools` placeholder (`SKILL.md.template`, rename to `SKILL.md` and fill in your tool inventory)
+- Embedded skill presets: `service/engine/skillsTemplates/Skills/` — same layout as the runtime folder. On first start `checkSkillsFolder()` copies the whole tree into `.HackerTeam/Skills/` (installed once; an existing folder is never repopulated) and `makeSkillsWritable()` fixes the read-only embed permissions. The only preset is a `pentest-tools` placeholder (`SKILL.md.template`, rename to `SKILL.md` and fill in your tool inventory); knowledge skills are user-supplied
 - Skill repos re-created automatically on every turn — `reload()` builds one `skill.NewFSRepository(e.SkillsFolderPath)` and `buildAgent()` hands the same repo to both Operator and Worker (no `/flush` needed)
 
 ## Terminology

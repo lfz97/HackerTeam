@@ -1,6 +1,6 @@
 # Vulnerability Definition & Rating Consensus
 
-All Agents must adhere to this consensus. Vulnerability ratings are based on the **technical capability actually obtained by the attacker**, not vulnerability type names or CVSS scores.
+**Operator and Worker** must adhere to this consensus. Vulnerability ratings are based on the **technical capability actually obtained by the attacker**, not vulnerability type names or CVSS scores.
 
 ---
 
@@ -18,9 +18,11 @@ A **vulnerability** is an exploitable system defect that allows an attacker to o
 
 **Not a vulnerability**: version number exposure, internal IP leaks, error messages without sensitive content, theoretically exploitable but practically unreachable configuration issues.
 
+**Confirmed means reproduced.** A vulnerability is confirmed only when the reproduction is recorded and its output exists in a raw file. An anomaly that has not been reproduced is an observation: record it as unverified with `verification: pending_verification`, never as a confirmed vulnerability or a rated row. This changes nothing in the severity criteria below.
+
 ---
 
-## 2. Severity Level Definitions (all Agents use uniformly)
+## 2. Severity Level Definitions (both roles use them uniformly)
 
 ### Critical — System Control or Arbitrary Identity Obtained
 
@@ -85,60 +87,51 @@ Information that is **helpful to an attacker** but cannot directly cause any sub
 
 ---
 
-## 3. Rating Responsibilities per Agent
+## 3. Rating Responsibilities per Role
 
-### Recon Agent
-- **Does NOT output vulnerability ratings.** Recon collects assets and discoveries, not vulnerabilities.
-- Each discovered asset uses the `priority` field, indicating "how much the subsequent Agent should prioritize analysis":
-  - `High` — High-value targets, prioritize analysis (databases, Domain Controllers, admin panels, high-risk ports)
-  - `Medium` — Routine targets
-  - `Low` — Low-value or information-limited targets
-- `overall_priority` summarizes the overall value level of this reconnaissance run.
+Two roles exist: **Operator** and **Worker**. Recon, scanning, verification and post-exploitation are task types, not roles. A Worker executes exactly one task type per dispatch.
 
-### Scanner Agent
-- **Does NOT rate vulnerabilities.** Scanner uses automated tools for batch scanning and outputs "scanner findings," not "confirmed vulnerabilities."
-- Risk labels in scan reports come from the scanner's own classification (nuclei severity, sqlmap risk, etc.) and do NOT represent final ratings.
-- Scanner's value is in coverage — false positives are expected. Vulnerability truth verification and final rating are Exploit Agent's responsibility.
+### Worker
+- **Executes one task type.** Recon, scan, verify, or post-exploit. Returns findings with evidence, a **proposed** severity, and `confidence`.
+- **No rating authority.** The proposed severity is input to the Operator's ruling, never a rating. Never place a Worker proposal in the report as the vulnerability level.
+- **Never present a tool label as a rating.** nuclei severity, sqlmap risk and similar are scanner output, not findings. Quote the label verbatim, state that it is unverified, and in a scan task report a numeric `confidence` no higher than 50 with the verification field set to `pending_verification`.
+- **No label substitutes for evidence.** Every finding carries the raw file path plus the command, request/response, or line that proves it.
+- **Recon findings are not vulnerabilities.** Rate them by `priority` — `High` (databases, Domain Controllers, admin panels, high-risk ports), `Medium` (routine targets), `Low` (low-value or information-limited) — and summarize the run in `overall_priority`.
+- **A verify-task proposal requires reproduction.** State confirmed real / false positive with reason / unable to confirm first, then propose a level. Without reproduction there is no proposal, only "unconfirmed".
+- **Post-exploit proposals use the same standards as every other task type.** Privilege escalation to root/SYSTEM = Critical; Domain Controller credentials obtained = Critical; lateral movement to a new host = High (further Critical outcomes possible on the new host); collected data by sensitivity — core credentials = Critical, business data = High, system information = Medium.
 
-### Exploit Agent
-- **Responsible for vulnerability verification and final technical rating.** Based on Recon's asset data and Scanner's scan report, cross-reference to verify vulnerability authenticity, then rate confirmed vulnerabilities per this consensus.
-- Scanner findings are NOT confirmed vulnerabilities. Exploit MUST explicitly label each Scanner finding's verification result in the report (confirmed real / false positive with reason / unable to confirm).
-- If a Scanner report risk label differs from Exploit's verified rating, Exploit's rating takes precedence, with the reason documented in the report.
-- `status` field distinguishes: `success` (fully confirmed) / `partial` (partially successful) / `failed` (exploit failed) / `unconfirmed` (payload delivered but execution result cannot be confirmed).
+### Operator
+- **Owns every final rating.** No other role assigns one.
+- **Reviews every claim, not only exploitation claims.** A Worker returning "done" proves nothing: read the report file in full, check each claim against a raw output file that exists, check that scanner labels stayed labels, check that `pending_verification` did not survive a verification task.
+- **Downgrades or upgrades only with a specific technical reason** naming the evidence that is missing or present and the section 2 criteria that therefore fail or hold. "Too high" is not a reason.
+- **Preserves the trail.** Keep the Worker's proposed severity, its `confidence`, and the reason for every change.
+- **Gates on confidence.** Any Critical or High proposal below 70% `confidence` goes back for verification before it can stand; until it returns with evidence, it is reported as unverified, not at the proposed level.
 
-### Post-Exploit Agent
-- Rates the **outcomes** of post-exploitation operations, using the same standards as other Agents.
-- Successful privilege escalation (user -> root/SYSTEM) = Critical
-- Domain Controller credentials obtained = Critical
-- Lateral movement to a new host = High (further Critical outcomes possible on the new host)
-- Data collection rating depends on data sensitivity: core credentials = Critical, business data = High, system information = Medium
-
-### Operator Agent
-- **Has the final rating authority.**
-- When reviewing Exploit's ratings, must check: whether the verification process is sufficient, whether evidence supports the level, whether Scanner findings were correctly verified.
-- When downgrading, must give a specific technical reason ("because X evidence is missing, Y level criteria are not met").
-- When upgrading, must similarly give a reason.
-- The final report's vulnerability levels are based on Operator's ruling, but the original analyzing Agent's rating and Operator's adjustment reason must both be preserved.
+### Who Verifies
+- The Operator decides that verification is required and what evidence would settle it. It does not rate on suspicion, and it does not accept a Worker's word in place of a raw output file.
+- The Worker assigned a verification task performs the reproduction and returns the evidence.
+- The Operator re-rates on the returned evidence. A verification task that returns nothing new changes no level.
 
 ---
 
 ## 4. Rating Conflict Resolution
 
-When two Agents give different ratings for the same vulnerability, resolve as follows:
+Conflicts resolve in one direction — tool label, then verified finding, then Operator ruling. Each stage supersedes the one before it.
 
-1. **Exploit's verified result overrides Scanner's finding** — Scanner's report may contain false positives. Exploit's post-verification conclusion (confirmed real / false positive) takes priority over Scanner's original finding.
-2. **Operator has the final ruling authority** — Any Agent's rating can be adjusted by Operator, but the adjustment must have a specific technical reason.
-3. **Reasons must be public** — The reason for each rating adjustment is recorded in the final report.
+1. **Tool label versus verified finding — the finding wins.** A scanner label is a coverage artifact and is expected to contain false positives. A verification task's conclusion (confirmed real / false positive with reason / unable to confirm) replaces the label, whether it raises or lowers the level. Both are recorded.
+2. **Verified finding versus Operator ruling — the ruling wins.** The Operator may set any level the evidence supports, above or below both the label and the Worker's proposal, with a specific technical reason.
+3. **Reasons must be public.** Every change of level is recorded in the final report: from what level, to what level, why, and on which evidence.
+4. **Unresolved conflicts do not resolve upward.** If the evidence cannot settle the disagreement, the finding goes back for verification and is reported as unverified — never at the tool's label and never at the higher of the two.
 
 ---
 
 ## 5. Confidence Field Semantics
 
-All Agents use unified semantics for the `confidence` field:
+Both roles use the same semantics for the `confidence` field:
 
 | Confidence | Meaning |
 |------------|---------|
-| 90-100% | Actually verified and confirmed (e.g., Exploit successfully executed commands, Scanner raw output consistent with Exploit verification) |
+| 90-100% | Actually verified and confirmed (e.g., a verification task executed the command and captured its output, tool raw output consistent with the reproduction) |
 | 70-89% | High probability exists (exact version match for known CVE, multiple information sources cross-confirmed), but not yet actually verified |
 | 50-69% | Medium probability (partial feature match but version range uncertain or interfering factors present) |
 | <50% | Low probability/speculation (based only on indirect information), must flag uncertainty reason in the report |

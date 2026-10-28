@@ -98,12 +98,7 @@ service/engine/prompts/common/
 ├── HackerTeam.yaml          ← 主配置文件
 ├── HackerTeam.log
 ├── memory.db                ← 长期记忆数据库
-├── Skills/                  ← 唯一技能目录（Operator 与 Worker 共用）
-│   ├── hacktricks-recon-methodology/
-│   ├── hacktricks-service-scanning/
-│   ├── hacktricks-web-exploitation/
-│   ├── hacktricks-privesc-postex/
-│   ├── poc-scripting/       ← 复现脚本编写模式
+├── Skills/                  ← 唯一技能目录（Operator 与 Worker 共用，内容由用户添加）
 │   └── pentest-tools/       ← 工具清单占位（SKILL.md.template）
 └── output/                  ← 任务报告与原始输出
     └── poc_scripts/         ← 复现脚本
@@ -144,23 +139,15 @@ description: >-
 
 > Agent 只会「知道」你写进 SKILL.md 的工具 —— 未配置的工具即使已安装也无法被正确调用。
 
-### 预置红队知识
+### 知识型 Skill 由用户添加
 
-首次运行时，`.HackerTeam/Skills/` 除 `pentest-tools` 模板外，还会自动生成全部 HackTricks 蒸馏知识（`hacktricks-*`）与复现脚本知识，开箱即用：
+Skills 目录默认只有 `pentest-tools` 占位模板，不预置任何红队知识。通用概念模型已经具备，精确细节会随版本过期，而各团队的 SOP 差异很大——预置一套通用知识，收益低于维护成本。
 
-| 主题 | 预置 Skill |
-|---|---|
-| **侦察方法论** | `hacktricks-recon-methodology`（外部资产发现、子域名枚举、被动情报、nmap/masscan 用法、WiFi 侦察） |
-| **服务扫描** | `hacktricks-service-scanning`（各服务指纹与爆破、Web 技术栈、AD/Windows 服务） |
-| **Web 利用** | `hacktricks-web-exploitation`（SQLi/XSS/反序列化/文件上传/SSRF 等 12 类攻击手法） |
-| **后渗透** | `hacktricks-privesc-postex`（Linux/Windows 提权、AD、横向移动、隧道、持久化） |
-| **复现脚本** | `poc-scripting`（SQLi/RCE/SSTI/SSRF/XSS/文件上传/协议客户端，含 verification 签名判断与 PoC 安全规范） |
+需要时在 `.HackerTeam/Skills/<name>/SKILL.md` 下自建技能，索引在下一轮对话自动生效。写什么：特有 SOP、专有工具用法、版本边界、成功/失败签名；不必写：通用概念、工具教程、能在官方文档里查到的参数。
 
 - 知识以 `SKILL.md` + `references/` 形式注入，references 仅按需读取，不占每轮提示词
 - Operator 与 Worker 读同一份 `Skills/` 索引；增删改直接在 `.HackerTeam/Skills/` 下对应目录操作，下一轮对话生效
 - 删除某个技能目录后 Operator 与 Worker 同时失去它
-
-> **版权说明**：`hacktricks-*` skill 为 [HackTricks](https://book.hacktricks.xyz)（作者 Carlos Polop）知识的方法论蒸馏与改编，references 内容裁剪自原站对应章节。遵循 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 许可分发，使用时保留本署名。
 
 ### 配置示例
 
@@ -314,7 +301,6 @@ description: >-
   - repo: https://github.com/fortra/impacket
 ```
 
-**复现脚本** — `.HackerTeam/Skills/poc-scripting/` — 预置内容，无需额外配置即可使用。
 
 ---
 

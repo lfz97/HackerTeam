@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 首次启动：Skills 目录一次性装齐嵌入模板（5 个技能 + 1 个工具清单占位）。
+// 首次启动：Skills 目录只安装 pentest-tools 占位模板；知识型 skill 由用户自行添加。
 func TestCheckSkillsFolderInstallsAllTemplates(t *testing.T) {
 	env := &BootEnv{ConfigFolderPath: t.TempDir()}
 	if err := env.checkSkillsFolder(); err != nil {
@@ -16,17 +16,6 @@ func TestCheckSkillsFolderInstallsAllTemplates(t *testing.T) {
 	skillsDir := filepath.Join(env.ConfigFolderPath, skillsFolder)
 	if env.SkillsFolderPath != skillsDir {
 		t.Fatalf("SkillsFolderPath = %q, want %q", env.SkillsFolderPath, skillsDir)
-	}
-	for _, name := range []string{
-		"hacktricks-recon-methodology",
-		"hacktricks-service-scanning",
-		"hacktricks-web-exploitation",
-		"hacktricks-privesc-postex",
-		"poc-scripting",
-	} {
-		if _, err := os.Stat(filepath.Join(skillsDir, name, "SKILL.md")); err != nil {
-			t.Errorf("skill %s missing: %v", name, err)
-		}
 	}
 	// pentest-tools 只是可编辑的占位模板，不是 skill
 	if _, err := os.Stat(filepath.Join(skillsDir, "pentest-tools", "SKILL.md.template")); err != nil {
@@ -45,7 +34,7 @@ func TestCheckSkillsFolderExistingIsNoop(t *testing.T) {
 	if err := env.checkSkillsFolder(); err != nil {
 		t.Fatalf("checkSkillsFolder: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(skillsDir, "hacktricks-recon-methodology")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(skillsDir, "pentest-tools")); !os.IsNotExist(err) {
 		t.Fatalf("existing Skills folder must not be repopulated, stat err = %v", err)
 	}
 }

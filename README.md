@@ -2,14 +2,15 @@
 
 > **仅供授权渗透测试和安全研究使用。请遵守当地法律法规。**
 
-HackerTeam 是面向专业渗透测试人员的 **AI 驱动渗透测试平台**，将大语言模型与本地 PTY 命令执行结合，由 Operator 在共享共识约束下自己动手推进任务，并按需把可并行的广度工作交给无状态 Worker。
+HackerTeam 是面向专业安全研究人员的 **AI 驱动安全研究平台**。工作单元是可证伪的问题，不是扫描阶段：Operator 持有 shell、建立目标模型、维护假设台账并推进攻击链；只有需要判断的硬问题才交给 Worker，枚举、扫描、抓取和格式化交给脚本。
 
 **核心优势：**
 - **独立二进制部署** — 单文件，无运行时依赖，Linux/macOS 开箱即用
 - **Operator 自执行** — 主 agent 直接持有 shell、读原始输出、构建攻击链，不做只转发任务的调度器
-- **无状态 Worker 并行** — 同一套工具/技能/模型的临时副本，无记忆、无委派，适合批量枚举与独立复核
-- **可扩展 Skill 配置** — Operator 与 Worker 共享一个 Skill 目录，支持 MCP 热扩展
-- **内置完整操作工具** — PTY 命令管理 + 文件系统工具，覆盖渗透全流程
+- **无状态 Worker 探针** — 同一套工具/模型的临时副本，一次只回答一个硬问题，带回证据与结论；批量枚举不是它的工作
+- **工作路由** — 机械 / 判断 / 混合三类；能预先写出完整命令序列的工作不进 agent
+- **可扩展 Skill 配置** — Operator 与 Worker 共享一个 Skill 目录，默认只带工具清单模板，知识由用户按需添加
+- **内置操作工具** — PTY 命令管理 + 文件系统工具，覆盖执行、取证与复核
 
 ---
 
@@ -38,7 +39,7 @@ HackerTeam 是面向专业渗透测试人员的 **AI 驱动渗透测试平台**�
 系统只有两个角色，共用同一份实现：同一套模型参数、同一批执行工具、同一个技能库、同一套上下文压缩策略。差别只在提示词、额外工具与状态权限。
 
 - **Operator** — 唯一与用户对话的 agent，自己执行工作：持有 shell、读原始输出、构建攻击链、审核证据、定级、出最终报告；同时维护 `todo_write` 计划和长期记忆。
-- **Worker** — 一次性无状态助手。它只看得到 Operator 写进 brief 的内容，没有记忆、没有 todo、没有调度权；做完一件事，把报告与结构化结论落盘后退出。
+- **Worker** — 一次性有界探针。它只看得到 Operator 写进 brief 的内容，没有记忆、没有 todo、没有调度权；回答一个硬问题，把证据与结论落盘后退出。
 
 Worker 不是另一套专家实现，也不是调度器的延伸：它运行在隔离会话里，但与 Operator 共享同一个 LocalExec 作业表——它起的后台任务，Operator 用 `CommandStatus` 直接能查。交互式会话（ssh、msfconsole、反弹 shell）只能由 Operator 持有。
 
@@ -47,7 +48,7 @@ Worker 不是另一套专家实现，也不是调度器的延伸：它运行在�
         │
   Operator（todo_write + 记忆）
         │  自己跑命令 / 读输出 / 构建攻击链
-        │  只有广度或可并行的任务才派发
+        │  只有需要判断的硬问题才派发
         ▼
   start_task_run ──▶ Worker（隔离会话，无记忆）
         │                  │
@@ -62,13 +63,13 @@ Worker 不是另一套专家实现，也不是调度器的延伸：它运行在�
 | Agent | 职责 | 工具 |
 |-------|------|------|
 | **Operator** | 规划、亲自执行、按需派 Worker、审核证据、定级、出报告、维护记忆 | 全部执行工具 + Skills + MCP + `todo_write` + memory 工具 + taskrun 调度工具 |
-| **Worker** | 执行一个自包含 brief，产出报告与结构化结论 | 全部执行工具 + Skills + MCP（无 memory / todo / 调度权） |
+| **Worker** | 回答一个硬问题（假设与否证），产出证据与结论 | 全部执行工具 + Skills + MCP（无 memory / todo / 调度权） |
 
 **派发是 pull 模型：** `start_task_run` 默认 `async`，立即返回 run id；只有下一步决策依赖结果时才用 `sync`。Operator 用 `wait_task_run(timeout)` 做有界等待、`get_task_run` 查状态、`read_task_run_transcript` 看运行中进度、`cancel_task_run` 停止。等待超时不会取消任务。
 
 **结果以文件为准：** 框架只保留 Worker 叙述的前约 4000 字符，`result` 只能当存活信号。真正的结论在 `TASK-<task_id>_result.json`，完整报告与原始输出在 `TASK-<task_id>_<time>_<type>_result.md` / `TASK-<task_id>_<time>_raw/`。Worker 返回 "done" 不构成证据，Operator 必须读文件复核。
 
-**派发边界：** 一两条命令能做完的事 Operator 自己跑；brief 必须写清 `task_id`、`OBJECTIVE`、`SCOPE`、`INPUTS`、`DELIVERABLE`、`SUCCESS`。缺 `INPUTS` 对应的真实文件，就还没准备好派发。
+**派发边界：** 能预先写出完整命令序列的事不派 agent。brief 必须写清 `task_id`、`CLASS`、`QUESTION`、`SCOPE`、`PRIOR EVIDENCE`、`HYPOTHESES`、`PROBE`、`FALSIFIER`、`BUDGET`、`DELIVERABLE`；research 类缺假设或否证条件，就还没准备好派发。
 
 ### 共享共识
 
@@ -84,8 +85,8 @@ service/engine/prompts/common/
 
 | 共识文件 | 核心内容 |
 |----------|----------|
-| **vuln_consensus** | 漏洞定义（攻击者获得了什么技术能力）、严重性等级（Critical/High/Medium/Low）纯技术标准、执行者的定级职责、定级冲突解决流程、Confidence 语义 |
-| **output_consensus** | 报告格式（MD only）、原始输出必须保存到 `TASK-{id}_*_raw/`、对话回复 JSON 通用字段、命令记录规范、**漏洞结构化块**（YAML 格式，为 PoC 脚本提供满信号数据：entry_point / payload / verification / prerequisites / evidence） |
+| **vuln_consensus** | 漏洞定义（攻击者获得了什么技术能力）、严重性等级（Critical/High/Medium/Low）纯技术标准、Operator 与 Worker 的定级职责、定级冲突解决流程、Confidence 语义 |
+| **output_consensus** | 报告格式（Markdown，另有 JSON verdict sidecar）、原始输出必须保存到 `TASK-{id}_*_raw/`、Research Note 与 negative results、命令记录规范、**漏洞结构化块**（YAML 格式，为 PoC 脚本提供满信号数据：entry_point / payload / verification / prerequisites / evidence） |
 
 **定级原则：** 抛弃 CVSS 评分，从攻击者实际获得的技术能力出发 —— 拿到 Shell / 拿到任意身份 / 拿到核心凭证 → Critical；能读敏感数据 / 能越权 / 能打通内网 → High。
 
@@ -145,7 +146,7 @@ Skills 目录默认只有 `pentest-tools` 占位模板，不预置任何红队�
 
 需要时在 `.HackerTeam/Skills/<name>/SKILL.md` 下自建技能，索引在下一轮对话自动生效。写什么：特有 SOP、专有工具用法、版本边界、成功/失败签名；不必写：通用概念、工具教程、能在官方文档里查到的参数。
 
-- 知识以 `SKILL.md` + `references/` 形式注入，references 仅按需读取，不占每轮提示词
+- 知识以 `SKILL.md` + `references/` 形式按需加载，references 只在需要时读取，不常驻提示词
 - Operator 与 Worker 读同一份 `Skills/` 索引；增删改直接在 `.HackerTeam/Skills/` 下对应目录操作，下一轮对话生效
 - 删除某个技能目录后 Operator 与 Worker 同时失去它
 
@@ -327,9 +328,9 @@ Operator 与 Worker 挂载同一套执行工具，并共享同一个 LocalExec �
 | 工具集 | 工具 | 功能 |
 |--------|------|------|
 | **FileSystem** | `LS` / `Mkdir` / `CP` / `MV` / `Glob` | 文件系统导航与操作 |
-| **FileOps** | `read` / `write` / `edit` / `search` / `delete` / `stat` / `diff` | 文件读写与搜索 |
-| **LocalExec** | `run` / `status` / `output` / `intervene` / `kill` | PTY 命令管理 |
-| **Skills** | 知识注入 | 将 SKILL.md 内容注入系统提示词 |
+| **FileOps** | `read` / `write` / `edit` / `Grep` / `delete` / `stat` / `diff` | 文件读写与搜索 |
+| **LocalExec** | `CommandRun` / `CommandStatus` / `CommandOutput` / `CommandIntervene` / `CommandKill` | PTY 命令管理 |
+| **Skills** | 知识注入 | 按需加载 SKILL.md，内容随工具结果返回，不常驻系统提示词 |
 | **MCP** | 配置声明的工具 | 安装的 MCP server 工具，实例共享 |
 
 Operator 另外挂载三组状态与调度工具，Worker 一个都没有：
@@ -340,7 +341,7 @@ Operator 另外挂载三组状态与调度工具，Worker 一个都没有：
 | memory 工具 | `memory_search` / `memory_load` / `memory_update` 等长期记忆读写 |
 | taskrun 工具 | `start_task_run` / `list_task_runs` / `get_task_run` / `wait_task_run` / `read_task_run_transcript` / `cancel_task_run` |
 
-Worker 只做短任务：没有跨轮记忆、不能派活、不能向用户提问。长任务、交互式会话和需要历史上下文的判断都由 Operator 自己承担。
+Worker 只回答一个硬问题：没有跨轮记忆、不能派活、不能向用户提问。需要历史上下文的判断、交互式会话和跨轮推进都由 Operator 自己承担。
 
 ---
 

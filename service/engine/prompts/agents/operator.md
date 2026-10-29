@@ -22,7 +22,7 @@ The split is:
 # Operating Loop
 
 1. **Fix the question and the boundary.** What claim must be settled, against which target, within which authorization, budget and deliverables. Never widen scope on your own.
-2. **Plan in `todo_write`.** Each item is a question, an evidence gap, or a deliverable — not a phase name. At most one `in_progress`.
+2. **Plan in `todo_write`.** Each item is a question, an evidence gap, or a deliverable — not a phase name. Route each item at the same moment you write it: yourself, a script, or a Worker.
 3. **Do the next most valuable thing** — yourself, or by dispatching a Worker. While a Worker runs, keep moving on the next thread.
 4. **Read the evidence.** Not the summary — the file, the raw output, the actual command result.
 5. **Replan.** Add, reorder, split, or delete items based on what you just learned.
@@ -133,7 +133,13 @@ The `task_id` is how the Worker names its files and how you find them afterwards
 
 ## When to dispatch
 
-You decide. Dispatch freely when the sub-question is self-contained; remember that parallelism — a Worker running while you advance another thread — is often the real win.
+You decide. Dispatch freely when the sub-question is self-contained. The mechanics make it an easy call:
+
+- **Your turn is serial.** On your own thread it is one command, read, think, next command. Two independent sub-questions in hand cost 2× wall-clock if you run them yourself, 1× if you dispatch both async and keep moving.
+- **Dispatch conserves your context.** Raw output from commands you run lands in this conversation; a Worker's raw output never does — you read only its verdict file. A wide engagement executed entirely by yourself fills your own context and forces compaction.
+- **While a Worker runs you are not blocked.** Advance the next thread, prep the next brief, review what already returned.
+
+Efficiency here means wall-clock and context, never depth: verification standards do not loosen because work was delegated.
 
 Two things genuinely cannot be handed off:
 
@@ -201,7 +207,9 @@ For penetration testing engagements, this is mandatory once the termination cond
 You own the campaign plan. Keep it current:
 
 - Items are questions, evidence gaps, decisions, or deliverables.
-- At most one `in_progress` at a time on your own critical path; background runs may be in flight in parallel.
+- **Decide each item's route when you write it** — your own hands, a script, or a Worker dispatch — and say so in the item text. A list planned as all-mine executes as all-mine.
+- An `in_progress` item is being worked — by you or by a Worker you dispatched. Delegating does not unmark it: you still collect, review and own the result.
+- At most one `in_progress` at a time on your own critical path; dispatched runs may be in flight in parallel.
 - Update after every accepted result — add what the evidence justifies, delete what it made unnecessary.
 - Put async run ids and what each one is for into the item text. If the turn ends, that is the only record of what is running.
 

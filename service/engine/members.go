@@ -156,7 +156,8 @@ func (e *Engine) assemblePrompt(path string) string {
 	// {{OUTPUTDIR}} 之前在 env.md 里替换，agent 提示词（报告路径、结果目录）拿到的
 	// 一直是字面量；这里补上，两处统一到同一个本次运行的输出根目录。
 	prompt = strings.ReplaceAll(prompt, "{{OUTPUTDIR}}", (*e).OutputDir)
-	//todo_write 工具使用说明（框架 tool/todo.DefaultToolPrompt，随框架版本走，不在提示词里硬编码）
+	//todo_write 工具使用说明：自定义"路由台账"文案（functions/todo.go customTodoToolPrompt），
+	//替代框架默认的串行执行纪律版本
 	prompt = strings.ReplaceAll(prompt, "{{TODO_PROMPT}}", functionTools.GetTodoToolPrompt())
 	return prompt
 }

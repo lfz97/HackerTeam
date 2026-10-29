@@ -45,10 +45,37 @@ func (t todoTool) ResultFormatter() resultformat.Formatter {
 	)
 }
 
-// GetTodoToolPrompt 返回 todo_write 工具的默认使用说明，供队长提示词占位符注入；
-// 调整文案不会改变工具的运行时校验规则。
+// customTodoToolPrompt 是注入队长系统提示词的 todo_write 使用说明。
+//
+// 不用框架 todo.DefaultToolPrompt：那份文案教的是"单条线串行执行纪律"（at most one
+// in_progress、开始前先标记），会把计划时刻的路由决策冻结成全自留清单。这里改定义为
+// "路由台账"：每项带路由（自己/脚本/派发 Worker），派发的 run 记在条目文本里，事实
+// 变了要重路由。
+//
+// 文案必须遵守的运行时硬约束（todo.validateTodos 代码级强制，违反调用直接报错）：
+// content/activeForm 非空、content 唯一、status ∈ pending|in_progress|completed、
+// 至多一个 in_progress。文案里"Rules (enforced by the tool)"一节与其保持一致。
+const customTodoToolPrompt = `## Task ledger (todo_write)
+
+todo_write is the routing ledger for the engagement, not a queue you must grind through yourself.
+
+Each item records one piece of work with its route:
+- content:    the question or deliverable plus its route — yourself, a script, or a Worker dispatch (include async run ids once dispatched).
+- activeForm: present-continuous form, e.g. "Verifying captcha bypass".
+- status:     pending | in_progress | completed.
+
+Rules (enforced by the tool — violating calls fail):
+- At most ONE item in_progress: your own critical path. Dispatched runs are recorded in item text and tracked via list_task_runs, not as extra in_progress items.
+- content and activeForm non-empty; content unique across the list.
+- Each call replaces the entire list — send the full updated list every time.
+- Mark a task completed immediately when it is done; keep it pending until then.
+
+Re-route as facts change: an item planned as self-work that turns out to be a pre-writable, self-contained discriminator becomes a dispatch; an item blocked on a Worker becomes yours again when it returns needs_input.`
+
+// GetTodoToolPrompt 返回 todo_write 工具的使用说明，供队长提示词占位符注入。
+// 文案见 customTodoToolPrompt（自定义的"路由台账"版本，运行时校验规则不受影响）。
 func GetTodoToolPrompt() string {
-	return todo.DefaultToolPrompt
+	return customTodoToolPrompt
 }
 
 // 状态栏渲染参数上限：pending 条数，避免清单过长撑爆尾部消息。

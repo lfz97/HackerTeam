@@ -111,7 +111,7 @@ func (e *Engine) initOperator() (*llmagent.LLMAgent, error) {
 	return e.buildAgent(agentSpec{
 		name:          operatorName,
 		promptPath:    "prompts/agents/operator.md",
-		description:   "Operator — owns the engagement: executes hands-on work directly and dispatches stateless Workers for breadth tasks. Talks to the user.",
+		description:   "Operator — owns the engagement and its outcomes: works hands-on, dispatches self-contained sub-questions to stateless Workers, and verifies what they return. Talks to the user.",
 		extraTools:    extra,
 		todoSink:      e,
 		withTodo:      true,

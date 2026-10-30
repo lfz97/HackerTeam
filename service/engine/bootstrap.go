@@ -7,6 +7,7 @@ import (
 	"HackerTeam/service/engine/config"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	stdlog "log"
 	"os"
@@ -164,13 +165,19 @@ func makeSkillsWritable(root string) error {
 }
 
 // redirectFrameworkLog 将框架/mcp/标准库的日志输出重定向到 HackerTeam.log。
+// 日志文件打不开（如 exe 放在 Program Files 等只读目录）时降级为 io.Discard 黑洞：
+// 重定向的第一目标是防止日志污染 TUI 终端，宁可丢弃日志也不回退到 stdout/stderr。
 func (env *BootEnv) redirectFrameworkLog() {
 	logPath := filepath.Join(env.ConfigFolderPath, hackerTeamLogFile)
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		return
+	sink := zapcore.AddSync(io.Discard)
+	if logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+		env.LogFile = logFile
+		sink = zapcore.AddSync(logFile)
+	} else {
+		// 日志去哪了必须告知：走 bootNotices，absorb 时经 setNotice 上屏
+		// （状态槽位 + 每帧拉取，TTL 内不惧与 TUI 启动的并发时序）
+		env.Notices = append(env.Notices, bootNotice{NoticeWarning, "log file not writable, framework logs discarded"})
 	}
-	env.LogFile = logFile
 	encoderCfg := zapcore.EncoderConfig{
 		TimeKey:        "ts",
 		LevelKey:       "lvl",
@@ -186,7 +193,7 @@ func (env *BootEnv) redirectFrameworkLog() {
 	}
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderCfg),
-		zapcore.AddSync(logFile),
+		sink,
 		zapcore.DebugLevel,
 	)
 	fileLogger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1)).Sugar()
@@ -198,5 +205,5 @@ func (env *BootEnv) redirectFrameworkLog() {
 	mcp.SetDefaultLogger(fileLogger)
 
 	//重定向标准库 log 到文件（避免 gse 等第三方库的日志污染终端）
-	stdlog.SetOutput(logFile)
+	stdlog.SetOutput(sink)
 }

@@ -27,6 +27,7 @@
 - Agent framework: `trpc.group/trpc-go/trpc-agent-go`, MCP: `trpc.group/trpc-go/trpc-mcp-go`
 - LLM backends: OpenAI-compatible API or Anthropic native SDK
 - Config auto-generated at first run: `<binary-dir>/.HackerTeam/HackerTeam.yaml`
+- `observability` 配置段（Langfuse trace 上报，默认 `enabled: false`）：`service`(仅 "langfuse")/`host`(host:port 无 scheme)/`public`/`secret`/`insecure`/`enabled`；留空字段回落 `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY`/`LANGFUSE_HOST` 环境变量；启用后对话内容（含渗透测试操作与输出）会上报 Langfuse，建议只用自部署实例；本段改动需重启进程生效
 - MCP servers declared in config: `http_mcp`（sse/streamable_http）与 `stdin_mcp`（stdio）两个列表，`enabled` 开关控制；`name` 必须唯一（决定工具前缀 `{name}_{toolName}`，缺省时分配 `mcp_N` 默认名）；每个可配 `timeout` 字段（单位/秒，`<=0` 落默认值 `defaultMCPTimeout = 2min`）——框架把超时包在**每次 CallTool 上**（不是连接超时），长分析型调用务必调大；启用的 server 挂载给 Operator 与 Worker，同一实例跨 agent 共享
 - TUI colors centralized in `utils/pretty/pretty.go` (TuiXxx constants)
 - `/new`, `/exit`, `ESC` — built-in TUI commands（`/flush` 已移除；每轮 run 重建配置/技能/MCP工具集，内置工具与工具集（localexec）常驻、跨轮复用）
@@ -47,7 +48,8 @@
   - `status.go` — per-request status bar: base time/CWD/memory for both agents; todo / memory / in-flight sections only for Operator (`agentSpec` flags)
   - `engineRun.go` — dialog loop + single-turn execution (`agentRunIteratively`/`agentRunOnce`), turn types, merged from old `handler/runIteratively.go` + `runOnce.go` + `model.go` + `bootstrap/Bootstrap.go`
   - `messagerender/` — message rendering subpackage（`MessageRender.RenderResponse` 每 choice 调一次 → stream/non-stream 事件渲染 + 工具消息 gather/render）；`messageRender.go` + `toolmessagebuffer.go`。由 `engineRun.go` 事件循环调用
-  - `config/` — `config.go` (Config struct + `LoadConfig`), `config.yaml` (checked-in sample user config), `mcp.go` (HttpMCP/StdinMCP 配置结构体), `template.go` (YAML template via `//go:embed`，含 `http_mcp`/`stdin_mcp` 示例段)
+  - `config/` — `config.go` (Config struct + `LoadConfig`), `config.yaml` (checked-in sample user config), `mcp.go` (HttpMCP/StdinMCP 配置结构体), `observability.go` (Observability 配置结构体), `template.go` (YAML template via `//go:embed`，含 `http_mcp`/`stdin_mcp`/`observability` 示例段)
+  - `observability/` — `observability.go` (ObserverService 接口 + 工厂) + `langfuse.go` (Langfuse trace 启停/收尾，含 otel.SetErrorHandler 导流与 5s 超时 Stop)
   - `memory/sqlite.go` — SQLite memory service factory (no extractor; explicit memory tools only)
   - `session/` — summarizer, session service, prompt embedding (`prompt/*`)
   - `models/` — LLM provider constructors (OpenAI, Anthropic SDK wrappers)
@@ -79,6 +81,7 @@
 - "Planner" as an agent = a separate LLMAgent invoked through `start_task_run` for structured plans. Architecturally different from `WithPlanner()`. Currently NOT used — Operator's own prompt handles planning; a separate planner agent adds a round-trip without benefit.
 
 ## Agent Framework Gotchas
+- **Langfuse 可观测性（`service/engine/observability/`）** — `ObserverService` 接口 + langfuse 实现，装在 `Engine.Init`（flush 之后、setBootState 之前）。三条硬约束：① **`langfuse.Start` 每进程只能调一次**——框架对已存在的 SDK provider 走 `RegisterSpanProcessor` 追加分支，二次调用所有 span 双份导出，所以刻意不进 `flush()` 重建链（改配置需重启）；② **`otel.SetErrorHandler` 必须设**（`langfuse.go` Start 里已设）——OTel 默认错误 handler 自建 `log.New(os.Stderr)`，bootstrap 的 `stdlog.SetOutput` 重定向拦不住它，alt-screen 下后台导出持续失败会撕碎 TUI，已导流进框架 `log.Default`（= HackerTeam.log）；③ **`Stop` 自带 5s 超时**——收尾是同步上传（OTLP client 10s 请求超时 × retry 退避），无 deadline 会挂住 `/exit`；且 ctx 必须新鲜，不能传已取消的 turn ctx。`Shutdown` 里 ob 排在 taskService/runner/MCP/localexec 之后（在跑 Worker 的 span 先 End，尾批 flush 才完整）。Init 三分支各推一条 notice：未知 service → warning、Start 失败 → warning（软失败不 `parkWithFatal`：观测后端不可用不阻断会话）、成功 → success（注意 `Start` 成功 ≠ 后端可达，启动路径无网络 I/O，导出失败只进 HackerTeam.log）。yaml 非空字段转 `Option`、框架内部先读 env 再应用 opts——"yaml 优先、env 兜底"无需合并逻辑。
 - Operator executes directly; it is not a dispatcher. `start_task_run` is pull-based and parallel-safe: multiple Workers can run concurrently in isolated child sessions, but they share the Operator's LocalExec job table, so concurrent shell work must not fight over the same interactive session. Interactive sessions stay with Operator.
 - `LocalExec` blocks up to 20s — it returns status/exit code/output inline if the command finishes within that window, otherwise switches it to background execution and returns the job id; agents then use `CommandStatus` / `CommandOutput` / `CommandIntervene` / `CommandKill`. The old `submit_command` + mandatory-poll workflow is gone
 - **One localexec Manager for the whole instance** — `builtinAssets()` builds a single `execToolSet`, and both Operator and Worker mount the same instance. Jobs started by a Worker remain visible to Operator. `Close()` kills every unfinished command and clears the registry on exit. Do not create a Manager per agent: that would split the job table and orphan Worker-launched processes.

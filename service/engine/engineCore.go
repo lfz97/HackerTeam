@@ -11,9 +11,11 @@ import (
 	"sync/atomic"
 
 	"HackerTeam/service/engine/config"
+	"HackerTeam/service/engine/observability"
 	"github.com/google/uuid"
 	"trpc.group/trpc-go/trpc-agent-go/agent/llmagent"
 	"trpc.group/trpc-go/trpc-agent-go/agent/taskrun/inprocess"
+	"trpc.group/trpc-go/trpc-agent-go/log"
 	"trpc.group/trpc-go/trpc-agent-go/memory"
 	"trpc.group/trpc-go/trpc-agent-go/runner"
 	"trpc.group/trpc-go/trpc-agent-go/session"
@@ -72,6 +74,11 @@ type Engine struct {
 	// SkillsFolderPath 合并后的技能目录：Operator 与 Worker 共用同一份索引。
 	SkillsFolderPath string
 
+	// ob 是可观测服务（Langfuse trace 上报），进程级一次性资产：只在 Init 里
+	// 装配并 Start，刻意不进 flush 重建链（langfuse.Start 二次调用会双份导出）。
+	// 成功才发布，失败/未启用为 nil。
+	ob observability.ObserverService
+
 	// errBudget：连续错误自动重试预算，状态流转见 errorBudget.go
 	errBudget errorBudget
 
@@ -122,6 +129,24 @@ func (e *Engine) Init() {
 	if err := e.flush(); err != nil {
 		e.parkWithFatal(FatalError, err.Error(), true)
 		return
+	}
+	if (*e).Config_p.Observability.Enabled {
+		obs := (*e).Config_p.Observability
+		ob := observability.NewObservabilityService(observability.ServiceType(obs.Service), obs.Public, obs.Secret, obs.Host, obs.Insecure)
+		if ob == nil {
+			e.setNotice(NoticeWarning, fmt.Sprintf("observability service %q is not supported, tracing disabled", obs.Service))
+		} else if err := ob.Start(); err != nil {
+			// 软失败：观测后端不可用不阻断会话（对比 parkWithFatal 的硬失败路径）。
+			// 配置层错误（host/key 缺失等）在这里零反馈会让人以为 tracing 开着。
+			e.setNotice(NoticeWarning, fmt.Sprintf("observability start failed (%v): tracing disabled", err))
+		} else {
+			// 成功才发布 e.ob——Shutdown 的 nil 判定因此语义准确。
+			// 注意 langfuse.Start 成功 ≠ 后端可达（启动路径无网络 I/O），
+			// 首批导出失败只会进 HackerTeam.log（见 observability/langfuse.go
+			// 的 otel.SetErrorHandler）。
+			(*e).ob = ob
+			e.setNotice(NoticeSuccess, "langfuse tracing enabled")
+		}
 	}
 	if env.ConfigCreated {
 		// 快照模板 model 块为配置页预填值并进入 config 态（成对写入见 setBootState）。
@@ -307,6 +332,13 @@ func (e *Engine) Shutdown() {
 	}
 	if (*e).execToolSet != nil {
 		(*e).execToolSet.Close() //localexec：kill残留运行命令并清空注册表
+	}
+	// ob 最后停：在跑 Worker 的 span 要先 End，尾批 flush 才完整（Stop 自带
+	// 5s 超时，Langfuse 不可达不会挂住 /exit；失败仅日志）。
+	if (*e).ob != nil {
+		if err := (*e).ob.Stop(); err != nil {
+			log.Default.Warnf("observability shutdown: %v", err)
+		}
 	}
 }
 

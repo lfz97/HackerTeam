@@ -16,6 +16,19 @@ model:
   httptimeout: 3600 # 单位/秒
   show_reasoning: false   # 显示推理内容，默认 false（不显示）
 
+# 可观测性（Langfuse trace 上报，默认关闭）：启用后每次模型调用/工具调用自动上报
+# host 为 host:port 格式（不带 https:// 前缀）：云端 cloud.langfuse.com:443，本地 localhost:3000（须 insecure: true）
+# public/secret/host 留空的字段可用环境变量提供：LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST
+# 注意：启用后对话内容（含渗透测试的操作与输出）会上报 Langfuse 服务器，建议只用自部署实例
+# service 当前仅支持 "langfuse"；本段配置改动需重启进程生效
+observability:
+  service: "langfuse"
+  host: ""
+  public: ""
+  secret: ""
+  insecure: false
+  enabled: false
+
 # MCP server 配置（可选）。启用的 server 会挂载给全部 agent（含队长），实例跨 agent 共享。
 # timeout 单次工具调用的超时（单位/秒），不填默认 120；长耗时 server（扫描/分析类）务必调大
 # http_mcp：SSE / streamable_http 传输

@@ -2,9 +2,9 @@
 
 > **仅供授权渗透测试和安全研究使用。请遵守当地法律法规。**
 
-HackerTeam 是面向专业安全研究人员的 **AI 驱动安全研究平台**。工作单元是可证伪的问题，不是扫描阶段：Operator 持有 shell、建立目标模型、维护假设台账并推进攻击链；只有需要判断的硬问题才交给 Worker，枚举、扫描、抓取和格式化交给脚本。
+HackerTeam 是面向授权安全测试的 **AI 终端助手**。工作围绕可验证的具体问题推进：Operator 持有 shell、维护假设台账、逐步执行与验证；只有需要判断的硬问题才交给 Worker，枚举、扫描、抓取和格式化交给脚本。
 
-**核心优势：**
+**主要特点：**
 - **独立二进制部署** — 单文件，无运行时依赖，Linux/macOS 开箱即用
 - **Operator 自执行** — 主 agent 直接持有 shell、读原始输出、构建攻击链，不做只转发任务的调度器
 - **无状态 Worker 探针** — 同一套工具/模型的临时副本，一次只回答一个硬问题，带回证据与结论；批量枚举不是它的工作
@@ -448,6 +448,33 @@ model:
 - **智能预加载**：每轮开始注入 10 条记忆（`[MEMORY]` 块），其余通过 `memory_search` / `memory_load` 检索
 - **SQLite 持久化**：单文件 `memory.db`，零运维，重启不丢失
 - **Worker 无记忆**：它只看到 brief 中显式写出的内容，读完即弃
+
+## 可观测性（可选）
+
+默认关闭，配置 `.HackerTeam/HackerTeam.yaml` 的 `observability` 段即可开启（改动需重启进程生效）：
+
+```yaml
+observability:
+  service: "langfuse"
+  host: "cloud.langfuse.com:443"   # 自建实例用 host:port，并设 insecure: true
+  public: ""                       # 留空则读 LANGFUSE_PUBLIC_KEY
+  secret: ""                       # 留空则读 LANGFUSE_SECRET_KEY
+  insecure: false
+  enabled: true
+```
+
+开启后每次模型调用与工具调用都会作为 trace 上报。上下文压缩触发时，trace 中额外出现两个阶段 span：
+
+- `llmflow.context_compaction.create_summary` — 摘要生成
+- `llmflow.context_compaction.rebuild` — 压缩后请求重建
+
+压缩的最终结果（`success` / `no_update` / `summary_error` / `rebuild_unavailable` / `persistence_error` / `post_count_error`）以结构化日志写入 `HackerTeam.log`，可直接检索：
+
+```bash
+grep "Pre-LLM context compaction result" HackerTeam.log
+```
+
+> 启用后对话内容（含渗透测试的操作与输出）会上报 Langfuse 服务器；敏感场景建议只使用自部署实例。
 
 ## 构建
 

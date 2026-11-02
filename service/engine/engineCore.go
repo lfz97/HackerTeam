@@ -78,6 +78,7 @@ type Engine struct {
 	// 启动状态（BootXxx 常量，经 FirstStartupJSON 暴露给 TUI）：
 	// booting → （首次启动）config → ready，或 booting → ready。
 	// firstStartupFields 是 config 态下配置页的预填值快照。
+	// 两个字的写入只经 setBootState（同一临界区成对写），别处裸写即数据竞争。
 	bootState          string
 	firstStartupFields map[string]string
 
@@ -123,10 +124,11 @@ func (e *Engine) Init() {
 		return
 	}
 	if env.ConfigCreated {
-		e.enterFirstStartup()
+		// 快照模板 model 块为配置页预填值并进入 config 态（成对写入见 setBootState）。
+		e.setBootState(BootConfigNeeded, templateModelFields(e.Config_p.Model))
 		return
 	}
-	e.setBootState(BootReady)
+	e.setBootState(BootReady, nil)
 }
 
 // flush 释放上一轮装配的运行时资产后重跑 ⑥–⑩ + newRunner。
@@ -199,8 +201,7 @@ func (e *Engine) ApplyFirstStartupConfig(vals map[string]string) error {
 		e.setFatal(FatalError, err.Error(), true)
 		return err
 	}
-	e.firstStartupFields = nil
-	e.setBootState(BootReady)
+	e.setBootState(BootReady, nil) // 成对写：清空预填值 + 推进状态，同一临界区（裸写 firstStartupFields 是数据竞争）
 	e.setStartupInfo(e.startupInfoLines())
 	return nil
 }

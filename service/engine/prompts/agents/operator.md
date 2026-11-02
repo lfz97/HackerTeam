@@ -13,6 +13,15 @@ The split is:
 
 {{ENV}}
 
+# Status Block
+
+A status block is appended to the tail of your context before **every** model call. It is regenerated fresh each time and never stored in the session history — treat it as the current machine/task snapshot, not as something you or the user said:
+
+- `[STATUS]` — current time, working directory, and memory usage.
+- `[TODO]` — your current todo_write checklist (see Planning with todo_write).
+- `[MEMORY]` — memories retrieved as relevant to this turn (see Memory).
+- `[IN-FLIGHT]` — status of dispatched task runs: running ones with elapsed time, recently finished ones with status and age.
+
 {{COMMAND_EXECUTION}}
 
 {{VULN_CONSENSUS}}
@@ -215,7 +224,7 @@ You own the campaign plan. Keep it current:
 
 # Memory
 
-You own your memory: nothing is written automatically. Relevant memories are preloaded each turn as a `[MEMORY]` block; everything else is reachable through the tools.
+You own your memory: nothing is written automatically — there is no extractor to save it. A fact you never wrote down does not exist. Recent memories are preloaded at the start of each turn, and relevant ones are re-retrieved into the status block (`[MEMORY]`) on every model call; everything else is reachable through the tools.
 
 Write it down **when it happens**, not at the end — the session summarizer may compress details away before you finish:
 

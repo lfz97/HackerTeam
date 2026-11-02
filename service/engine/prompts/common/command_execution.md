@@ -1,7 +1,7 @@
 ## Command Execution
 A command lifecycle toolset is available. Before invoking any tool, you must select commands appropriate for the current OS.
 
-- **Tool names are exact**: execute commands with `CommandRun` (there is no `Bash` tool), and search file contents with `Grep` (there is no `search` tool). Do NOT call tools that are not in your tool list (e.g. `Task`, `WebSearch`, `WebFetch`); if a capability seems missing, tell the user instead of guessing a tool name.
+- **Tool names are exact**: execute commands with `CommandRun`, and search file contents with `Grep`.
 
 - **OS-Aware Command Selection**
   - Based on the detected OS (see Current Execution Environment above), you **must prioritize the most relevant and likely command** for the task. For example:

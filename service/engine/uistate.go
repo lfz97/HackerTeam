@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"HackerTeam/service/engine/config"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
 
@@ -254,26 +255,29 @@ func (e *Engine) FirstStartupJSON() string {
 	return string(b)
 }
 
-// enterFirstStartup 进入首次启动待配置状态并快照模板 model 块预填值。
-// 快照而非活读 Config_p：预填值在进入状态时定格，避免与 pull goroutine 竞态。
-func (e *Engine) enterFirstStartup() {
+// setBootState 推进启动状态，并成对写入配置页预填值快照（nil = 清除）。
+// bootState 与 firstStartupFields 是同一可观察状态的两个字段，FirstStartupJSON
+// （TUI pull goroutine，逐帧）在同一个临界区里成对读取——写入也必须在同一
+// 临界区成对完成，否则读取方会看到"状态已切换而快照未就绪/未清除"的中间态。
+// 所有对这两个字段的写都走这里；在别处裸写即数据竞争。
+func (e *Engine) setBootState(state string, fields map[string]string) {
 	e.mu.Lock()
-	m := e.Config_p.Model
-	e.firstStartupFields = map[string]string{
+	e.firstStartupFields = fields
+	e.bootState = state
+	e.mu.Unlock()
+}
+
+// templateModelFields 快照模板 model 块为配置页预填值（纯函数）。
+// 在进入 config 态前调用并经 setBootState 定格；键集与 engineCore.go 的
+// modelFormKeys（提交侧白名单）成对，增删字段需两处同步。
+// Config_p 此刻只在引擎 goroutine 上读写，无需加锁。
+func templateModelFields(m config.Model) map[string]string {
+	return map[string]string{
 		"model":   m.Model,
 		"baseurl": m.BaseURL,
 		"apikey":  m.APIKey,
 		"apitype": m.APIType,
 	}
-	e.bootState = BootConfigNeeded
-	e.mu.Unlock()
-}
-
-// setBootState 推进启动状态（幂等，last-write-wins）。
-func (e *Engine) setBootState(state string) {
-	e.mu.Lock()
-	e.bootState = state
-	e.mu.Unlock()
 }
 
 // bootStateSnapshot 读取启动状态（agentLoop 的横幅 gate 用）。

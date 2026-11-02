@@ -77,6 +77,11 @@ func (e *Engine) agentRunOnce(Ctx context.Context, userPrompt string) *AgentErro
 		},
 		agent.WithRequestID((*e).RequestId),                //HackerTeam 保留 RequestId 机制（区别于 HyperBot v3 的删除）
 		agent.WithToolCallArgumentsJSONRepairEnabled(true), //开启工具调用参数的JSON修复功能，解决因模型输出格式不规范导致的工具调用失败问题
+		// 开启 pre-LLM 延迟诊断 span（含 compaction 的 summary/rebuild 两段）：
+		// Langfuse 只收 OTel span，不开则压缩阶段在 trace 里是黑盒。
+		// 事件开关显式关掉——诊断 span 已足够，不要往事件流里灌状态事件。
+		agent.WithLatencyDiagnostics(true),
+		agent.WithLatencyDiagnosticsEvents(false),
 	)
 	if err != nil {
 		err = fmt.Errorf("AgentRunner.Run failed: %v", err)

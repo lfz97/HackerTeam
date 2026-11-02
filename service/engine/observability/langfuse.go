@@ -54,7 +54,7 @@ func (l *langfuse) Start() error {
 	if l.insecure {
 		opts = append(opts, lf.WithInsecure())
 	}
-	clean, err := lf.Start(context.Background())
+	clean, err := lf.Start(context.Background(), opts...)
 	if err != nil {
 		return err
 	}

@@ -16,3 +16,5 @@ reproduce/
 # 测试二进制（go test -c 产物，不入库）
 *.test
 .codebuddy/
+# 运行时数据（session.db/logs，不入库）
+/.hyperbot/

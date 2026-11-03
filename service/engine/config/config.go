@@ -15,7 +15,7 @@ type Model struct {
 	AnthropicAuthHeaderTransfer bool   `yaml:"anthropicAuthHeaderTransfer"`
 	Stream                      bool   `yaml:"stream"`
 	ContextWindow               int    `yaml:"contextwindow"`
-	MaxTokens                   int    `yaml:"maxtokens"` // 默认 12800
+	MaxTokens                   int    `yaml:"maxtokens"` // 默认 25600
 	ShowReasoning               bool   `yaml:"show_reasoning"`
 	ReasoningEffort             string `yaml:"reasoning_effort"` // 思考强度档位（low/medium/high/max），留空不下发该参数
 	HttpTimeout                 int    `yaml:"httptimeout"`
@@ -53,7 +53,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse config file: %v", err)
 	}
 	if YamlConfig.Model.MaxTokens == 0 {
-		YamlConfig.Model.MaxTokens = 12800
+		YamlConfig.Model.MaxTokens = 25600
 	}
 	return &YamlConfig, nil
 }

@@ -102,7 +102,7 @@ func TestUpdateModelFieldsTemplate(t *testing.T) {
 	if cfg.User.UserID != "{USERID}" {
 		t.Errorf("user block lost: %+v", cfg.User)
 	}
-	if cfg.Model.ContextWindow != 128000 || !cfg.Model.Stream || cfg.Model.MaxTokens != 12800 {
+	if cfg.Model.ContextWindow != 1000000 || !cfg.Model.Stream || cfg.Model.MaxTokens != 25600 {
 		t.Fatalf("untouched model fields changed: %+v", cfg.Model)
 	}
 	if cfg.Observability.Service != "langfuse" {

@@ -7,12 +7,12 @@ model:
   apikey: "your-api-key"
   apitype: "openai"
   anthropicAuthHeaderTransfer: false
-  contextwindow: 128000
+  contextwindow: 1000000
   stream: true
-  maxtokens: 12800
+  maxtokens: 25600
   reasoning_effort: ""
   httptimeout: 3600
-  show_reasoning: false
+  show_reasoning: true
 
 observability:
   service: "langfuse"

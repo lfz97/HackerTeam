@@ -1,26 +1,19 @@
-#用户配置
 user:
   userid: "{USERID}"
 
-# 模型配置
 model:
   model: "deepseek-reasoner"
   baseurl: "https://api.deepseek.com"
   apikey: "your-api-key"
-  apitype: "openai" # openai 或者 anthropic
-  anthropicAuthHeaderTransfer: false # 如果true，那么通过Authorization: Bearer认证，如果为false，通过X-Api-Key认证
-  contextwindow: 128000 # 上下文窗口大小，请参考模型文档设置，影响自动摘要功能的触发时机
-  stream: true # 是否开启流式输出，开启后可以实时看到模型的推理过程和工具调用信息
-  maxtokens: 12800 # 每次请求的最大生成 token 数，默认 12800
-  reasoning_effort: "" # 思考强度档位（low/medium/high/max），留空不下发该参数
-  httptimeout: 3600 # 单位/秒
-  show_reasoning: false   # 显示推理内容，默认 false（不显示）
+  apitype: "openai"
+  anthropicAuthHeaderTransfer: false
+  contextwindow: 128000
+  stream: true
+  maxtokens: 12800
+  reasoning_effort: ""
+  httptimeout: 3600
+  show_reasoning: false
 
-# 可观测性（Langfuse trace 上报，默认关闭）：启用后每次模型调用/工具调用自动上报
-# host 为 host:port 格式（不带 https:// 前缀）：云端 cloud.langfuse.com:443，本地 localhost:3000（须 insecure: true）
-# public/secret/host 留空的字段可用环境变量提供：LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY / LANGFUSE_HOST
-# 注意：启用后对话内容（含渗透测试的操作与输出）会上报 Langfuse 服务器，建议只用自部署实例
-# service 当前仅支持 "langfuse"；本段配置改动需重启进程生效
 observability:
   service: "langfuse"
   host: ""
@@ -28,24 +21,3 @@ observability:
   secret: ""
   insecure: false
   enabled: false
-
-# MCP server 配置（可选）。启用的 server 会挂载给全部 agent（含队长），实例跨 agent 共享。
-# timeout 单次工具调用的超时（单位/秒），不填默认 120；长耗时 server（扫描/分析类）务必调大
-# http_mcp：SSE / streamable_http 传输
-#http_mcp:
-#  - enabled: true
-#    name: "example_http"      # 必须唯一，决定工具前缀 {name}_{toolName}
-#    type: "streamable_http"   # sse 或 streamable_http
-#    endpoint: "http://127.0.0.1:8080/mcp"
-#    headers: {}
-#    description: "示例 HTTP MCP server"
-#    timeout: 120
-
-# stdin_mcp：stdio 传输（每个 server 全进程一个子进程，懒连接）
-#stdin_mcp:
-#  - enabled: true
-#    name: "example_stdio"     # 必须唯一，决定工具前缀 {name}_{toolName}
-#    command: "uvx"
-#    args: ["mcp-server-fetch"]
-#    description: "示例 stdio MCP server"
-#    timeout: 120

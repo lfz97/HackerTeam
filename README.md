@@ -166,9 +166,7 @@ Skills 目录默认只有 `pentest-tools` 占位模板，不预置任何红队�
 
 ### 配置示例
 
-以下是 `Skills/pentest-tools/SKILL.md` 的配置示例，按工具类别分组；Operator 与 Worker 共用同一份，可把各类清单合并写进同一个文件：
-
-**侦察类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
+以下是 `Skills/pentest-tools/SKILL.md` 填好后的完整示例：Operator 与 Worker 共用同一份，各类工具写在同一个文件里按小节分组，条目按需增删：
 
 ```markdown
 ---
@@ -179,6 +177,8 @@ description: >-
 ---
 
 # Pentest Tools
+
+## 侦察
 
 - **nmap**
   - category: Network Scanning
@@ -196,28 +196,7 @@ description: >-
   - path: `/opt/pentest/whatweb/whatweb`
   - repo: https://github.com/urbanadventurer/WhatWeb
 
-- **dirsearch**
-  - category: Directory Brute-forcing
-  - path: `/opt/pentest/dirsearch/dirsearch.py`
-  - repo: https://github.com/maurosoria/dirsearch
-
-- **fscan**
-  - category: Network Scanning
-  - path: `/opt/pentest/fscan/fscan`
-  - repo: https://github.com/shadow1ng/fscan
-```
-
-**扫描类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
-
-```markdown
----
-name: pentest-tools
-description: >-
-  Quick lookup of pentest tools.
-  Use when you need the name, type, or path of any installed pentest tool.
----
-
-# Pentest Tools
+## 漏洞扫描
 
 - **nuclei**
   - category: Vulnerability Scanning
@@ -229,38 +208,7 @@ description: >-
   - path: `/opt/pentest/sqlmap/sqlmap.py`
   - repo: https://github.com/sqlmapproject/sqlmap
 
-- **nikto**
-  - category: Web Server Audit
-  - path: `/opt/pentest/nikto/nikto`
-  - repo: https://github.com/sullo/nikto
-
-- **wafw00f**
-  - category: WAF Detection
-  - path: `/opt/pentest/wafw00f/wafw00f`
-  - repo: https://github.com/EnableSecurity/wafw00f
-
-- **dirsearch**
-  - category: Directory Brute-forcing
-  - path: `/opt/pentest/dirsearch/dirsearch.py`
-  - repo: https://github.com/maurosoria/dirsearch
-```
-
-**利用类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
-
-```markdown
----
-name: pentest-tools
-description: >-
-  Quick lookup of pentest tools.
-  Use when you need the name, type, or path of any installed pentest tool.
----
-
-# Pentest Tools
-
-- **sqlmap**
-  - category: SQL Injection Exploitation
-  - path: `/opt/pentest/sqlmap/sqlmap.py`
-  - repo: https://github.com/sqlmapproject/sqlmap
+## 利用
 
 - **msfconsole**
   - category: Exploitation Framework
@@ -272,23 +220,7 @@ description: >-
   - path: `/opt/pentest/hydra/hydra`
   - repo: https://github.com/vanhauser-thc/thc-hydra
 
-- **msfvenom**
-  - category: Payload Generation
-  - path: `/opt/pentest/metasploit/msfvenom`
-  - repo: https://github.com/rapid7/metasploit-framework
-```
-
-**后渗透类工具** — `.HackerTeam/Skills/pentest-tools/SKILL.md`
-
-```markdown
----
-name: pentest-tools
-description: >-
-  Quick lookup of pentest tools.
-  Use when you need the name, type, or path of any installed pentest tool.
----
-
-# Pentest Tools
+## 后渗透
 
 - **mimikatz**
   - category: Credential Dumping
@@ -299,16 +231,6 @@ description: >-
   - category: Tunneling
   - path: `/opt/pentest/chisel/chisel`
   - repo: https://github.com/jpillora/chisel
-
-- **ligolo-ng**
-  - category: Tunneling
-  - path: `/opt/pentest/ligolo/proxy`
-  - repo: https://github.com/nicocha30/ligolo-ng
-
-- **pypykatz**
-  - category: Credential Dumping
-  - path: `/opt/pentest/pypykatz/pypykatz`
-  - repo: https://github.com/skelsec/pypykatz
 
 - **impacket-psexec**
   - category: Lateral Movement
@@ -384,51 +306,21 @@ wsl
 
 **1. 下载可执行文件**（或自行编译，见[构建](#构建)章节）
 
-**2. 首次运行**，自动生成配置文件后退出：
+**2. 首次运行**，自动生成配置并弹出 TUI 配置页：
 
 ```sh
 ./HackerTeam
-# → 生成 .HackerTeam/HackerTeam.yaml，请修改后重新运行
+# → 生成 .HackerTeam/HackerTeam.yaml，弹出 TUI 配置页
 ```
 
-**3. 修改配置**，填入 API Key 后再次运行：
+**3. 配置模型**：在 TUI 配置页填模型四项（model / baseurl / apikey / apitype）提交即可使用；或按 ESC 退出，手动编辑 `.HackerTeam/HackerTeam.yaml` 后再次运行：
 
 ```yaml
-# 用户配置（首次运行自动生成 UUID）
-user:
-  userid: "{USERID}"
-
-# 模型配置
 model:
   model: "deepseek-reasoner"            # 模型名称
   baseurl: "https://api.deepseek.com"   # OpenAI 兼容端点，或 https://api.anthropic.com
   apikey: "YOUR_API_KEY"
   apitype: "openai"                     # "openai" 或 "anthropic"
-  anthropicAuthHeaderTransfer: false    # true = 走 Authorization: Bearer 认证；false = 走 X-Api-Key（代理/网关需要 Bearer 时开启）
-  contextwindow: 128000                 # 上下文窗口大小，请参考模型文档设置，影响自动摘要触发时机
-  stream: true                          # 流式输出，开启后可实时看到推理过程和工具调用
-  maxtokens: 12800                      # 每次请求的最大生成 token 数，默认 12800
-  httptimeout: 600                      # HTTP 请求超时，单位/秒
-  reasoning_effort: ""                  # 思考强度档位（low/medium/high/max），留空不下发该参数
-  show_reasoning: false                 # 是否显示推理内容，默认 false（不显示）
-
-# MCP server 配置（可选）。启用的 server 挂载给 Operator 与 Worker，实例跨 agent 共享
-# http_mcp：SSE / streamable_http 传输
-#http_mcp:
-#  - enabled: true
-#    name: "example_http"      # 必须唯一，决定工具前缀 {name}_{toolName}
-#    type: "streamable_http"   # sse 或 streamable_http
-#    endpoint: "http://127.0.0.1:8080/mcp"
-#    headers: {}
-#    description: "示例 HTTP MCP server"
-
-# stdin_mcp：stdio 传输（每个 server 全进程一个子进程，懒连接）
-#stdin_mcp:
-#  - enabled: true
-#    name: "example_stdio"     # 必须唯一，决定工具前缀 {name}_{toolName}
-#    command: "uvx"
-#    args: ["mcp-server-fetch"]
-#    description: "示例 stdio MCP server"
 ```
 
 | `apitype` | 适用提供商 |
@@ -436,34 +328,9 @@ model:
 | `openai` | OpenAI、DeepSeek、Ollama、vLLM 及任意兼容 API |
 | `anthropic` | Anthropic Claude 系列（使用原生 SDK） |
 
-> 完整字段以首次运行自动生成的 `.HackerTeam/HackerTeam.yaml` 为准（含注释）。
+完整字段（含 MCP / 可观测性）见下方[完整配置示例](#完整配置示例)。配置文件不带注释，字段说明以本文为准。
 
-### TUI 内置命令
-
-| 命令 | 功能 |
-|------|------|
-| `/new` | 开始新会话并清屏（会话上下文与屏幕记录一并重置） |
-| `/clear` | 清屏（只清屏幕记录，会话上下文保留） |
-| `/resume` | 恢复历史会话（弹框选择） |
-| `/exit` | 退出 |
-| `ESC` | 中断当前回合 |
-| `鼠标左键点击 ▸ 头部` | 展开/收起思考块与工具块（默认折叠） |
-| `/` | 命令列表（继续输入即前缀过滤；Enter 补全选中项，再按 Enter 执行） |
-
-> 配置/Skill/MCP 工具集在每轮对话自动重载，无需手动刷新（旧版 `/flush` 已移除）。
-
----
-
-## 长期记忆
-
-长期记忆只属于 Operator：由它主动写入 SQLite，下轮对话开始前预加载相关条目：
-
-- **显式写入**：记忆只由 Operator 用 memory 工具主动写入，不会自动落库
-- **智能预加载**：每轮开始注入 10 条记忆（`[MEMORY]` 块），其余通过 `memory_search` / `memory_load` 检索
-- **SQLite 持久化**：单文件 `memory.db`，零运维，重启不丢失
-- **Worker 无记忆**：它只看到 brief 中显式写出的内容，读完即弃
-
-## 可观测性（可选）
+### 可观测性（可选）
 
 默认关闭，配置 `.HackerTeam/HackerTeam.yaml` 的 `observability` 段即可开启（改动需重启进程生效）：
 
@@ -489,6 +356,83 @@ grep "Pre-LLM context compaction result" HackerTeam.log
 ```
 
 > 启用后对话内容（含渗透测试的操作与输出）会上报 Langfuse 服务器；敏感场景建议只使用自部署实例。
+
+### 完整配置示例
+
+```yaml
+user:
+  userid: "8f14e45f-ea3b-4c2d-9a76-5c1f0a2b3c4d"   # 首次运行自动生成的 UUID
+model:
+  model: "deepseek-reasoner"            # 模型名称
+  baseurl: "https://api.deepseek.com"   # OpenAI 兼容端点，或 https://api.anthropic.com
+  apikey: "YOUR_API_KEY"
+  apitype: "openai"                     # "openai" 或 "anthropic"
+  anthropicAuthHeaderTransfer: false    # true = Bearer 认证；false = X-Api-Key
+  contextwindow: 128000                 # 上下文窗口，影响自动摘要触发时机
+  stream: true                          # 流式输出
+  maxtokens: 12800                      # 单次请求最大生成 token 数
+  httptimeout: 3600                     # HTTP 请求超时（秒）
+  reasoning_effort: ""                  # 思考强度 low/medium/high/max，留空不下发
+  show_reasoning: false                 # 显示推理内容
+http_mcp:                               # 可选，不配就删掉这段
+  - enabled: true
+    name: "example"                     # 全局唯一，决定工具前缀 {name}_{toolName}
+    type: "streamable_http"             # sse 或 streamable_http
+    endpoint: "http://127.0.0.1:8080/mcp"
+    headers: {}                         # 可选，如: {"Authorization": "Bearer xxx"}
+    description: "示例 HTTP MCP server"
+    timeout: 120
+stdin_mcp:                              # 可选，不配就删掉这段
+  - enabled: true
+    name: "fetch"
+    command: "uvx"
+    args: ["mcp-server-fetch"]
+    description: "示例 stdio MCP server"
+    timeout: 120
+observability:                          # Langfuse trace 上报，默认关闭，见上文「可观测性」
+  service: "langfuse"
+  host: ""
+  public: ""
+  secret: ""
+  insecure: false
+  enabled: false
+```
+
+MCP 两个列表的字段说明：
+
+| 字段 | 说明 |
+|------|------|
+| `enabled` | `false` 则不挂载，条目保留在配置里 |
+| `name` | 全局唯一；工具实际调用名带 `{name}_` 前缀，避免多 server 工具重名 |
+| `type` | `sse` 或 `streamable_http`（仅 http_mcp） |
+| `timeout` | **单次工具调用**的上限（秒），不是连接超时；不填默认 120，长耗时 server（扫描/分析类）务必调大 |
+
+> 配置/Skill/MCP 改动在下一轮对话自动重载，无需重启（observability 段除外，需重启进程）。
+
+### TUI 内置命令
+
+| 命令 | 功能 |
+|------|------|
+| `/new` | 开始新会话并清屏（会话上下文与屏幕记录一并重置） |
+| `/clear` | 清屏（只清屏幕记录，会话上下文保留） |
+| `/resume` | 恢复历史会话（弹框选择） |
+| `/exit` | 退出 |
+| `ESC` | 中断当前回合 |
+| `鼠标左键点击 ▸ 头部` | 展开/收起思考块与工具块（默认折叠） |
+| `/` | 命令列表（继续输入即前缀过滤；Enter 补全选中项，再按 Enter 执行） |
+
+> 配置/Skill/MCP 工具集在每轮对话自动重载，无需手动刷新（旧版 `/flush` 已移除）。
+
+---
+
+## 长期记忆
+
+长期记忆只属于 Operator：由它主动写入 SQLite，下轮对话开始前预加载相关条目：
+
+- **显式写入**：记忆只由 Operator 用 memory 工具主动写入，不会自动落库
+- **智能预加载**：每轮开始注入 10 条记忆（`[MEMORY]` 块），其余通过 `memory_search` / `memory_load` 检索
+- **SQLite 持久化**：单文件 `memory.db`，零运维，重启不丢失
+- **Worker 无记忆**：它只看到 brief 中显式写出的内容，读完即弃
 
 ## 构建
 

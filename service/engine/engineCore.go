@@ -119,16 +119,18 @@ func GetEngineService(name string) *Engine {
 // 最后构造 runner。检查与装配的分工见 bootstrap.go / assemble.go。
 // 首次启动（Check 创建了默认配置）不再驻留退出：引擎照常装配模板配置，
 // 置 bootState=config，由 TUI 弹配置页收集模型配置后 ApplyFirstStartupConfig 收尾。
-func (e *Engine) Init() {
+// 出错路径 setFatal 后返回 error（渲染与退出由 TUI 完成），Run 据此跳过
+// AgentStart——错误不 return 掉进主循环会带着 nil Config_p panic。
+func (e *Engine) Init() error {
 	env, err := Check()
 	if err != nil {
-		e.parkWithFatal(FatalError, err.Error(), true)
-		return
+		e.setFatal(FatalError, err.Error(), true)
+		return err
 	}
 	e.absorb(env)
 	if err := e.flush(); err != nil {
-		e.parkWithFatal(FatalError, err.Error(), true)
-		return
+		e.setFatal(FatalError, err.Error(), true)
+		return err
 	}
 	if (*e).Config_p.Observability.Enabled {
 		obs := (*e).Config_p.Observability
@@ -151,9 +153,10 @@ func (e *Engine) Init() {
 	if env.ConfigCreated {
 		// 快照模板 model 块为配置页预填值并进入 config 态（成对写入见 setBootState）。
 		e.setBootState(BootConfigNeeded, templateModelFields(e.Config_p.Model))
-		return
+		return nil
 	}
 	e.setBootState(BootReady, nil)
+	return nil
 }
 
 // flush 释放上一轮装配的运行时资产后重跑 ⑥–⑩ + newRunner。
@@ -205,7 +208,7 @@ func (e *Engine) releaseRuntime() {
 }
 
 // ApplyFirstStartupConfig 接收 TUI 配置页提交的模型配置（yaml 字段名 → 值）：
-// 校验 → 行级写回 HackerTeam.yaml → flush 整体重跑装配。仅 config 态可调用；
+// 校验 → UpdateModelFields 读-改-写 HackerTeam.yaml → flush 整体重跑装配。仅 config 态可调用；
 // 成功后引擎进入 ready，TUI 侧横幅与本页关闭由返回值驱动。
 func (e *Engine) ApplyFirstStartupConfig(vals map[string]string) error {
 	e.mu.Lock()
@@ -217,7 +220,7 @@ func (e *Engine) ApplyFirstStartupConfig(vals map[string]string) error {
 	if err := validateModelForm(vals); err != nil {
 		return err
 	}
-	if err := config.PatchModelFields(e.HackerTeamConfigPath, normalizeModelForm(vals)); err != nil {
+	if err := config.UpdateModelFields(e.HackerTeamConfigPath, normalizeModelForm(vals)); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 	if err := e.flush(); err != nil {
@@ -260,9 +263,15 @@ func normalizeModelForm(vals map[string]string) map[string]string {
 }
 
 // Run 启动引擎完整生命周期：先同步完成 Init，再启动主循环 AgentStart（goroutine 由其内部负责）。
-// 仅当 Init 走到致命终态（parkWithFatal）时才驻留当前 goroutine，否则返回时引擎已后台运行。
+// Init 出错（fatal 状态已置）时直接返回，引擎 goroutine 自然结束——渲染致命屏、
+// 等按键、退出进程由 TUI 完成（进程生命周期归 shell 所有，引擎只报告状态）。
 func (e *Engine) Run() {
-	e.Init()
+	if err := e.Init(); err != nil {
+		//幂等兜底：防 Init 的错误路径漏设 fatal（那会让 TUI 停在 booting 黑屏挂死）。
+		//setFatal 是覆盖写，Init 已设过时无害。
+		e.setFatal(FatalError, err.Error(), true)
+		return
+	}
 	e.AgentStart()
 }
 

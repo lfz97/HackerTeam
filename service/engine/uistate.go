@@ -194,6 +194,9 @@ func (e *Engine) setFatal(style, text string, waitKey bool) {
 //     硬退出会把终端留在 alt-screen + raw mode。
 //
 // pull 之后的分工：引擎置终态 + 驻留；渲染、等待按键、停循环由 TUI 完成。
+// 仅供无法向上返回错误的深处路径使用（loadConfig/taskService 初始化等，
+// 跑在 runner 工厂 goroutine 上）；能返回错误的一律走 setFatal+return
+// （见 Init/Run）。
 func (e *Engine) parkWithFatal(style string, text string, waitKey bool) {
 	e.setFatal(style, text, waitKey)
 	select {}

@@ -45,7 +45,7 @@
   - `bootstrap.go` — `Check()` startup environment pass (config/log/session/memory/inspect assets), `BootEnv`, `checkSkillsFolder()` (single `Skills/` dir, whole-tree copy via `makeSkillsWritable()`), `builtinAssets()` (内置工具 + single shared localexec toolset, 启动时建一次跨轮常驻), `redirectFrameworkLog()`
   - `members.go` — `agentSpec` + `buildAgent()` (the single assembly path), `initOperator()`/`initWorker()`, `setAgent()` (model selection by APIType), `assemblePrompt()` (all placeholders incl. `{{OUTPUTDIR}}`)
   - `flight.go` — `[IN-FLIGHT]` summary of background task runs appended to Operator model requests (not TUI). prompt 侧由 operator.md 的 `# Status Block` 段集中说明四类注入（[STATUS]/[TODO]/[MEMORY]/[IN-FLIGHT]）的含义与性质（每次调用重生成、不进 session 历史），Memory/Planning 等段落只交叉引用——新增注入项时 Status Block 段与对应段落各加一行。
-  - `status.go` — per-request status bar: base time/CWD/memory for both agents; todo / memory / in-flight sections only for Operator (`agentSpec` flags)
+  - `status.go` — per-request status bar: base time/CWD/memory for both agents; todo / memory / in-flight sections only for Operator (`agentSpec` flags). Memory recall is stateless dual-channel: full current user input + last five sentences across current-turn reasoning, five results per channel, ID deduplication with user priority, per-channel relative scores, full untruncated memory bodies.
   - `engineRun.go` — dialog loop + single-turn execution (`agentRunIteratively`/`agentRunOnce`), turn types, merged from old `handler/runIteratively.go` + `runOnce.go` + `model.go` + `bootstrap/Bootstrap.go`
   - `messagerender/` — message rendering subpackage（`MessageRender.RenderResponse` 每 choice 调一次 → stream/non-stream 事件渲染 + 工具消息 gather/render）；`messageRender.go` + `toolmessagebuffer.go`。由 `engineRun.go` 事件循环调用
   - `config/` — `config.go` (Config struct + `LoadConfig`), `config.yaml` (checked-in sample user config), `mcp.go` (HttpMCP/StdinMCP 配置结构体), `observability.go` (Observability 配置结构体), `template.go` (YAML template via `//go:embed`，含 `http_mcp`/`stdin_mcp`/`observability` 示例段)
@@ -68,6 +68,7 @@
 - `tcell/v2` v2.13.10、`anthropic-sdk-go` v1.66.0
 - `glamour` v2 (`charm.land/glamour/v2`) — Markdown → ANSI renderer (crush-style StyleConfig in `render.go`; bubbletea renders ANSI natively, no tag conversion)
 - `gjson` v1.19.0 (`github.com/tidwall/gjson`) — 工具消息参数/结果字段提取（点路径取值，不反序列化；本为 indirect，现转直接）
+- `uniseg` v0.4.7 (`github.com/rivo/uniseg`) — UAX #29 文本断句，为 reasoning 检索 query 取尾部完整句
 
 ## Skill System
 - External security tools (nmap, nuclei, sqlmap, etc.) are integrated as knowledge-only skills via `trpc-agent-go`'s built-in skill system — NOT as function tools

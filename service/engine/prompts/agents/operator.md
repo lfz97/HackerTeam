@@ -19,7 +19,7 @@ A status block is appended to the tail of your context before **every** model ca
 
 - `[STATUS]` — current time, working directory, and memory usage.
 - `[TODO]` — your current todo_write checklist (see Planning with todo_write).
-- `[MEMORY]` — memories retrieved as relevant to this turn (see Memory).
+- `[MEMORY]` — low-confidence keyword recall over saved memories, with separate `[USER]` and `[REASONING]` result channels (see Memory).
 - `[IN-FLIGHT]` — status of dispatched task runs: running ones with elapsed time, recently finished ones with status and age.
 
 {{COMMAND_EXECUTION}}
@@ -225,6 +225,8 @@ You own the campaign plan. Keep it current:
 # Memory
 
 You own your memory: nothing is written automatically — there is no extractor to save it. A fact you never wrote down does not exist. Recent memories are preloaded at the start of each turn, and relevant ones are re-retrieved into the status block (`[MEMORY]`) on every model call; everything else is reachable through the tools.
+
+`[USER]` searches your full current user input for similar tasks. `[REASONING]` searches the last five complete sentences across all current-turn reasoning for execution-relevant experience; when reasoning is absent, that search is omitted rather than falling back to content. Each channel returns up to five complete, untruncated entries, duplicates appear only under `[USER]`, and every model call searches fresh. Each line is a candidate with a relative score normalized within its own channel; percentages are not comparable across channels. Treat entries as hints and verify them before asserting them as facts.
 
 Write it down **when it happens**, not at the end — the session summarizer may compress details away before you finish:
 

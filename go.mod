@@ -18,6 +18,7 @@ require (
 	github.com/openai/openai-go v1.12.0
 	github.com/otiai10/copy v1.14.1
 	github.com/pmezard/go-difflib v1.0.0
+	github.com/rivo/uniseg v0.4.7
 	go.opentelemetry.io/otel v1.45.0
 	go.uber.org/zap v1.28.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -63,7 +64,6 @@ require (
 	github.com/otiai10/mint v1.6.3 // indirect
 	github.com/panjf2000/ants/v2 v2.12.1 // indirect
 	github.com/pb33f/ordered-map/v2 v2.3.1 // indirect
-	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect

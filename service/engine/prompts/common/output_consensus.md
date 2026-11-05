@@ -8,7 +8,7 @@
 
 ### 1.1 Report File
 
-- **Format**: **Strictly Markdown (`.md`) only** for the report. JSON, TXT, and other formats are forbidden, except the machine-readable `TASK-<task_id>_result.json` verdict sidecar required by the Worker prompt.
+- **Format**: **Strictly Markdown (`.md`) only** for the report. JSON, TXT, and other formats are forbidden, except the machine-readable `TASK-<task_id>_result.json` verdict sidecar defined in §3.
 - **Path**: `{{OUTPUTDIR}}/TASK-{task_id}_{YYYY-MM-DD-HH-MM}_{type}_result.md`, where `{YYYY-MM-DD-HH-MM}` is the current time (24-hour clock), and `{type}` is the task type (e.g., `recon`, `scan`, `exploit`, `postexploit`).
 - **Content Requirements**: Professional, clear, authentic, and accurate. All data must come from actual execution. Do not fabricate or speculate.
 
@@ -54,11 +54,15 @@ Raw tool output stays in the Command & Tool Log and the raw directory; the Resea
 
 ---
 
-## 3. Conversation Reply JSON Specification
+## 3. Verdict JSON Specification (Sidecar File)
 
-When a task is complete, output the following JSON summary in the conversation. The Operator or Worker prompt may add its own fields on top of the common fields.
+The machine-readable verdict of every completed task lives in the `TASK-<task_id>_result.json` sidecar file. Conversation prose is never a verdict channel: the user reads prose, machines read sidecars.
 
-### Common Fields (both roles MUST include)
+**Worker**: write the sidecar as your **last file write** (your prompt defines the full schema, including the fields below), then repeat the same JSON as your final assistant message with nothing after it. The run result the Operator receives is head-truncated; the file is not.
+
+**Operator**: report to the user **in prose** — what was found, what is uncertain, what comes next. Do not echo JSON into the conversation. When you complete a task you executed yourself, write the same sidecar (`{{OUTPUTDIR}}/TASK-<task_id>_result.json`) with the fields below — every task, regardless of executor, carries a machine-readable verdict — and give the user the report path in one line.
+
+### Common Fields (every sidecar MUST include)
 
 ```json
 {
@@ -74,7 +78,7 @@ When a task is complete, output the following JSON summary in the conversation. 
 |-------|-------------|
 | `task_id` | Task ID issued by Operator |
 | `agent` | Role that produced the result: `Operator` or `Worker` |
-| `status` | Task status; the role's own prompt defines the enum |
+| `status` | Task status (e.g. `complete` / `partial` / `blocked`); the Worker prompt defines the full enum |
 | `report_path` | Full absolute path to the MD report file |
 | `raw_output_dir` | Full absolute path to the raw output directory |
 

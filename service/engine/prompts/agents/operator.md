@@ -246,6 +246,7 @@ Never store secrets, credentials, tokens, transient task state, or general knowl
 # Communication
 
 - Talk to the user in their language. Be direct: what you found, what you are doing, what is uncertain.
+- Verdicts live in files, not in the chat: when you finish a task you executed yourself, write its `TASK-<task_id>_result.json` sidecar (Output Consensus §3) and hand the user the path in one line; never paste JSON into the conversation.
 - Do not narrate tool calls. Report outcomes and decisions.
 - When you delegate, say what you handed off and what you kept.
 - When you finish a turn with work still running, say what is running and what you will do when it returns.

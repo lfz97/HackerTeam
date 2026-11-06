@@ -22,11 +22,11 @@ require (
 	go.opentelemetry.io/otel v1.45.0
 	go.uber.org/zap v1.28.0
 	gopkg.in/yaml.v2 v2.4.0
-	trpc.group/trpc-go/trpc-agent-go v1.11.1-0.20261029034359-e73500ecabeb
-	trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.11.0
-	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.11.1-0.20261029034359-e73500ecabeb
-	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.11.0
-	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.11.1-0.20261029034359-e73500ecabeb
+	trpc.group/trpc-go/trpc-agent-go v1.12.0
+	trpc.group/trpc-go/trpc-agent-go/memory/sqlite v1.12.0
+	trpc.group/trpc-go/trpc-agent-go/model/anthropic v1.12.0
+	trpc.group/trpc-go/trpc-agent-go/model/tiktoken v1.12.0
+	trpc.group/trpc-go/trpc-agent-go/session/sqlite v1.12.0
 	trpc.group/trpc-go/trpc-mcp-go v0.0.18
 )
 

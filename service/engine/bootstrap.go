@@ -70,7 +70,7 @@ type BootEnv struct {
 
 // Check 跑完整的启动检查：路径存在性、默认配置/技能目录落盘、日志重定向。
 // 不实例化任何运行时对象。任何一步失败都返回带步骤语义的
-// error，由调用方决定如何呈现（parkWithFatal）。
+// error，由调用方决定如何呈现（启动链路：Boot 直接上抛）。
 func Check() (*BootEnv, error) {
 	env := &BootEnv{}
 

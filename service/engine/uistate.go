@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"HackerTeam/service/engine/config"
 	"trpc.group/trpc-go/trpc-agent-go/model"
 )
@@ -59,8 +61,9 @@ type Fatal struct {
 
 // RunState 运行状态快照（幂等，last-write-wins）。
 type RunState struct {
-	Running bool   `json:"running"`
-	Fatal   *Fatal `json:"fatal"` // 非 nil 表示进程应结束
+	Running  bool   `json:"running"`
+	Retrying bool   `json:"retrying"` // 退避/重试阶段（观察态，TUI 可显示"重试中"）
+	Fatal    *Fatal `json:"fatal"`    // 非 nil 表示进程应结束
 }
 
 // notice 通知栏槽位内容。SetAt 供消费端计算 TTL（旧契约 4s，语义不变）。
@@ -161,11 +164,17 @@ func (e *Engine) emitChoice(choice model.Choice, isPartial bool) {
 
 // ── 运行状态 ─────────────────────────────────────────────
 
-// RunStateJSON 返回运行状态快照 JSON（{"running":bool,"fatal":{...}|null}）。
+// RunStateJSON 返回运行状态快照 JSON（{"running":bool,"retrying":bool,"fatal":{...}|null}）。
+// retrying 从 retry 控制器合并（同一临界区，避免与 fail/recharge 竞争）。
 func (e *Engine) RunStateJSON() string {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	b, err := json.Marshal(e.runState)
+	rs := RunState{
+		Running:  e.runState.Running,
+		Retrying: e.retry.retrying,
+		Fatal:    e.runState.Fatal,
+	}
+	e.mu.Unlock()
+	b, err := json.Marshal(rs)
 	if err != nil {
 		return "{}"
 	}
@@ -173,34 +182,28 @@ func (e *Engine) RunStateJSON() string {
 }
 
 // setRunning 标记 agent 是否在运行（指示器/提示条/Esc 行为的依据）。
+// 生产路径的置位/复位走 tryClaimRunning/endTurn（单临界区成对操作），
+// 本方法保留给测试直接模拟忙碌态。
 func (e *Engine) setRunning(running bool) {
 	e.mu.Lock()
 	e.runState.Running = running
 	e.mu.Unlock()
 }
 
-// setFatal 设置进程终态（配套 parkWithFatal 的驻留由调用方完成）。
+// setFatal 设置进程终态（TUI 轮询 runState.Fatal 渲染终态屏，waitKey 决定
+// 是否等待按键后退出）。当前唯一运行期调用点是 ApplyFirstStartupConfig
+// 的 flush 失败（启动链路的错误走返回值，不进此状态）。
 func (e *Engine) setFatal(style, text string, waitKey bool) {
 	e.mu.Lock()
 	e.runState.Fatal = &Fatal{Text: text, Style: style, WaitKey: waitKey}
 	e.mu.Unlock()
 }
 
-// parkWithFatal 置进程终态并永久驻留当前 goroutine。
-// 旧版等价物是 tui 的 Show*InMsgViewAndExit 内部末尾的 select{}，语义必须原样保留：
-//   - 引擎 init 序列打完致命消息后绝不能带着未初始化状态继续往下跑（loadConfig 失败
-//     时 Config_p 仍是 nil，继续走 init 会在别处 panic）；
-//   - 不能在 TUI 回调里 os.Exit——bubbletea 的终端复原在其 Run() 返回路径上，
-//     硬退出会把终端留在 alt-screen + raw mode。
-//
-// pull 之后的分工：引擎置终态 + 驻留；渲染、等待按键、停循环由 TUI 完成。
-// 仅供无法向上返回错误的深处路径使用（loadConfig/taskService 初始化等，
-// 跑在 runner 工厂 goroutine 上）；能返回错误的一律走 setFatal+return
-// （见 Init/Run）。
-func (e *Engine) parkWithFatal(style string, text string, waitKey bool) {
-	e.setFatal(style, text, waitKey)
-	select {}
-}
+// parkWithFatal 已删除：唯一调用点 LoadConfig 改为软失败（沿用上一代配置+
+// 告警，见 init.go）。goroutine 永久驻留会让 turn 永不结束、输入永久拒绝——
+// 对话以整个进程退出收场，比"本轮降级跑在旧配置上"代价大一个量级。
+// TUI 运行期的致命路径只剩 ApplyFirstStartupConfig 的 flush 失败：
+// setFatal + return（不驻留，TUI 渲染终态），无需 park 形态。
 
 // ── todo 清单 ────────────────────────────────────────────
 
@@ -283,12 +286,8 @@ func templateModelFields(m config.Model) map[string]string {
 	}
 }
 
-// bootStateSnapshot 读取启动状态（agentLoop 的横幅 gate 用）。
-func (e *Engine) bootStateSnapshot() string {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.bootState
-}
+// bootStateSnapshot 已删除：唯一调用方是原 agentLoop 的横幅 gate，
+// 横幅改由 Init 就绪尾段直接组装（先于 BootReady 写入），gate 不复存在。
 
 // ── 静态数据 ─────────────────────────────────────────────
 
@@ -310,31 +309,145 @@ func (e *Engine) setStartupInfo(lines []string) {
 
 // ── 消费端 → 引擎 ────────────────────────────────────────
 
-// SubmitInput 提交一行用户输入。引擎忙（无人接收）时返回 false，
-// 消费端（TUI）应保留输入框内容——与旧版 unbuffered chan + default 行为一致。
+// SubmitInput 提交一行用户输入：空闲则同步占坑并异步发起一轮 turn（直通 runner）；
+// 忙碌（turn 进行中，含重试退避）返回 false，消费端（TUI）应保留输入框内容。
+// 空输入同样返回 false（拒绝）：TUI 侧已挡空（handler.go），此处是防御；
+// 不充值预算——错误预算的充值语义只有两源（真实用户输入、流式健康证据），
+// 意外的空提交不是任何证据，静默充值会让耗尽的预算假装健康。
+// 占坑必须同步发生在 go turn 之前：engine 侧标志位是唯一的提交门——runner 的
+// 注册表要等 Run 深处 registerRun 才落账（实测注册前窗口 <3ms，见
+// window_measure_test.go），靠查 runner 判忙存在双放行窗口。
+// 斜杠命令不经过这里：语义与注册表在前端（service/tui/commands.go），后端只暴露能力接口。
 func (e *Engine) SubmitInput(line string) bool {
-	select {
-	case e.inputCh <- line:
-		return true
-	default:
+	if strings.TrimSpace(line) == "" {
+		return false //空输入拒绝：占坑/充值/turn 一概不发生
+	}
+	if !e.tryClaimRunning() {
 		return false
 	}
+	// 每轮重铸重试控制器：构造期不注入、跨轮零残留（streak/观察态/取消意图
+	// 全部归零）。必须与占坑同序同步执行——重铸若发生在 turn 内（异步），
+	// 落在"占坑完成→重铸完成"间隙的 Esc 会写在旧控制器上被重铸丢弃。
+	// 与 Interrupt 同在 TUI 事件循环（单 goroutine），此处不存在交错。
+	e.newTurnRetry()
+	// 注：原"用户输入充值预算"随每轮重铸消解——新控制器 streak 本就归零；
+	// 预算充值语义只剩轮内一源（agentRunOnce 的流式健康证据）。
+	(*e).appendTyped(RecUser, line)
+	// requestID 请求粒度，调用方铸造：一次用户请求一个 ID，错误重试沿用
+	// （见 turn 注释），事件流/Langfuse 可整轮归因。同步铸好并记账——
+	// Interrupt 从提交时刻起就有可 Cancel 的目标，不依赖 turn 的起跑时序。
+	// HackerTeam 的 RequestId 字段继续承载这个请求级追踪标签（区别于 HyperBot
+	// v3 删除该字段）：每次提交刷新，经 agent.WithRequestID 盖进本轮每条事件。
+	reqID := uuid.NewString()
+	(*e).setCurRequestID(reqID)
+	go e.turn(line, reqID)
+	return true
 }
 
-// Interrupt 提交一次中断信号（前端 Esc 时调用）。引擎运行循环读取该通道判定中断：
-// 运行期的桥接 goroutine 消费信号并取消当前轮 ctx；非运行期无接收方，返回 false
-// 可安全忽略。无缓冲通道保证信号不会跨回合残留。
+// Interrupt 提交一次中断（前端 Esc 时调用）。两级生效：
+//  1. runner.Cancel(curRequestID)——run 已注册（绝大多数时刻），框架内传播取消；
+//  2. retry.cancelRequested 取消意图——Esc 落在 runner 注册表空窗（注册前
+//     窗口或重试退避间隙，Cancel 查不到）时由退避 tick / Run 边界 / turn
+//     成功收尾消费（消费点分析见 retry_controller.go）。
+//
+// 非运行期返回 false 可安全忽略。返回值语义是"信号已接收"，不是"已停止"——
+// 停止判定只认 TUI 帧拉取的 running 状态（Esc 丢失于空窗时指示器继续转，
+// 用户再按一次即命中已注册的 run，无需显式重试逻辑）。
+// cancelRequested 无条件置位（不以 retrying 做门槛）：主动取消的完成事件
+// 投递会被已取消 ctx 掐断，NoticeCancelled 兜底链全靠此标志（见 turn 注释）。
 func (e *Engine) Interrupt() bool {
-	select {
-	case e.interruptCh <- struct{}{}:
-		return true
-	default:
+	e.mu.Lock()
+	if !e.runState.Running {
+		e.mu.Unlock()
 		return false
 	}
+	e.retry.cancelRequested = true
+	id := e.curRequestID
+	e.mu.Unlock()
+
+	if id != "" && (*e).AgentRunner_p != nil && (*(*e).AgentRunner_p).Runner != nil {
+		(*(*e).AgentRunner_p).Runner.Cancel(id) //注册表命中则立即生效；miss 交给取消意图
+	}
+	return true
 }
 
-// InterruptChan 返回中断信号通道（桥接 goroutine 读取）。
-func (e *Engine) InterruptChan() <-chan struct{} { return e.interruptCh }
+// ── turn 生命周期状态机（curRequestID / cancelRequested / running 的唯一入口）──
+
+// tryClaimRunning 原子地"查忙+占坑"：check-then-set 收在同一临界区，
+// SubmitInput 的提交门因此无竞态（调用方仅 TUI 单事件循环，这里仍收敛成
+// 原子操作——防御未来出现第二调用方）。
+func (e *Engine) tryClaimRunning() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.runState.Running {
+		return false
+	}
+	e.runState.Running = true
+	return true
+}
+
+// endTurn 收尾 turn：清 retry 瞬态（防 idle 期残留 retrying 的错误显示）并复位
+// running，同一临界区。跨轮泄漏已由 SubmitInput 的每轮重铸根除，这里的同临界区
+// 是防御深度（重铸前若有任何直写路径残留，收尾清场兜底）。
+func (e *Engine) endTurn() {
+	e.mu.Lock()
+	e.retry.resetTransient()
+	e.runState.Running = false
+	e.mu.Unlock()
+}
+
+// consumeCancelRequested 读取并清除取消意图（退避 tick、Run 边界、turn
+// 成功收尾三个消费点共用；读即清）。
+func (e *Engine) consumeCancelRequested() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	requested := e.retry.cancelRequested
+	e.retry.cancelRequested = false
+	return requested
+}
+
+// ── retry 状态的引擎级锁入口（结构体方法不自带锁，理由见 retry_controller.go）──
+
+// newTurnRetry 重铸本轮重试控制器：策略取默认值，一切状态归零。
+// 调用点仅 SubmitInput（占坑后同步执行，理由见其注释）。
+func (e *Engine) newTurnRetry() {
+	e.mu.Lock()
+	e.retry = newRetryController(defaultErrorMaxTimes, defaultErrorSleepGap)
+	e.mu.Unlock()
+}
+
+func (e *Engine) retryFail() (n int, exhausted bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.retry.fail()
+}
+
+func (e *Engine) retryRecharge() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.retry.recharge()
+}
+
+func (e *Engine) retryBackoff() time.Duration {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.retry.backoff()
+}
+
+func (e *Engine) retryLimit() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.retry.limit()
+}
+
+// setCurRequestID 记账当前请求的 requestID（请求粒度，错误重试沿用）。
+// 同步写 RequestId：HackerTeam 保留的请求级追踪标签与中断目标始终一致。
+func (e *Engine) setCurRequestID(id string) {
+	e.mu.Lock()
+	e.curRequestID = id
+	e.RequestId = id
+	e.mu.Unlock()
+}
 
 // ── 会话恢复弹框 ──────────────────────────────────────────
 

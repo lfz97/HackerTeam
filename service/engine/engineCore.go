@@ -25,12 +25,16 @@ import (
 )
 
 type Agentrunner struct {
-	Runner runner.Runner
+	// ManagedRunner 而非基础 Runner：engine 的中断链路（Interrupt → Cancel）
+	// 需要 requestID 级控制原语。runner 由 newRunner 自构造（具体类型必然
+	// 实现全部能力接口），无需逗号断言与降级路径（对比 openclaw gateway 的
+	// 外部注入场景）。
+	Runner runner.ManagedRunner
 	Stream bool
 }
 
 // Engine 封装核心状态变量（原 global 包级变量）。
-// 对上层 UI 的可观察状态与 pull 契约见 uistate.go；错误预算见 errorBudget.go。
+// 对上层 UI 的可观察状态与 pull 契约见 uistate.go；重试控制器见 retry_controller.go。
 type Engine struct {
 	Config_p             *config.Config  //yaml配置
 	Agentname            string          //Agent名称
@@ -79,8 +83,9 @@ type Engine struct {
 	// 成功才发布，失败/未启用为 nil。
 	ob observability.ObserverService
 
-	// errBudget：连续错误自动重试预算，状态流转见 errorBudget.go
-	errBudget errorBudget
+	// retry：重试控制器。构造期不注入——每轮 turn 由 SubmitInput 重铸
+	// （跨轮零残留），状态流转见 retry_controller.go
+	retry retryController
 
 	// 启动状态（BootXxx 常量，经 FirstStartupJSON 暴露给 TUI）：
 	// booting → （首次启动）config → ready，或 booting → ready。
@@ -98,38 +103,45 @@ type Engine struct {
 	notice    notice
 	startup   []string
 	startupOK bool
-	inputCh   chan string
 
-	interruptCh chan struct{}
+	// ── turn 生命周期记账（e.mu 守护，成对读写在 uistate.go 的 helper）──
+	// curRequestID 是当前 turn 的 requestID（请求粒度）：由 SubmitInput 铸造、
+	// 错误重试沿用同一个。Interrupt 据此调 runner.Cancel 精确终止在途 run。
+	// 取消意图与重试观察态在 retry（retry_controller.go），不在此处。
+	curRequestID string
 }
 
-// GetEngineService 创建引擎实例（轻量：只装配字段，不触盘）。生命周期统一由 Run 驱动。
+// GetEngineService 创建引擎实例（轻量：只装配字段，不触盘）。
+// 启动入口是 Init（boot.go 同步调用）：成功返回即完全就绪。
 func GetEngineService(name string) *Engine {
 	return &Engine{
-		Agentname:   name,
-		inputCh:     make(chan string),
-		interruptCh: make(chan struct{}),
-		notice:      notice{Kind: NoticeNone},
-		errBudget:   newErrorBudget(defaultErrorMaxTimes, defaultErrorSleepGap),
-		bootState:   BootBooting,
+		Agentname: name,
+		notice:    notice{Kind: NoticeNone},
+		bootState: BootBooting,
+		// retry 不在此构造：每轮 turn 由 SubmitInput 重铸（跨轮零残留），
+		// 见 uistate.go newTurnRetry。
 	}
 }
 
-// Init 完成环境检查（bootstrap），把检查产物拷入引擎后由引擎装配运行时资产，
-// 最后构造 runner。检查与装配的分工见 bootstrap.go / assemble.go。
+// Init 完成环境检查（bootstrap）与运行时装配。**成功返回即引擎完全就绪**：
+// 会话 ID、启动横幅、boot 态一步到位，调用方无需 post-Init 收尾。
+// 检查与装配的分工见 bootstrap.go / assemble.go。
 // 首次启动（Check 创建了默认配置）不再驻留退出：引擎照常装配模板配置，
-// 置 bootState=config，由 TUI 弹配置页收集模型配置后 ApplyFirstStartupConfig 收尾。
-// 出错路径 setFatal 后返回 error（渲染与退出由 TUI 完成），Run 据此跳过
-// AgentStart——错误不 return 掉进主循环会带着 nil Config_p panic。
+// 置 bootState=config，由 TUI 弹配置页收集模型配置后 ApplyFirstStartupConfig
+// 收尾（会话 ID 与横幅由它以真实配置生成——config 态在此不生成，配置页是
+// 模态的、无对话）。
+// 错误处理分两类路径，不混用机制：启动路径由调用方（boot.go）同步处理——
+// 错误直接上抛，main 打印退出（此时 TUI 未启动、终端未进 raw mode，
+// 无需 fatal 态渲染，故此处不再 setFatal）；TUI 运行期的致命路径只剩
+// ApplyFirstStartupConfig 的 flush 失败——setFatal 由 TUI 渲染终态；
+// 热重载失败（reload/LoadConfig）是软失败，告警降级不置终态。
 func (e *Engine) Init() error {
 	env, err := Check()
 	if err != nil {
-		e.setFatal(FatalError, err.Error(), true)
 		return err
 	}
 	e.absorb(env)
 	if err := e.flush(); err != nil {
-		e.setFatal(FatalError, err.Error(), true)
 		return err
 	}
 	if (*e).Config_p.Observability.Enabled {
@@ -138,7 +150,7 @@ func (e *Engine) Init() error {
 		if ob == nil {
 			e.setNotice(NoticeWarning, fmt.Sprintf("observability service %q is not supported, tracing disabled", obs.Service))
 		} else if err := ob.Start(); err != nil {
-			// 软失败：观测后端不可用不阻断会话（对比 parkWithFatal 的硬失败路径）。
+			// 软失败：观测后端不可用不阻断会话（对比启动/重装配的硬失败 error 链路）。
 			// 配置层错误（host/key 缺失等）在这里零反馈会让人以为 tracing 开着。
 			e.setNotice(NoticeWarning, fmt.Sprintf("observability start failed (%v): tracing disabled", err))
 		} else {
@@ -155,6 +167,11 @@ func (e *Engine) Init() error {
 		e.setBootState(BootConfigNeeded, templateModelFields(e.Config_p.Model))
 		return nil
 	}
+	// 挪自原 agentLoop 首轮：就绪路径的会话 ID 与启动横幅在此一次完成。
+	// 横幅先于 BootReady 写入——保证"观察到 Ready ⇒ 横幅已就绪"（TUI 的
+	// startupOK gate 依赖此序，否则 ready 态可能空帧一轮）。
+	e.randomStartID()
+	e.setStartupInfo((*e).startupInfoLines())
 	e.setBootState(BootReady, nil)
 	return nil
 }
@@ -176,8 +193,7 @@ func (e *Engine) flush() error {
 		return err
 	}
 	e.buildBuiltinAssets()
-	e.newRunner()
-	return nil
+	return e.newRunner()
 }
 
 // releaseRuntime 关闭当前运行时资产（nil 安全：首次调用无事可放）。
@@ -225,10 +241,13 @@ func (e *Engine) ApplyFirstStartupConfig(vals map[string]string) error {
 	}
 	if err := e.flush(); err != nil {
 		// 写回成功但装配失败：引擎已不可用，置终态交给 TUI 任意键退出。
-		// 不能 parkWithFatal：本方法在 TUI 事件循环 goroutine 上调用，驻留会冻死渲染。
+		// 只 setFatal 不驻留：本方法在 TUI 事件循环 goroutine 上调用，驻留会冻死渲染。
 		e.setFatal(FatalError, err.Error(), true)
 		return err
 	}
+	// 就绪尾段与 Init 的非首启路径一致：会话 ID 与横幅先于 BootReady 写入
+	// （观察到 Ready ⇒ 横幅已就绪）。配置页是模态的、无对话，此前不生成。
+	e.randomStartID()
 	e.setBootState(BootReady, nil) // 成对写：清空预填值 + 推进状态，同一临界区（裸写 firstStartupFields 是数据竞争）
 	e.setStartupInfo(e.startupInfoLines())
 	return nil
@@ -262,18 +281,8 @@ func normalizeModelForm(vals map[string]string) map[string]string {
 	return out
 }
 
-// Run 启动引擎完整生命周期：先同步完成 Init，再启动主循环 AgentStart（goroutine 由其内部负责）。
-// Init 出错（fatal 状态已置）时直接返回，引擎 goroutine 自然结束——渲染致命屏、
-// 等按键、退出进程由 TUI 完成（进程生命周期归 shell 所有，引擎只报告状态）。
-func (e *Engine) Run() {
-	if err := e.Init(); err != nil {
-		//幂等兜底：防 Init 的错误路径漏设 fatal（那会让 TUI 停在 booting 黑屏挂死）。
-		//setFatal 是覆盖写，Init 已设过时无害。
-		e.setFatal(FatalError, err.Error(), true)
-		return
-	}
-	e.AgentStart()
-}
+// Run 已删除：原职责全部并入 Init（就绪尾段，见其注释）。
+// 启动入口收敛为 boot.go 的同步 e.Init()——Init 成功返回即完全就绪。
 
 // absorb 把 bootstrap 检查产物（路径、日志句柄）拷入引擎字段，
 // 并上屏启动期收集的非致命提示。运行时对象的装配在 Init 后续步骤完成。
@@ -289,33 +298,9 @@ func (e *Engine) absorb(env *BootEnv) {
 	}
 }
 
-// AgentStart 启动引擎主循环（goroutine 内读用户输入、分类分发，直到退出），
-// 调用方无需自行起 goroutine。错误预算的状态流转见 errorBudget。
-func (e *Engine) AgentStart() {
-	go e.agentLoop()
-}
-
-// agentLoop 主循环本体：读对话输入、逐轮执行，直到退出。
-func (e *Engine) agentLoop() {
-	e.randomStartID()
-	// 启动横幅只在此组装一次（bootstrap/newRunner 均已完成）。
-	// 首次启动例外：此时还是模板配置，等 ApplyFirstStartupConfig 提交后
-	// 以真实值组装（本函数此刻可能还没跑到，gate 保证不抢在配置页前面）。
-	if e.bootStateSnapshot() == BootReady {
-		(*e).setStartupInfo((*e).startupInfoLines())
-	}
-	for {
-		line := <-(*e).inputCh
-		(*e).errBudget.recharge() //任何用户输入都充值（空输入也是，无害）
-
-		if strings.TrimSpace(line) == "" { //空输入，重新等待（前端已兜底，双保险）
-			continue
-		}
-		//斜杠命令不经过这里：语义与注册表在前端（service/tui/commands.go），后端只暴露能力接口
-		(*e).appendTyped(RecUser, line)
-		e.turn(line)
-	}
-}
+// agentLoop 已删除：输入消费从"常驻循环读 channel"改为"SubmitInput 直通"。
+// 它的串行化职责由 SubmitInput 的同步占坑（tryClaimRunning）承接，其余遗留
+// 职责各自归位：用户记录在 SubmitInput，会话 ID 与横幅在 Init。
 
 // ── 斜杠命令的后端能力接口（前端注册表见 service/tui/commands.go）──────
 
@@ -375,13 +360,17 @@ func (e *Engine) ClearRecords() bool {
 	return true
 }
 
+// randomStartID 生成会话级 ID：SessionId 标识会话，RequestId 是请求级追踪标签的
+// 初始种子——SubmitInput 每次提交都会重铸 RequestId（见 setCurRequestID），
+// 这里成对生成保证 /new 后到首个请求前也有非空追踪号。
 func (e *Engine) randomStartID() {
 	(*e).SessionId = uuid.New().String()
 	(*e).RequestId = uuid.New().String()
 }
 
 // startupInfoLines 拼出启动横幅的信息行（label 补齐到 13 列），宽度截断交给 TUI。
-// 调用时机在 bootstrap 完成后的第一轮，此时 newRunner/randomStartID 均已完成。
+// 调用时机在 Init 就绪尾段（randomStartID 之后、BootReady 写入之前），
+// 此时 bootstrap/newRunner 均已完成。
 func (e *Engine) startupInfoLines() []string {
 	cfg := (*e).Config_p.Model
 	cwd := (*e).CWD

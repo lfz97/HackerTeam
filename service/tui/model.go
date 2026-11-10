@@ -17,8 +17,9 @@ type wireFatal struct {
 }
 
 type wireRunState struct {
-	Running bool       `json:"running"`
-	Fatal   *wireFatal `json:"fatal"`
+	Running  bool       `json:"running"`
+	Retrying bool       `json:"retrying"` // 退避/重试阶段（观察态，当前仅透传）
+	Fatal    *wireFatal `json:"fatal"`
 }
 
 // wireNotice 通知栏槽位快照。

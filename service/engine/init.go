@@ -3,6 +3,7 @@ package engine
 import (
 	"HackerTeam/service/engine/config"
 	"context"
+	"errors"
 	"fmt"
 
 	"HackerTeam/service/engine/tools/toolsets"
@@ -14,7 +15,7 @@ import (
 	"trpc.group/trpc-go/trpc-agent-go/tool/taskrun"
 )
 
-func (e *Engine) newRunner() {
+func (e *Engine) newRunner() error {
 	Runner := runner.NewRunnerWithAgentFactory(
 		(*e).Agentname,
 		string(operatorName),
@@ -37,8 +38,14 @@ func (e *Engine) newRunner() {
 		runner.WithSessionService((*e).SessionService_p),
 		runner.WithMemoryService((*e).SqliteMemoryService),
 	)
+	// 自构造的 runner 必然实现 ManagedRunner；逗号断言失败=框架契约回归，
+	// 走 error 而非 panic（TUI 侧有装配错误的呈现路径）。
+	mr, ok := Runner.(runner.ManagedRunner)
+	if !ok {
+		return errors.New("runner does not implement ManagedRunner (framework contract regression)")
+	}
 	(*e).AgentRunner_p = &Agentrunner{
-		Runner: Runner,
+		Runner: mr,
 		Stream: (*(*e).Config_p).Model.Stream,
 	}
 
@@ -46,8 +53,7 @@ func (e *Engine) newRunner() {
 	// 必须在 runner 之后构造——Service 直接持有 runner。
 	service, err := inprocess.NewService(Runner)
 	if err != nil {
-		(*e).parkWithFatal(FatalError, fmt.Sprintf("Failed to initialize task run service: %v (press any key to exit)", err), true)
-		return
+		return fmt.Errorf("failed to initialize task run service: %w", err)
 	}
 	// 不能挂 turn 的 ctx：turn 结束不该杀掉还在跑的 run。
 	service.Start(context.Background())
@@ -58,6 +64,7 @@ func (e *Engine) newRunner() {
 	)
 	(*e).taskService = service
 	(*e).taskTools = &tools
+	return nil
 }
 
 // reload 每次 Operator 运行前重新加载配置，并把"这一代配置"派生出的技能索引和
@@ -174,10 +181,16 @@ func (e *Engine) refreshMCPFromConfig() {
 	e.diffMCPtoolsets(e.loadMCPFromConfig())
 }
 
+// LoadConfig 热重载配置：软失败——加载失败保留上一代配置并告警，不打断本轮。
+// 理由：配置损坏通常是"改了一半/写坏"，按观测后端同款软失败处理（对比启动/
+// 重装配路径的 assembleConfig 硬失败 error 链路，见 Init/ApplyFirstStartupConfig）
+// ——本轮沿用上一代配置继续跑，用户看到告警；修好后下一轮 reload 自动生效。
+// 零反馈不可接受：静默沿用旧配置会让人以为改动已生效。
 func (e *Engine) LoadConfig() {
 	c, err := config.LoadConfig((*e).HackerTeamConfigPath)
 	if err != nil {
-		(*e).parkWithFatal(FatalError, fmt.Sprintf("Failed to load config: %v (press any key to exit)", err), true)
+		(*e).setNotice(NoticeWarning, fmt.Sprintf("config reload failed, using previous config: %v", err))
+		return
 	}
 	(*e).Config_p = c
 }

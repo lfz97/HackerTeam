@@ -118,10 +118,9 @@ func firstUserText(s *session.Session) string {
 }
 
 // switchSession 切到目标会话并重放事件到 records（给前端画历史）。
-// RequestId 随 SessionId 一起换新：本项目 RequestId 与 SessionId 成对生成
-// （见 randomStartID），经 agent.WithRequestID 盖进每条事件，是一条会话
-// lineage 的追踪标签——切会话即换 lineage，沿用旧值会把新事件打成上一条
-// 会话的追踪号。框架只把它当标签，无去重/幂等语义。
+// RequestId 随 SessionId 一起换新：RequestId 是请求级追踪标签（SubmitInput
+// 每次提交都会重铸，见 setCurRequestID），切会话时先换一个种子，避免首个
+// 请求前的空窗沿用上一条会话的追踪号。框架只把它当标签，无去重/幂等语义。
 func (e *Engine) switchSession(id string) error {
 	sess, err := (*e).SessionService_p.GetSession(
 		context.Background(),
